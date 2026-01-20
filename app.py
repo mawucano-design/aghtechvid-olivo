@@ -1,4 +1,4 @@
-# app.py — Versión final para VID y OLIVO en Mendoza, Argentina
+# app.py — Versión final con VID, OLIVO y HORTALIZAS de MENDOZA
 # Autor: Martin Ernesto Cano
 # Fecha: Enero 2026
 import streamlit as st
@@ -547,8 +547,8 @@ border: 1px solid rgba(255, 255, 255, 0.2) !important;
 st.markdown("""
 <div class="hero-banner">
 <div class="hero-content">
-<h1 class="hero-title">ANALIZADOR PARA VID & OLIVO EN MENDOZA</h1>
-<p class="hero-subtitle">Potenciado con NASA POWER, GEE, INTA y tecnología avanzada para viñedos y olivares</p>
+<h1 class="hero-title">ANALIZADOR PARA VID, OLIVO Y HORTALIZAS EN MENDOZA</h1>
+<p class="hero-subtitle">Potenciado con NASA POWER, GEE, INTA y tecnología avanzada para viñedos, olivares y huertas</p>
 </div>
 </div>
 """, unsafe_allow_html=True)
@@ -641,7 +641,7 @@ METODOLOGIAS_NPK = {
 }
 }
 
-# ===== VARIEDADES DE VID EN MENDOZA =====
+# ===== VARIEDADES DE VID EN MENDOZA (incluyendo BONARDA) =====
 VARIEDADES_VID = {
 'MALBEC': {
 'RENDIMIENTO_BASE': 8.0,
@@ -694,6 +694,19 @@ VARIEDADES_VID = {
 'CICLO': 152,
 'TIPO': 'Tinto',
 'REGION': 'Mendoza - San Rafael'
+},
+'BONARDA': {
+'RENDIMIENTO_BASE': 10.0,
+'RENDIMIENTO_OPTIMO': 14.0,
+'RESPUESTA_N': 0.017,
+'RESPUESTA_P': 0.028,
+'RESPUESTA_K': 0.022,
+'NITROGENO_OPTIMO': 95,
+'FOSFORO_OPTIMO': 32,
+'POTASIO_OPTIMO': 155,
+'CICLO': 145,
+'TIPO': 'Tinto',
+'REGION': 'Mendoza - San Martín / Rivadavia'
 }
 }
 
@@ -753,6 +766,100 @@ VARIEDADES_OLIVO = {
 }
 }
 
+# ===== PARÁMETROS AGRONÓMICOS PARA HORTALIZAS EN MENDOZA =====
+PARAMETROS_HORTALIZAS = {
+'TOMATE': {
+'NITROGENO': {'min': 120, 'max': 200, 'optimo': 160},
+'FOSFORO': {'min': 40, 'max': 80, 'optimo': 60},
+'POTASIO': {'min': 180, 'max': 250, 'optimo': 220},
+'MATERIA_ORGANICA_OPTIMA': 3.0,
+'HUMEDAD_OPTIMA': 0.25,
+'NDVI_OPTIMO': 0.85,
+'RENDIMIENTO_BASE': 40.0,
+'RENDIMIENTO_OPTIMO': 80.0,
+'RESPUESTA_N': 0.25,
+'RESPUESTA_P': 0.15,
+'RESPUESTA_K': 0.20,
+'FACTOR_CLIMA': 0.90,
+'CICLO': 120
+},
+'CEBOLLA': {
+'NITROGENO': {'min': 100, 'max': 160, 'optimo': 130},
+'FOSFORO': {'min': 30, 'max': 60, 'optimo': 45},
+'POTASIO': {'min': 120, 'max': 180, 'optimo': 150},
+'MATERIA_ORGANICA_OPTIMA': 2.5,
+'HUMEDAD_OPTIMA': 0.22,
+'NDVI_OPTIMO': 0.75,
+'RENDIMIENTO_BASE': 30.0,
+'RENDIMIENTO_OPTIMO': 60.0,
+'RESPUESTA_N': 0.20,
+'RESPUESTA_P': 0.12,
+'RESPUESTA_K': 0.15,
+'FACTOR_CLIMA': 0.85,
+'CICLO': 150
+},
+'PAPA': {
+'NITROGENO': {'min': 140, 'max': 220, 'optimo': 180},
+'FOSFORO': {'min': 50, 'max': 90, 'optimo': 70},
+'POTASIO': {'min': 200, 'max': 300, 'optimo': 250},
+'MATERIA_ORGANICA_OPTIMA': 3.5,
+'HUMEDAD_OPTIMA': 0.28,
+'NDVI_OPTIMO': 0.80,
+'RENDIMIENTO_BASE': 25.0,
+'RENDIMIENTO_OPTIMO': 50.0,
+'RESPUESTA_N': 0.18,
+'RESPUESTA_P': 0.14,
+'RESPUESTA_K': 0.22,
+'FACTOR_CLIMA': 0.88,
+'CICLO': 130
+},
+'ZANAHORIA': {
+'NITROGENO': {'min': 80, 'max': 140, 'optimo': 110},
+'FOSFORO': {'min': 35, 'max': 70, 'optimo': 50},
+'POTASIO': {'min': 150, 'max': 220, 'optimo': 180},
+'MATERIA_ORGANICA_OPTIMA': 2.8,
+'HUMEDAD_OPTIMA': 0.24,
+'NDVI_OPTIMO': 0.70,
+'RENDIMIENTO_BASE': 35.0,
+'RENDIMIENTO_OPTIMO': 70.0,
+'RESPUESTA_N': 0.16,
+'RESPUESTA_P': 0.10,
+'RESPUESTA_K': 0.18,
+'FACTOR_CLIMA': 0.82,
+'CICLO': 140
+},
+'LECHUGA': {
+'NITROGENO': {'min': 90, 'max': 150, 'optimo': 120},
+'FOSFORO': {'min': 25, 'max': 50, 'optimo': 35},
+'POTASIO': {'min': 100, 'max': 160, 'optimo': 130},
+'MATERIA_ORGANICA_OPTIMA': 3.2,
+'HUMEDAD_OPTIMA': 0.30,
+'NDVI_OPTIMO': 0.82,
+'RENDIMIENTO_BASE': 20.0,
+'RENDIMIENTO_OPTIMO': 40.0,
+'RESPUESTA_N': 0.22,
+'RESPUESTA_P': 0.11,
+'RESPUESTA_K': 0.16,
+'FACTOR_CLIMA': 0.80,
+'CICLO': 70
+},
+'AJO': {
+'NITROGENO': {'min': 110, 'max': 180, 'optimo': 140},
+'FOSFORO': {'min': 40, 'max': 75, 'optimo': 55},
+'POTASIO': {'min': 140, 'max': 200, 'optimo': 170},
+'MATERIA_ORGANICA_OPTIMA': 2.6,
+'HUMEDAD_OPTIMA': 0.20,
+'NDVI_OPTIMO': 0.65,
+'RENDIMIENTO_BASE': 8.0,
+'RENDIMIENTO_OPTIMO': 15.0,
+'RESPUESTA_N': 0.14,
+'RESPUESTA_P': 0.09,
+'RESPUESTA_K': 0.12,
+'FACTOR_CLIMA': 0.85,
+'CICLO': 180
+}
+}
+
 # ===== PARÁMETROS AGRONÓMICOS POR CULTIVO (VID Y OLIVO) =====
 PARAMETROS_CULTIVOS = {
 'VID': {
@@ -791,7 +898,7 @@ PARAMETROS_CULTIVOS = {
 }
 }
 
-# ===== PARÁMETROS ECONÓMICOS PARA VID Y OLIVO EN MENDOZA (2025) =====
+# ===== PARÁMETROS ECONÓMICOS ACTUALIZADOS =====
 PARAMETROS_ECONOMICOS = {
 'PRECIOS_CULTIVOS': {
 'VID': {
@@ -811,6 +918,60 @@ PARAMETROS_ECONOMICOS = {
 'costo_labores': 350,
 'costo_cosecha': 220,
 'costo_otros': 110
+},
+'TOMATE': {
+'precio_ton': 800,
+'costo_semilla': 150,
+'costo_herbicidas': 100,
+'costo_insecticidas': 180,
+'costo_labores': 400,
+'costo_cosecha': 300,
+'costo_otros': 120
+},
+'CEBOLLA': {
+'precio_ton': 600,
+'costo_semilla': 120,
+'costo_herbicidas': 90,
+'costo_insecticidas': 100,
+'costo_labores': 350,
+'costo_cosecha': 250,
+'costo_otros': 100
+},
+'PAPA': {
+'precio_ton': 400,
+'costo_semilla': 200,
+'costo_herbicidas': 120,
+'costo_insecticidas': 150,
+'costo_labores': 380,
+'costo_cosecha': 280,
+'costo_otros': 110
+},
+'ZANAHORIA': {
+'precio_ton': 700,
+'costo_semilla': 180,
+'costo_herbicidas': 110,
+'costo_insecticidas': 140,
+'costo_labores': 420,
+'costo_cosecha': 320,
+'costo_otros': 130
+},
+'LECHUGA': {
+'precio_ton': 1200,
+'costo_semilla': 200,
+'costo_herbicidas': 80,
+'costo_insecticidas': 160,
+'costo_labores': 450,
+'costo_cosecha': 350,
+'costo_otros': 140
+},
+'AJO': {
+'precio_ton': 2500,
+'costo_semilla': 800,
+'costo_herbicidas': 100,
+'costo_insecticidas': 90,
+'costo_labores': 400,
+'costo_cosecha': 300,
+'costo_otros': 120
 }
 },
 'PRECIOS_FERTILIZANTES': {
@@ -925,7 +1086,13 @@ TEXTURA_SUELO_OPTIMA = {
 'arcilla_optima': 12,
 'densidad_aparente_optima': 1.45,
 'porosidad_optima': 0.42
-}
+},
+'TOMATE': {'textura_optima': 'Franco limoso', 'arena_optima': 40, 'limo_optima': 40, 'arcilla_optima': 20, 'densidad_aparente_optima': 1.3, 'porosidad_optima': 0.48},
+'CEBOLLA': {'textura_optima': 'Franco arenoso', 'arena_optima': 60, 'limo_optima': 25, 'arcilla_optima': 15, 'densidad_aparente_optima': 1.4, 'porosidad_optima': 0.45},
+'PAPA': {'textura_optima': 'Franco limoso', 'arena_optima': 35, 'limo_optima': 45, 'arcilla_optima': 20, 'densidad_aparente_optima': 1.25, 'porosidad_optima': 0.50},
+'ZANAHORIA': {'textura_optima': 'Franco arenoso', 'arena_optima': 65, 'limo_optima': 20, 'arcilla_optima': 15, 'densidad_aparente_optima': 1.35, 'porosidad_optima': 0.46},
+'LECHUGA': {'textura_optima': 'Franco limoso', 'arena_optima': 40, 'limo_optima': 40, 'arcilla_optima': 20, 'densidad_aparente_optima': 1.3, 'porosidad_optima': 0.48},
+'AJO': {'textura_optima': 'Franco arenoso', 'arena_optima': 60, 'limo_optima': 25, 'arcilla_optima': 15, 'densidad_aparente_optima': 1.4, 'porosidad_optima': 0.45}
 }
 
 # RECOMENDACIONES POR TIPO DE TEXTURA USDA
@@ -1007,8 +1174,27 @@ RECOMENDACIONES_TEXTURA = {
 }
 
 # ICONOS Y COLORES POR CULTIVO
-ICONOS_CULTIVOS = {'VID': '🍇', 'OLIVO': '🫒'}
-COLORES_CULTIVOS = {'VID': '#8B0000', 'OLIVO': '#556B2F'}
+ICONOS_CULTIVOS = {
+'VID': '🍇',
+'OLIVO': '🫒',
+'TOMATE': '🍅',
+'CEBOLLA': '🧅',
+'PAPA': '🥔',
+'ZANAHORIA': '🥕',
+'LECHUGA': '🥬',
+'AJO': '🧄'
+}
+
+COLORES_CULTIVOS = {
+'VID': '#8B0000',
+'OLIVO': '#556B2F',
+'TOMATE': '#DC2626',
+'CEBOLLA': '#F59E0B',
+'PAPA': '#A16207',
+'ZANAHORIA': '#EA580C',
+'LECHUGA': '#16A34A',
+'AJO': '#71717A'
+}
 
 # PALETAS GEE MEJORADAS
 PALETAS_GEE = {
@@ -1024,7 +1210,13 @@ PALETAS_GEE = {
 # URLs de imágenes para sidebar
 IMAGENES_CULTIVOS = {
 'VID': 'https://images.unsplash.com/photo-1556228453-efd6c1ff04f6?auto=format&fit=crop&w=200&h=150&q=80',
-'OLIVO': 'https://images.unsplash.com/photo-1607082350899-7e105aa886ae?auto=format&fit=crop&w=200&h=150&q=80'
+'OLIVO': 'https://images.unsplash.com/photo-1607082350899-7e105aa886ae?auto=format&fit=crop&w=200&h=150&q=80',
+'TOMATE': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
+'CEBOLLA': 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?auto=format&fit=crop&w=200&h=150&q=80',
+'PAPA': 'https://images.unsplash.com/photo-1593004870821-7dd8dc58e4a8?auto=format&fit=crop&w=200&h=150&q=80',
+'ZANAHORIA': 'https://images.unsplash.com/photo-1599542320877-2b4c53d5b3f9?auto=format&fit=crop&w=200&h=150&q=80',
+'LECHUGA': 'https://images.unsplash.com/photo-1603528025975-a7b7e0b9c9e0?auto=format&fit=crop&w=200&h=150&q=80',
+'AJO': 'https://images.unsplash.com/photo-1626082927389-6cd934a8f9d4?auto=format&fit=crop&w=200&h=150&q=80'
 }
 
 # ===== INICIALIZACIÓN SEGURA DE VARIABLES DE CONFIGURACIÓN =====
@@ -1044,7 +1236,7 @@ resolucion_dem = 10.0
 # ===== NUEVA FUNCIÓN: Integración con el INTA =====
 def obtener_materia_organica_inta(gdf, cultivo, usar_inta=True):
     if not usar_inta:
-        mo_valor = PARAMETROS_CULTIVOS[cultivo]['MATERIA_ORGANICA_OPTIMA']
+        mo_valor = PARAMETROS_CULTIVOS.get(cultivo, PARAMETROS_HORTALIZAS.get(cultivo, {})).get('MATERIA_ORGANICA_OPTIMA', 2.5)
         return {
             'materia_organica': round(mo_valor, 2),
             'region_inta': 'Estimación genérica',
@@ -1115,7 +1307,7 @@ def obtener_materia_organica_inta(gdf, cultivo, usar_inta=True):
                 'textura_predominante': region_encontrada['textura_predominante']
             }
         else:
-            mo_valor = PARAMETROS_CULTIVOS[cultivo]['MATERIA_ORGANICA_OPTIMA']
+            mo_valor = PARAMETROS_CULTIVOS.get(cultivo, PARAMETROS_HORTALIZAS.get(cultivo, {})).get('MATERIA_ORGANICA_OPTIMA', 2.5)
             return {
                 'materia_organica': round(mo_valor, 2),
                 'region_inta': 'Fuera de cobertura INTA',
@@ -1123,7 +1315,7 @@ def obtener_materia_organica_inta(gdf, cultivo, usar_inta=True):
                 'textura_predominante': 'No disponible'
             }
     except Exception as e:
-        mo_valor = PARAMETROS_CULTIVOS[cultivo]['MATERIA_ORGANICA_OPTIMA']
+        mo_valor = PARAMETROS_CULTIVOS.get(cultivo, PARAMETROS_HORTALIZAS.get(cultivo, {})).get('MATERIA_ORGANICA_OPTIMA', 2.5)
         return {
             'materia_organica': round(mo_valor, 2),
             'region_inta': 'Error en consulta',
@@ -1385,23 +1577,28 @@ def calcular_potasio_landsat8(b5, b7):
     potasio = 100 * nir_swir_ratio + 50
     return max(0, min(250, potasio)), nir_swir_ratio
 
+def obtener_parametros_cultivo(cultivo):
+    """Obtiene parámetros según tipo de cultivo"""
+    if cultivo in ['VID', 'OLIVO']:
+        return PARAMETROS_CULTIVOS[cultivo]
+    else:
+        return PARAMETROS_HORTALIZAS[cultivo]
+
 def calcular_indices_npk_avanzados(gdf, cultivo, satelite, usar_inta=True):
     resultados = []
+    params = obtener_parametros_cultivo(cultivo)
     if 'variedad_params' in st.session_state and st.session_state['variedad_params']:
-        params_variedad = st.session_state['variedad_params']
-        params = PARAMETROS_CULTIVOS[cultivo].copy()
+        variedad_params = st.session_state['variedad_params']
         params.update({
-            'RENDIMIENTO_BASE': params_variedad['RENDIMIENTO_BASE'],
-            'RENDIMIENTO_OPTIMO': params_variedad['RENDIMIENTO_OPTIMO'],
-            'RESPUESTA_N': params_variedad['RESPUESTA_N'],
-            'RESPUESTA_P': params_variedad['RESPUESTA_P'],
-            'RESPUESTA_K': params_variedad['RESPUESTA_K'],
-            'NITROGENO': {'optimo': params_variedad['NITROGENO_OPTIMO'], 'min': params_variedad['NITROGENO_OPTIMO']*0.7, 'max': params_variedad['NITROGENO_OPTIMO']*1.2},
-            'FOSFORO': {'optimo': params_variedad['FOSFORO_OPTIMO'], 'min': params_variedad['FOSFORO_OPTIMO']*0.7, 'max': params_variedad['FOSFORO_OPTIMO']*1.2},
-            'POTASIO': {'optimo': params_variedad['POTASIO_OPTIMO'], 'min': params_variedad['POTASIO_OPTIMO']*0.7, 'max': params_variedad['POTASIO_OPTIMO']*1.2}
+            'RENDIMIENTO_BASE': variedad_params['RENDIMIENTO_BASE'],
+            'RENDIMIENTO_OPTIMO': variedad_params['RENDIMIENTO_OPTIMO'],
+            'RESPUESTA_N': variedad_params['RESPUESTA_N'],
+            'RESPUESTA_P': variedad_params['RESPUESTA_P'],
+            'RESPUESTA_K': variedad_params['RESPUESTA_K'],
+            'NITROGENO': {'optimo': variedad_params['NITROGENO_OPTIMO']},
+            'FOSFORO': {'optimo': variedad_params['FOSFORO_OPTIMO']},
+            'POTASIO': {'optimo': variedad_params['POTASIO_OPTIMO']}
         })
-    else:
-        params = PARAMETROS_CULTIVOS[cultivo]
     datos_inta = obtener_materia_organica_inta(gdf, cultivo, usar_inta=usar_inta)
     materia_organica_base = datos_inta['materia_organica']
     for idx, row in gdf.iterrows():
@@ -1419,7 +1616,7 @@ def calcular_indices_npk_avanzados(gdf, cultivo, satelite, usar_inta=True):
             nitrogeno, ndre = calcular_nitrogeno_sentinel2(b5, b8a)
             fosforo, swir_vis = calcular_fosforo_sentinel2(b4, b11)
             potasio, ndii = calcular_potasio_sentinel2(b8, b11, b12)
-            nitrogeno = nitrogeno * (params['NDRE_OPTIMO'] / 0.5)
+            nitrogeno = nitrogeno * (params['NDVI_OPTIMO'] / 0.85)
             fosforo = fosforo * (params['MATERIA_ORGANICA_OPTIMA'] / 3.5)
             potasio = potasio * (params['HUMEDAD_OPTIMA'] / 0.3)
         elif satelite == "LANDSAT-8":
@@ -1431,7 +1628,7 @@ def calcular_indices_npk_avanzados(gdf, cultivo, satelite, usar_inta=True):
             nitrogeno, tcari_osavi = calcular_nitrogeno_landsat8(b3, b4, b5)
             fosforo, swir_verde = calcular_fosforo_landsat8(b3, b6)
             potasio, nir_swir = calcular_potasio_landsat8(b5, b7)
-            nitrogeno = nitrogeno * (params['TCARI_OPTIMO'] / 0.4)
+            nitrogeno = nitrogeno * (params['NDVI_OPTIMO'] / 0.85)
             fosforo = fosforo * (params['MATERIA_ORGANICA_OPTIMA'] / 3.5)
             potasio = potasio * (params['HUMEDAD_OPTIMA'] / 0.3)
         else:
@@ -1469,9 +1666,9 @@ def calcular_indices_npk_avanzados(gdf, cultivo, satelite, usar_inta=True):
 
 # ===== FUNCIONES PARA CÁLCULO DE RENDIMIENTO MEJORADAS =====
 def obtener_parametros_rendimiento(cultivo):
+    params = obtener_parametros_cultivo(cultivo)
     if 'variedad_params' in st.session_state and st.session_state['variedad_params']:
         variedad_params = st.session_state['variedad_params']
-        params = PARAMETROS_CULTIVOS[cultivo].copy()
         params.update({
             'RENDIMIENTO_BASE': variedad_params['RENDIMIENTO_BASE'],
             'RENDIMIENTO_OPTIMO': variedad_params['RENDIMIENTO_OPTIMO'],
@@ -1482,9 +1679,7 @@ def obtener_parametros_rendimiento(cultivo):
             'FOSFORO': {'optimo': variedad_params['FOSFORO_OPTIMO']},
             'POTASIO': {'optimo': variedad_params['POTASIO_OPTIMO']}
         })
-        return params
-    else:
-        return PARAMETROS_CULTIVOS[cultivo]
+    return params
 
 def calcular_rendimiento_potencial(gdf_analizado, cultivo):
     params = obtener_parametros_rendimiento(cultivo)
@@ -1843,6 +2038,8 @@ def mostrar_analisis_economico(resultados_economicos):
             st.info("Para vid: Considerar poda y manejo de carga para optimizar calidad")
         elif resultados_economicos['cultivo'] == "OLIVO":
             st.info("Para olivo: Optimizar riego y cosecha mecanizada")
+        elif resultados_economicos['cultivo'] in ["TOMATE", "CEBOLLA", "PAPA", "ZANAHORIA", "LECHUGA", "AJO"]:
+            st.info("Para hortalizas: Considerar rotación de cultivos y control integrado de plagas")
     with rec_col2:
         st.markdown("##### ⚠️ CONSIDERACIONES")
         st.warning("**RIESGOS CLIMÁTICOS:** Considerar seguro agrícola")
@@ -1879,6 +2076,8 @@ def mostrar_analisis_economico(resultados_economicos):
         )
 
 # ===== FUNCIONES PARA GENERAR MAPAS DE CALOR DE RENDIMIENTO =====
+# (Se mantienen las funciones originales crear_mapa_calor_rendimiento_actual, crear_mapa_calor_rendimiento_proyectado, etc.)
+
 def crear_mapa_calor_rendimiento_actual(gdf_analizado, cultivo):
     try:
         if 'rendimiento_actual' not in gdf_analizado.columns:
@@ -2056,7 +2255,7 @@ def crear_mapa_calor_rendimiento_proyectado(gdf_analizado, cultivo):
                             ha='center', va='center',
                             bbox=dict(boxstyle="round,pad=0.2",
                                       facecolor=(0, 0, 0, 0.7),
-                                      alpha=0.8))
+                                      alpha=0.8, edgecolor='white'))
         try:
             ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, alpha=0.3)
         except:
@@ -2358,7 +2557,7 @@ def generar_datos_simulados(gdf, cultivo, indice='NDVI'):
     st.info("🔬 Generando datos simulados...")
     datos_simulados = {
         'indice': indice,
-        'valor_promedio': PARAMETROS_CULTIVOS[cultivo]['NDVI_OPTIMO'] * 0.8 + np.random.normal(0, 0.1),
+        'valor_promedio': obtener_parametros_cultivo(cultivo)['NDVI_OPTIMO'] * 0.8 + np.random.normal(0, 0.1),
         'fuente': 'Simulación',
         'fecha': datetime.now().strftime('%Y-%m-%d'),
         'resolucion': '10m'
@@ -2411,7 +2610,7 @@ def obtener_datos_nasa_power(gdf, fecha_inicio, fecha_fin):
 def calcular_recomendaciones_npk_cientificas(gdf_analizado, nutriente, cultivo):
     import copy
     recomendaciones = []
-    params = copy.deepcopy(PARAMETROS_CULTIVOS[cultivo])
+    params = copy.deepcopy(obtener_parametros_cultivo(cultivo))
     if 'variedad_params' in st.session_state:
         variedad = st.session_state['variedad']
         variedad_params = st.session_state['variedad_params']
@@ -2467,6 +2666,7 @@ def analizar_textura_suelo(gdf, cultivo):
                 area_ha = float(area_ha[0])
             else:
                 area_ha = float(area_ha)
+            areas_ha_list.append(area_ha)
             centroid = row.geometry.centroid if hasattr(row.geometry, 'centroid') else row.geometry.representative_point()
             seed_value = abs(hash(f"{centroid.x:.6f}_{centroid.y:.6f}_{cultivo}_textura")) % (2**32)
             rng = np.random.RandomState(seed_value)
@@ -2481,7 +2681,6 @@ def analizar_textura_suelo(gdf, cultivo):
             limo_pct = (limo_val / total) * 100
             arcilla_pct = (arcilla_val / total) * 100
             textura = clasificar_textura_suelo(arena_pct, limo_pct, arcilla_pct)
-            areas_ha_list.append(area_ha)
             arena_list.append(float(arena_pct))
             limo_list.append(float(limo_pct))
             arcilla_list.append(float(arcilla_pct))
@@ -2699,10 +2898,10 @@ def generar_resumen_estadisticas(gdf_analizado, analisis_tipo, cultivo, df_power
                 estadisticas['NDWI Promedio'] = f"{gdf_analizado['ndwi'].mean():.3f}"
             if 'materia_organica' in gdf_analizado.columns:
                 estadisticas['Materia Orgánica Promedio'] = f"{gdf_analizado['materia_organica'].mean():.1f}%"
-            if cultivo == "VID" and 'variedad' in st.session_state:
-                estadisticas['Variedad de Vid'] = st.session_state['variedad']
-            elif cultivo == "OLIVO" and 'variedad' in st.session_state:
-                estadisticas['Variedad de Olivo'] = st.session_state['variedad']
+            if cultivo in ["VID", "OLIVO"] and 'variedad' in st.session_state:
+                estadisticas[f'Variedad de {cultivo}'] = st.session_state['variedad']
+            elif cultivo in ["TOMATE", "CEBOLLA", "PAPA", "ZANAHORIA", "LECHUGA", "AJO"]:
+                estadisticas['Hortaliza'] = cultivo
             if df_power is not None:
                 estadisticas['Radiación Solar Promedio'] = f"{df_power['radiacion_solar'].mean():.1f} kWh/m²/día"
                 estadisticas['Velocidad Viento Promedio'] = f"{df_power['viento_2m'].mean():.2f} m/s"
@@ -2740,17 +2939,17 @@ def generar_recomendaciones_generales(gdf_analizado, analisis_tipo, cultivo):
                     recomendaciones.append("Fertilidad ÓPTIMA: Excelente condición, continuar con manejo actual")
             if 'nitrogeno_actual' in gdf_analizado.columns:
                 n_prom = gdf_analizado['nitrogeno_actual'].mean()
-                n_opt = PARAMETROS_CULTIVOS[cultivo]['NITROGENO']['optimo']
+                n_opt = obtener_parametros_cultivo(cultivo)['NITROGENO']['optimo']
                 if n_prom < n_opt * 0.7:
                     recomendaciones.append(f"Deficiencia de Nitrógeno ({n_prom:.1f} vs {n_opt:.1f} kg/ha): Aplicar fertilizante nitrogenado")
             if 'fosforo_actual' in gdf_analizado.columns:
                 p_prom = gdf_analizado['fosforo_actual'].mean()
-                p_opt = PARAMETROS_CULTIVOS[cultivo]['FOSFORO']['optimo']
+                p_opt = obtener_parametros_cultivo(cultivo)['FOSFORO']['optimo']
                 if p_prom < p_opt * 0.7:
                     recomendaciones.append(f"Deficiencia de Fósforo ({p_prom:.1f} vs {p_opt:.1f} kg/ha): Aplicar superfosfato o fosfato diamónico")
             if 'potasio_actual' in gdf_analizado.columns:
                 k_prom = gdf_analizado['potasio_actual'].mean()
-                k_opt = PARAMETROS_CULTIVOS[cultivo]['POTASIO']['optimo']
+                k_opt = obtener_parametros_cultivo(cultivo)['POTASIO']['optimo']
                 if k_prom < k_opt * 0.7:
                     recomendaciones.append(f"Deficiencia de Potasio ({k_prom:.1f} vs {k_opt:.1f} kg/ha): Aplicar cloruro o sulfato de potasio")
         elif analisis_tipo == "ANÁLISIS DE TEXTURA":
@@ -2772,6 +2971,8 @@ def generar_recomendaciones_generales(gdf_analizado, analisis_tipo, cultivo):
                     recomendaciones.append("Para Chardonnay: Riego controlado y manejo de sombra")
                 elif "SYRAH" in variedad:
                     recomendaciones.append("Para Syrah: Manejo de temperatura y maduración fenólica")
+                elif "BONARDA" in variedad:
+                    recomendaciones.append("Para Bonarda: Alta carga frutal, requerimientos altos de N y K")
             recomendaciones.append("Mantener humedad adecuada durante floración y cuajado")
             recomendaciones.append("Controlar enfermedades fúngicas en períodos húmedos")
         elif cultivo == "OLIVO":
@@ -2789,6 +2990,10 @@ def generar_recomendaciones_generales(gdf_analizado, analisis_tipo, cultivo):
             recomendaciones.append("Optimizar riego por goteo con déficit controlado")
             recomendaciones.append("Realizar análisis de suelo de laboratorio para validar resultados satelitales")
             recomendaciones.append("Considerar agricultura de precisión para aplicación variable de insumos")
+        elif cultivo in ["TOMATE", "CEBOLLA", "PAPA", "ZANAHORIA", "LECHUGA", "AJO"]:
+            recomendaciones.append(f"Para {cultivo.lower()}: Considerar rotación de cultivos y control integrado de plagas")
+            recomendaciones.append("Mantener niveles óptimos de materia orgánica (>2.5%)")
+            recomendaciones.append("Aplicar riego por goteo con alta frecuencia")
     except Exception as e:
         recomendaciones.append("Error generando recomendaciones específicas")
     return recomendaciones
@@ -2830,15 +3035,12 @@ def generar_reporte_pdf(gdf_analizado, cultivo, analisis_tipo, area_total,
         pdf.cell(0, 10, limpiar_texto_para_pdf(f'REPORTE DE ANÁLISIS AGRÍCOLA - {cultivo}'), 0, 1, 'C')
         pdf.set_font('Arial', '', 12)
         pdf.cell(0, 10, limpiar_texto_para_pdf(f'Tipo de Análisis: {analisis_tipo}'), 0, 1, 'C')
-        if cultivo == "VID" and 'variedad' in st.session_state:
-            pdf.cell(0, 10, limpiar_texto_para_pdf(f'Variedad: {st.session_state["variedad"]}'), 0, 1, 'C')
-        elif cultivo == "OLIVO" and 'variedad' in st.session_state:
+        if cultivo in ["VID", "OLIVO"] and 'variedad' in st.session_state:
             pdf.cell(0, 10, limpiar_texto_para_pdf(f'Variedad: {st.session_state["variedad"]}'), 0, 1, 'C')
         pdf.cell(0, 10, limpiar_texto_para_pdf(f'Fecha: {datetime.now().strftime("%d/%m/%Y %H:%M")}'), 0, 1, 'C')
         pdf.ln(10)
         pdf.set_font('Arial', 'B', 14)
         pdf.cell(0, 10, '1. INFORMACIÓN GENERAL', 0, 1)
-        pdf.set_font('Arial', '', 12)
         info_general = f"""Cultivo: {cultivo}
 Área Total: {area_total:.2f} ha
 Zonas Analizadas: {len(gdf_analizado)}
@@ -2975,10 +3177,7 @@ def generar_reporte_docx(gdf_analizado, cultivo, analisis_tipo, area_total,
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         subtitle = doc.add_paragraph(f'Tipo de Análisis: {analisis_tipo}')
         subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        if cultivo == "VID" and 'variedad' in st.session_state:
-            variedad_par = doc.add_paragraph(f'Variedad: {st.session_state["variedad"]}')
-            variedad_par.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        elif cultivo == "OLIVO" and 'variedad' in st.session_state:
+        if cultivo in ["VID", "OLIVO"] and 'variedad' in st.session_state:
             variedad_par = doc.add_paragraph(f'Variedad: {st.session_state["variedad"]}')
             variedad_par.alignment = WD_ALIGN_PARAGRAPH.CENTER
         fecha = doc.add_paragraph(f'Fecha: {datetime.now().strftime("%d/%m/%Y %H:%M")}')
@@ -3142,8 +3341,8 @@ def crear_mapa_npk_con_esri(gdf_analizado, nutriente, cultivo, satelite, mostrar
         columna, clave_param, titulo_nutriente = mapeo_nutriente[nutriente]
         if columna not in gdf_analizado.columns:
             return None
-        vmin = PARAMETROS_CULTIVOS[cultivo][clave_param]['min'] * 0.7
-        vmax = PARAMETROS_CULTIVOS[cultivo][clave_param]['max'] * 1.2
+        vmin = obtener_parametros_cultivo(cultivo)[clave_param]['min'] * 0.7
+        vmax = obtener_parametros_cultivo(cultivo)[clave_param]['max'] * 1.2
         if vmin >= vmax:
             vmin, vmax = 0, 100
         cmap = LinearSegmentedColormap.from_list('nutriente_gee', PALETAS_GEE[clave_param])
@@ -3637,7 +3836,7 @@ def mostrar_resultados_curvas_nivel(X, Y, Z, pendiente_grid, curvas, elevaciones
 # ===== SIDEBAR MEJORADO CON OPCIÓN DEL INTA =====
 with st.sidebar:
     st.markdown('<div class="sidebar-title">⚙️ CONFIGURACIÓN</div>', unsafe_allow_html=True)
-    cultivo = st.selectbox("Cultivo:", ["VID", "OLIVO"])
+    cultivo = st.selectbox("Cultivo:", ["VID", "OLIVO", "TOMATE", "CEBOLLA", "PAPA", "ZANAHORIA", "LECHUGA", "AJO"])
     if cultivo == "VID":
         variedad = st.selectbox("Variedad de Vid:", list(VARIEDADES_VID.keys()), index=0)
         st.session_state['variedad'] = variedad
@@ -3646,6 +3845,7 @@ with st.sidebar:
         variedad = st.selectbox("Variedad de Olivo:", list(VARIEDADES_OLIVO.keys()), index=0)
         st.session_state['variedad'] = variedad
         st.session_state['variedad_params'] = VARIEDADES_OLIVO[variedad]
+    # Para hortalizas, no hay variedades específicas en este nivel
     if 'variedad' in st.session_state and st.session_state['variedad']:
         params = st.session_state['variedad_params']
         st.info(f"""
@@ -3716,8 +3916,20 @@ with st.sidebar:
         st.markdown("#### Precios de Mercado (USD)")
         precio_vid = st.number_input("Vid (USD/ton)", value=450.0, min_value=300.0, max_value=600.0)
         precio_olivo = st.number_input("Olivo (USD/ton)", value=320.0, min_value=200.0, max_value=500.0)
+        precio_tomate = st.number_input("Tomate (USD/ton)", value=800.0, min_value=500.0, max_value=1200.0)
+        precio_cebolla = st.number_input("Cebolla (USD/ton)", value=600.0, min_value=400.0, max_value=800.0)
+        precio_papa = st.number_input("Papa (USD/ton)", value=400.0, min_value=250.0, max_value=600.0)
+        precio_zanahoria = st.number_input("Zanahoria (USD/ton)", value=700.0, min_value=450.0, max_value=900.0)
+        precio_lechuga = st.number_input("Lechuga (USD/ton)", value=1200.0, min_value=800.0, max_value=1500.0)
+        precio_ajo = st.number_input("Ajo (USD/ton)", value=2500.0, min_value=1800.0, max_value=3000.0)
         PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['VID']['precio_ton'] = precio_vid
         PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['OLIVO']['precio_ton'] = precio_olivo
+        PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['TOMATE']['precio_ton'] = precio_tomate
+        PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['CEBOLLA']['precio_ton'] = precio_cebolla
+        PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['PAPA']['precio_ton'] = precio_papa
+        PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['ZANAHORIA']['precio_ton'] = precio_zanahoria
+        PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['LECHUGA']['precio_ton'] = precio_lechuga
+        PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['AJO']['precio_ton'] = precio_ajo
         st.subheader("🧪 Precios Fertilizantes")
         precio_urea = st.number_input("Urea (USD/ton)", value=450.0, min_value=300.0, max_value=600.0)
         precio_fosfato = st.number_input("Fosfato (USD/ton)", value=650.0, min_value=400.0, max_value=800.0)
@@ -3858,7 +4070,7 @@ if 'uploaded_file' in locals() and uploaded_file:
                 with col2:
                     st.write("**🎯 CONFIGURACIÓN GEE:**")
                     st.write(f"- Cultivo: {ICONOS_CULTIVOS[cultivo]} {cultivo}")
-                    if 'variedad' in st.session_state:
+                    if cultivo in ["VID", "OLIVO"] and 'variedad' in st.session_state:
                         st.write(f"- Variedad: {st.session_state['variedad']}")
                     st.write(f"- Análisis: {analisis_tipo}")
                     st.write(f"- Zonas: {n_divisiones}")
@@ -4141,7 +4353,7 @@ if 'uploaded_file' in locals() and uploaded_file:
                                     )
                         with col_d3:
                             geojson_data, nombre_geojson = exportar_a_geojson(resultados['gdf_analizado'], f"resultados_{cultivo}")
-                            if geojson_data:
+                            if geojson_
                                 st.download_button(
                                     label="🗺️ Descargar GeoJSON",
                                     data=geojson_data,
@@ -4235,6 +4447,11 @@ with st.expander("🔬 METODOLOGÍA CIENTÍFICA APLICADA"):
 - **Rendimiento Óptimo:** 11.5 ton/ha
 - **Requerimiento N:** 80 kg/ha
 - **Respuesta N:** 0.013 ton/kg N
+**BONARDA:**
+- **Rendimiento Base:** 10.0 ton/ha
+- **Rendimiento Óptimo:** 14.0 ton/ha
+- **Requerimiento N:** 95 kg/ha
+- **Respuesta N:** 0.017 ton/kg N
 ### **🫒 VARIEDADES DE OLIVO IMPLEMENTADAS (MENDOZA):**
 **ARBEQUINA:**
 - **Rendimiento Base:** 6.0 ton/ha
@@ -4256,6 +4473,37 @@ with st.expander("🔬 METODOLOGÍA CIENTÍFICA APLICADA"):
 - **Rendimiento Óptimo:** 8.0 ton/ha
 - **Requerimiento N:** 60 kg/ha
 - **Respuesta N:** 0.008 ton/kg N
+### **🥬 HORTALIZAS DE MENDOZA:**
+**TOMATE:**
+- **Rendimiento Base:** 40.0 ton/ha
+- **Rendimiento Óptimo:** 80.0 ton/ha
+- **Requerimiento N:** 160 kg/ha
+- **Respuesta N:** 0.25 ton/kg N
+**CEBOLLA:**
+- **Rendimiento Base:** 30.0 ton/ha
+- **Rendimiento Óptimo:** 60.0 ton/ha
+- **Requerimiento N:** 130 kg/ha
+- **Respuesta N:** 0.20 ton/kg N
+**PAPA:**
+- **Rendimiento Base:** 25.0 ton/ha
+- **Rendimiento Óptimo:** 50.0 ton/ha
+- **Requerimiento N:** 180 kg/ha
+- **Respuesta N:** 0.18 ton/kg N
+**ZANAHORIA:**
+- **Rendimiento Base:** 35.0 ton/ha
+- **Rendimiento Óptimo:** 70.0 ton/ha
+- **Requerimiento N:** 110 kg/ha
+- **Respuesta N:** 0.16 ton/kg N
+**LECHUGA:**
+- **Rendimiento Base:** 20.0 ton/ha
+- **Rendimiento Óptimo:** 40.0 ton/ha
+- **Requerimiento N:** 120 kg/ha
+- **Respuesta N:** 0.22 ton/kg N
+**AJO:**
+- **Rendimiento Base:** 8.0 ton/ha
+- **Rendimiento Óptimo:** 15.0 ton/ha
+- **Requerimiento N:** 140 kg/ha
+- **Respuesta N:** 0.14 ton/kg N
 ### **🏗️ SISTEMA DE CLASIFICACIÓN USDA PARA TEXTURAS:**
 **CLASES PRINCIPALES:**
 - **Franco arenoso:** Excelente drenaje, ideal para vid y olivo en zonas áridas
