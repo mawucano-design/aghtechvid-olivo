@@ -1207,16 +1207,17 @@ PALETAS_GEE = {
 'PENDIENTE': ['#4daf4a', '#a6d96a', '#ffffbf', '#fdae61', '#f46d43', '#d73027']
 }
 
-# URLs de imágenes para sidebar
+# URLs de imágenes ilustradas (dibujos técnicos) para sidebar
 IMAGENES_CULTIVOS = {
-'VID': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
-'OLIVO': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
-'TOMATE': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
-'CEBOLLA': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
-'PAPA': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
-'ZANAHORIA': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
-'LECHUGA': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
-'AJO': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
+    'VID': 'https://raw.githubusercontent.com/agrogeomatics/icons/main/crops/grapevine.png',
+    'OLIVO': 'https://raw.githubusercontent.com/agrogeomatics/icons/main/crops/olive_tree.png',
+    'TOMATE': 'https://raw.githubusercontent.com/agrogeomatics/icons/main/crops/tomato.png',
+    'CEBOLLA': 'https://raw.githubusercontent.com/agrogeomatics/icons/main/crops/onion.png',
+    'PAPA': 'https://raw.githubusercontent.com/agrogeomatics/icons/main/crops/potato.png',
+    'ZANAHORIA': 'https://raw.githubusercontent.com/agrogeomatics/icons/main/crops/carrot.png',
+    'LECHUGA': 'https://raw.githubusercontent.com/agrogeomatics/icons/main/crops/lettuce.png',
+    'AJO': 'https://raw.githubusercontent.com/agrogeomatics/icons/main/crops/garlic.png'
+}
 
 # ===== INICIALIZACIÓN SEGURA DE VARIABLES DE CONFIGURACIÓN =====
 if 'variedad' not in st.session_state:
