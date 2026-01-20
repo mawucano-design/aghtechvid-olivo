@@ -4556,4 +4556,4 @@ with st.expander("🔬 METODOLOGÍA CIENTÍFICA APLICADA"):
 
 # Contacto para versión completa
 st.markdown("---")
-st.info("📧 ¿Desea la versión completa con integración satelital, drones y maquinaria? Contacte a **Martin Ernesto Cano**: +5493525 532313 | mawucano@gmail.com")
+st.info("📧 ¿Desea soliciatar el analisis de su campo/lote? Contacte a **Martin Ernesto Cano**: +5493525 532313 | mawucano@gmail.com")
