@@ -1216,7 +1216,7 @@ IMAGENES_CULTIVOS = {
 'PAPA': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
 'ZANAHORIA': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
 'LECHUGA': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
-'AJO': ''https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
+'AJO': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
 
 # ===== INICIALIZACIÓN SEGURA DE VARIABLES DE CONFIGURACIÓN =====
 if 'variedad' not in st.session_state:
