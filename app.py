@@ -1209,15 +1209,14 @@ PALETAS_GEE = {
 
 # URLs de imágenes para sidebar
 IMAGENES_CULTIVOS = {
-'VID': 'https://images.unsplash.com/photo-1556228453-efd6c1ff04f6?auto=format&fit=crop&w=200&h=150&q=80',
-'OLIVO': 'https://images.unsplash.com/photo-1607082350899-7e105aa886ae?auto=format&fit=crop&w=200&h=150&q=80',
+'VID': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
+'OLIVO': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
 'TOMATE': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
-'CEBOLLA': 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?auto=format&fit=crop&w=200&h=150&q=80',
-'PAPA': 'https://images.unsplash.com/photo-1593004870821-7dd8dc58e4a8?auto=format&fit=crop&w=200&h=150&q=80',
-'ZANAHORIA': 'https://images.unsplash.com/photo-1599542320877-2b4c53d5b3f9?auto=format&fit=crop&w=200&h=150&q=80',
-'LECHUGA': 'https://images.unsplash.com/photo-1603528025975-a7b7e0b9c9e0?auto=format&fit=crop&w=200&h=150&q=80',
-'AJO': 'https://images.unsplash.com/photo-1626082927389-6cd934a8f9d4?auto=format&fit=crop&w=200&h=150&q=80'
-}
+'CEBOLLA': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
+'PAPA': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
+'ZANAHORIA': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
+'LECHUGA': 'https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
+'AJO': ''https://images.unsplash.com/photo-1573104336368-5c4f3e9d3e2b?auto=format&fit=crop&w=200&h=150&q=80',
 
 # ===== INICIALIZACIÓN SEGURA DE VARIABLES DE CONFIGURACIÓN =====
 if 'variedad' not in st.session_state:
