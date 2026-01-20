@@ -1,4 +1,4 @@
-# app.py — Versión final con VID, OLIVO y HORTALIZAS de MENDOZA
+# app.py — Versión final con VID, OLIVO y HORTALIZAS de MENDOZA (CORREGIDO)
 # Autor: Martin Ernesto Cano
 # Fecha: Enero 2026
 import streamlit as st
