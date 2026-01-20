@@ -4353,7 +4353,7 @@ if 'uploaded_file' in locals() and uploaded_file:
                                     )
                         with col_d3:
                             geojson_data, nombre_geojson = exportar_a_geojson(resultados['gdf_analizado'], f"resultados_{cultivo}")
-                            if geojson_
+                            if geojson_data:
                                 st.download_button(
                                     label="🗺️ Descargar GeoJSON",
                                     data=geojson_data,
