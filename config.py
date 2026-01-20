@@ -45,15 +45,19 @@ USGS_CONFIG = {
 
 # Parámetros de imágenes por cultivo (mantener igual)
 IMAGE_PARAMETERS = {
-    'TRIGO': {
-        'optimal_months': [5, 6, 7],
+    'VID': {
+        'optimal_moths': [5, 6, 7],
         'cloud_cover_max': 10,
         'resolution': 10
     },
-    'MAÍZ': {
+    'OLIVO': {
         'optimal_months': [6, 7, 8],
         'cloud_cover_max': 10,
         'resolution': 10
     },
-    # ... (mantener el resto igual)
+     'HORTALIZAS': {
+        'optimal_months': [6, 7, 8],
+        'cloud_cover_max': 10,
+        'resolution': 10
+    },# ... (mantener el resto igual)
 }
