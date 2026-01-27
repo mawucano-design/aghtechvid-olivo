@@ -2624,6 +2624,156 @@ def crear_mapa_comparativo_calor_fallback(gdf_analizado, cultivo):
         st.error(f"Error en fallback: {str(e)}")
         return None
 
+# ===== FUNCIONES DE EXPORTACIÓN GEOJSON (AGREGAR DESPUÉS DE LOS MAPAS DE CALOR) =====
+def crear_boton_descarga_geojson(gdf, nombre_base, tipo_analisis, cultivo):
+    """Crea un botón para descargar GeoJSON"""
+    try:
+        # Asegurar que tenemos un CRS válido
+        gdf_export = validar_y_corregir_crs(gdf.copy())
+        
+        # Convertir a GeoJSON
+        geojson_data = gdf_export.to_json()
+        
+        # Crear timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nombre_archivo = f"{nombre_base}_{tipo_analisis}_{cultivo}_{timestamp}.geojson"
+        
+        # Botón de descarga
+        st.download_button(
+            label="🗺️ Descargar GeoJSON",
+            data=geojson_data,
+            file_name=nombre_archivo,
+            mime="application/geo+json",
+            key=f"geojson_{tipo_analisis}_{timestamp}"
+        )
+        return True
+    except Exception as e:
+        st.error(f"Error al generar GeoJSON: {str(e)}")
+        return False
+
+# ===== SECCIÓN PARA EXPORTAR FERTILIDAD ACTUAL =====
+def exportar_fertilidad_actual(gdf_analizado, cultivo):
+    """Muestra opciones de exportación para fertilidad actual"""
+    st.markdown("---")
+    st.subheader("🗺️ EXPORTAR DATOS DE FERTILIDAD")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # GeoJSON - Datos completos
+        if st.button("🗺️ GeoJSON (Datos completos)", key="geojson_fert_full"):
+            if crear_boton_descarga_geojson(gdf_analizado, "fertilidad", "completo", cultivo):
+                st.success("✅ GeoJSON generado")
+    
+    with col2:
+        # GeoJSON - Solo NPK
+        if st.button("🧪 GeoJSON (Solo NPK)", key="geojson_npk"):
+            try:
+                columnas_npk = ['id_zona', 'geometry', 'nitrogeno_actual', 'fosforo_actual', 
+                              'potasio_actual', 'npk_integrado', 'area_ha']
+                columnas_disponibles = [col for col in columnas_npk if col in gdf_analizado.columns]
+                gdf_npk = gdf_analizado[columnas_disponibles].copy()
+                
+                if crear_boton_descarga_geojson(gdf_npk, "npk", "nutrientes", cultivo):
+                    st.success("✅ GeoJSON generado")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+    
+    with col3:
+        # CSV de fertilidad
+        if st.button("📊 CSV de Fertilidad", key="csv_fert"):
+            try:
+                csv_data = gdf_analizado[['id_zona', 'nitrogeno_actual', 'fosforo_actual', 
+                                        'potasio_actual', 'npk_integrado', 'area_ha']].copy()
+                csv_data.columns = ['Zona', 'N (kg/ha)', 'P (kg/ha)', 'K (kg/ha)', 'Índice NPK', 'Área (ha)']
+                
+                csv_buffer = csv_data.to_csv(index=False).encode('utf-8')
+                
+                st.download_button(
+                    label="📥 Descargar CSV",
+                    data=csv_buffer,
+                    file_name=f"fertilidad_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                    key="csv_fert_download"
+                )
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+
+# ===== SECCIÓN PARA EXPORTAR RECOMENDACIONES NPK =====
+def exportar_recomendaciones_npk(gdf_analizado, cultivo, nutriente):
+    """Muestra opciones de exportación para recomendaciones NPK"""
+    st.markdown("---")
+    st.subheader("📤 EXPORTAR RECOMENDACIONES NPK")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # GeoJSON con recomendaciones
+        if st.button("🗺️ GeoJSON con Recomendaciones", key="geojson_recom"):
+            columnas_recom = ['id_zona', 'geometry', 'valor_recomendado', 'nitrogeno_actual', 
+                            'fosforo_actual', 'potasio_actual', 'area_ha']
+            if 'rendimiento_actual' in gdf_analizado.columns:
+                columnas_recom.extend(['rendimiento_actual', 'rendimiento_proyectado', 'incremento_rendimiento'])
+            
+            columnas_disponibles = [col for col in columnas_recom if col in gdf_analizado.columns]
+            gdf_recom = gdf_analizado[columnas_disponibles].copy()
+            
+            if crear_boton_descarga_geojson(gdf_recom, "recomendaciones", "npk", cultivo):
+                st.success("✅ GeoJSON generado")
+    
+    with col2:
+        # Shapefile ZIP
+        if st.button("📁 Shapefile (ZIP)", key="shapefile_recom"):
+            try:
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    shp_path = os.path.join(tmp_dir, f"recomendaciones_{cultivo}")
+                    gdf_analizado.to_file(shp_path, driver='ESRI Shapefile')
+                    
+                    # Crear archivo ZIP
+                    zip_buffer = BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        for file in os.listdir(tmp_dir):
+                            file_path = os.path.join(tmp_dir, file)
+                            zip_file.write(file_path, arcname=file)
+                    
+                    zip_buffer.seek(0)
+                    
+                    st.download_button(
+                        label="📥 Descargar Shapefile",
+                        data=zip_buffer,
+                        file_name=f"recomendaciones_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.zip",
+                        mime="application/zip",
+                        key="shapefile_download"
+                    )
+            except Exception as e:
+                st.error(f"Error al crear Shapefile: {str(e)}")
+    
+    with col3:
+        # CSV de recomendaciones
+        if st.button("📊 CSV de Recomendaciones", key="csv_recom"):
+            try:
+                csv_data = gdf_analizado[['id_zona', 'valor_recomendado', 'nitrogeno_actual', 
+                                        'fosforo_actual', 'potasio_actual', 'area_ha']].copy()
+                csv_data.columns = ['Zona', f'{nutriente} Recomendado (kg/ha)', 
+                                   'N Actual (kg/ha)', 'P Actual (kg/ha)', 'K Actual (kg/ha)', 'Área (ha)']
+                
+                if 'rendimiento_actual' in gdf_analizado.columns:
+                    csv_data['Rendimiento Actual (ton/ha)'] = gdf_analizado['rendimiento_actual']
+                    csv_data['Rendimiento Proyectado (ton/ha)'] = gdf_analizado['rendimiento_proyectado']
+                    csv_data['Incremento (ton/ha)'] = gdf_analizado['incremento_rendimiento']
+                
+                csv_buffer = csv_data.to_csv(index=False).encode('utf-8')
+                
+                st.download_button(
+                    label="📥 Descargar CSV",
+                    data=csv_buffer,
+                    file_name=f"recomendaciones_{nutriente}_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                    key="csv_recom_download"
+                )
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+
 # ===== FUNCIONES PARA DATOS SATELITALES =====
 def descargar_datos_landsat8(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
     try:
