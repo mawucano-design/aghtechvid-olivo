@@ -4164,17 +4164,26 @@ def mostrar_resultados_textura(gdf_analizado, cultivo, area_total, mostrar_capa_
                     st.markdown(f"• {man}")
         else:
             st.info(f"Textura '{textura_predominante}' - Consultar recomendaciones específicas para esta clase textural")
-    st.subheader("💾 DESCARGAR RESULTADOS USDA")
-    if 'columnas_textura' in locals() and columnas_textura:
-        tabla_textura = gdf_analizado[columnas_textura].copy()
-        tabla_textura.columns = ['Zona', 'Área (ha)', 'Textura USDA', 'Arena (%)', 'Limo (%)', 'Arcilla (%)']
-        csv = tabla_textura.to_csv(index=False)
-        st.download_button(
-            "📥 Descargar CSV con Análisis de Textura USDA",
-            csv,
-            f"textura_usda_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-            "text/csv"
-        )
+      st.subheader("💾 DESCARGAR RESULTADOS USDA")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if 'columnas_textura' in locals() and columnas_textura:
+            tabla_textura = gdf_analizado[columnas_textura].copy()
+            tabla_textura.columns = ['Zona', 'Área (ha)', 'Textura USDA', 'Arena (%)', 'Limo (%)', 'Arcilla (%)']
+            csv = tabla_textura.to_csv(index=False)
+            st.download_button(
+                "📥 Descargar CSV",
+                csv,
+                f"textura_usda_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                "text/csv"
+            )
+    
+    with col2:
+        st.write("")  # Espacio
+        st.write("")  # Espacio
+        if crear_boton_descarga_geojson(gdf_analizado, "textura_suelo", "textura", cultivo):
+            st.success("✅ GeoJSON listo para descargar")
 
 def mostrar_resultados_curvas_nivel(X, Y, Z, pendiente_grid, curvas, elevaciones, gdf_original, cultivo, area_total):
     st.subheader("📊 ESTADÍSTICAS TOPOGRÁFICAS")
