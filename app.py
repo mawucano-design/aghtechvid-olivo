@@ -2076,8 +2076,6 @@ def mostrar_analisis_economico(resultados_economicos):
         )
 
 # ===== FUNCIONES PARA GENERAR MAPAS DE CALOR DE RENDIMIENTO =====
-# (Se mantienen las funciones originales crear_mapa_calor_rendimiento_actual, crear_mapa_calor_rendimiento_proyectado, etc.)
-
 def crear_mapa_calor_rendimiento_actual(gdf_analizado, cultivo):
     try:
         if 'rendimiento_actual' not in gdf_analizado.columns:
@@ -2373,7 +2371,7 @@ def crear_mapa_comparativo_calor(gdf_analizado, cultivo):
         z_proyectado = gdf_plot['rendimiento_proyectado'].values
         incrementos = z_proyectado - z_actual
         vmin = min(z_actual.min(), z_proyectado.min()) * 0.9
-        vmax = max(z_actual.max(), z_proyectado.max()) * 1.1
+        vmax = max(z_actual.max(), z_proyectado.max()) * 1.2
         x_min, y_min, x_max, y_max = gdf_plot.total_bounds
         xi = np.linspace(x_min, x_max, 150)
         yi = np.linspace(y_min, y_max, 150)
@@ -2453,7 +2451,7 @@ def crear_mapa_comparativo_calor_fallback(gdf_analizado, cultivo):
         cmap_actual = plt.cm.YlOrRd
         cmap_proyectado = plt.cm.RdYlGn
         vmin = min(gdf_plot['rendimiento_actual'].min(), gdf_plot['rendimiento_proyectado'].min()) * 0.9
-        vmax = max(gdf_plot['rendimiento_actual'].max(), gdf_plot['rendimiento_proyectado'].max()) * 1.1
+        vmax = max(gdf_plot['rendimiento_actual'].max(), gdf_plot['rendimiento_proyectado'].max()) * 1.2
         for idx, row in gdf_plot.iterrows():
             valor = row['rendimiento_actual']
             valor_norm = (valor - vmin) / (vmax - vmin) if vmax != vmin else 0.5
@@ -3091,6 +3089,8 @@ Porcentaje de Aumento: {porcentaje:.1f}%
                     os.remove(temp_img_path)
             except Exception as e:
                 pdf.cell(0, 8, limpiar_texto_para_pdf(f"Error al incluir mapa: {str(e)[:50]}..."), 0, 1)
+        else:
+            pdf.cell(0, 8, limpiar_texto_para_pdf("Mapa no disponible para este análisis"), 0, 1)
         pdf.set_font('Arial', 'B', 14)
         pdf.cell(0, 10, '4. RESUMEN DE ZONAS', 0, 1)
         pdf.set_font('Arial', '', 10)
@@ -3250,6 +3250,8 @@ def generar_reporte_docx(gdf_analizado, cultivo, analisis_tipo, area_total,
                 doc.add_paragraph()
             except Exception as e:
                 doc.add_paragraph(f'Error al incluir mapa: {str(e)[:50]}...')
+        else:
+            doc.add_paragraph('Mapa no disponible para este análisis')
         doc.add_heading('4. RESUMEN DE ZONAS', level=1)
         if gdf_analizado is not None and not gdf_analizado.empty:
             columnas_mostrar = ['id_zona', 'area_ha']
@@ -3845,7 +3847,6 @@ with st.sidebar:
         variedad = st.selectbox("Variedad de Olivo:", list(VARIEDADES_OLIVO.keys()), index=0)
         st.session_state['variedad'] = variedad
         st.session_state['variedad_params'] = VARIEDADES_OLIVO[variedad]
-    # Para hortalizas, no hay variedades específicas en este nivel
     if 'variedad' in st.session_state and st.session_state['variedad']:
         params = st.session_state['variedad_params']
         st.info(f"""
@@ -4041,7 +4042,25 @@ def mostrar_resultados_recomendaciones(gdf_analizado, cultivo, nutriente, area_t
             mime="text/csv"
         )
 
-# ===== INTERFAZ PRINCIPAL =====
+# app.py — Versión final con VID, OLIVO y HORTALIZAS de MENDOZA (CORREGIDO)
+# Autor: Martin Ernesto Cano
+# Fecha: Enero 2026
+
+# ... (todo el código anterior se mantiene igual hasta la línea donde está el problema) ...
+
+# ===== CLASIFICACIÓN DE PENDIENTES (definición faltante) =====
+CLASIFICACION_PENDIENTES = {
+    'PLANA (0-2%)': {'min': 0, 'max': 2, 'color': '#4daf4a', 'factor_erosivo': 0.1},
+    'SUAVE (2-5%)': {'min': 2, 'max': 5, 'color': '#a6d96a', 'factor_erosivo': 0.3},
+    'MODERADA (5-10%)': {'min': 5, 'max': 10, 'color': '#ffffbf', 'factor_erosivo': 0.6},
+    'FUERTE (10-15%)': {'min': 10, 'max': 15, 'color': '#fdae61', 'factor_erosivo': 0.8},
+    'MUY FUERTE (15-25%)': {'min': 15, 'max': 25, 'color': '#f46d43', 'factor_erosivo': 0.9},
+    'EXTREMA (>25%)': {'min': 25, 'max': 100, 'color': '#d73027', 'factor_erosivo': 1.0}
+}
+
+# ... (continuación del código anterior) ...
+
+# ===== INTERFAZ PRINCIPAL (continuación) =====
 if 'uploaded_file' in locals() and uploaded_file:
     with st.spinner("Cargando parcela..."):
         try:
@@ -4049,6 +4068,7 @@ if 'uploaded_file' in locals() and uploaded_file:
             if gdf is not None:
                 st.success(f"✅ **Parcela cargada exitosamente:** {len(gdf)} polígono(s)")
                 area_total = calcular_superficie(gdf)
+                
                 col1, col2 = st.columns(2)
                 with col1:
                     st.write("**📊 INFORMACIÓN DE LA PARCELA:**")
@@ -4056,6 +4076,7 @@ if 'uploaded_file' in locals() and uploaded_file:
                     st.write(f"- Área total: {area_total:.1f} ha")
                     st.write(f"- CRS: {gdf.crs}")
                     st.write(f"- Formato: {uploaded_file.name.split('.')[-1].upper()}")
+                    
                     st.write("**📍 Vista Previa:**")
                     fig, ax = plt.subplots(figsize=(8, 6))
                     fig.patch.set_facecolor('#0f172a')
@@ -4067,6 +4088,7 @@ if 'uploaded_file' in locals() and uploaded_file:
                     ax.tick_params(colors='white')
                     ax.grid(True, alpha=0.3, color='#475569')
                     st.pyplot(fig)
+                
                 with col2:
                     st.write("**🎯 CONFIGURACIÓN GEE:**")
                     st.write(f"- Cultivo: {ICONOS_CULTIVOS[cultivo]} {cultivo}")
@@ -4074,10 +4096,12 @@ if 'uploaded_file' in locals() and uploaded_file:
                         st.write(f"- Variedad: {st.session_state['variedad']}")
                     st.write(f"- Análisis: {analisis_tipo}")
                     st.write(f"- Zonas: {n_divisiones}")
+                    
                     if st.session_state.get('usar_inta', True):
                         st.write("🌱 **INTA Activado:** Estimación regional de materia orgánica")
                     else:
                         st.write("⚠️ **INTA Desactivado:** Estimación genérica")
+                    
                     if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"]:
                         st.write(f"- Satélite: {SATELITES_DISPONIBLES[satelite_seleccionado]['nombre']}")
                         st.write(f"- Índice: {indice_seleccionado}")
@@ -4085,8 +4109,10 @@ if 'uploaded_file' in locals() and uploaded_file:
                     elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL":
                         st.write(f"- Intervalo curvas: {intervalo_curvas} m")
                         st.write(f"- Resolución DEM: {resolucion_dem} m")
+                
                 if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary"):
                     resultados = None
+                    
                     if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"]:
                         resultados = ejecutar_analisis(
                             gdf, nutriente, analisis_tipo, n_divisiones,
@@ -4110,6 +4136,7 @@ if 'uploaded_file' in locals() and uploaded_file:
                             usar_inta=st.session_state.get('usar_inta', True),
                             mostrar_capa_inta=st.session_state.get('mostrar_mapa_inta', False)
                         )
+                    
                     if resultados and resultados['exitoso']:
                         st.session_state['resultados_guardados'] = {
                             'gdf_analizado': resultados['gdf_analizado'],
@@ -4129,7 +4156,10 @@ if 'uploaded_file' in locals() and uploaded_file:
                             'usar_inta': st.session_state.get('usar_inta', True),
                             'mostrar_mapa_inta': st.session_state.get('mostrar_mapa_inta', False)
                         }
+                        
                         st.success("✅ Análisis completado exitosamente!")
+                        
+                        # Mostrar resultados según tipo de análisis
                         if analisis_tipo == "FERTILIDAD ACTUAL":
                             mostrar_resultados_fertilidad(
                                 resultados['gdf_analizado'],
@@ -4162,12 +4192,16 @@ if 'uploaded_file' in locals() and uploaded_file:
                                 X, Y, Z, pendiente_grid, curvas, elevaciones,
                                 gdf, cultivo, resultados['area_total']
                             )
+                        
+                        # Análisis económico para recomendaciones NPK
                         if analisis_tipo == "RECOMENDACIONES NPK" and 'rendimiento_actual' in resultados['gdf_analizado'].columns:
                             st.markdown("---")
                             st.subheader("💰 ANÁLISIS ECONÓMICO")
+                            
                             variedad_params = None
                             if 'variedad_params' in st.session_state:
                                 variedad_params = st.session_state['variedad_params']
+                            
                             resultados_economicos = realizar_analisis_economico(
                                 resultados['gdf_analizado'],
                                 cultivo,
@@ -4175,9 +4209,12 @@ if 'uploaded_file' in locals() and uploaded_file:
                                 resultados['area_total']
                             )
                             mostrar_analisis_economico(resultados_economicos)
+                            
                             st.markdown("---")
                             st.subheader("🔥 MAPAS DE CALOR DE RENDIMIENTO")
+                            
                             tab1, tab2, tab3 = st.tabs(["🌾 Rendimiento Actual", "🚀 Rendimiento Proyectado", "📊 Comparativo"])
+                            
                             with tab1:
                                 st.subheader("🌾 RENDIMIENTO ACTUAL (sin fertilización)")
                                 mapa_actual = crear_mapa_calor_rendimiento_actual(resultados['gdf_analizado'], cultivo)
@@ -4189,6 +4226,7 @@ if 'uploaded_file' in locals() and uploaded_file:
                                         f"rendimiento_actual_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
                                         "image/png"
                                     )
+                            
                             with tab2:
                                 st.subheader("🚀 RENDIMIENTO PROYECTADO (con fertilización)")
                                 mapa_proyectado = crear_mapa_calor_rendimiento_proyectado(resultados['gdf_analizado'], cultivo)
@@ -4200,6 +4238,7 @@ if 'uploaded_file' in locals() and uploaded_file:
                                         f"rendimiento_proyectado_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
                                         "image/png"
                                     )
+                            
                             with tab3:
                                 st.subheader("📊 MAPA COMPARATIVO")
                                 mapa_comparativo = crear_mapa_comparativo_calor(resultados['gdf_analizado'], cultivo)
@@ -4211,6 +4250,8 @@ if 'uploaded_file' in locals() and uploaded_file:
                                         f"comparativo_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
                                         "image/png"
                                     )
+                            
+                            # Métricas de rendimiento
                             col_r1, col_r2, col_r3, col_r4 = st.columns(4)
                             with col_r1:
                                 rend_actual = resultados['gdf_analizado']['rendimiento_actual'].mean()
@@ -4224,11 +4265,15 @@ if 'uploaded_file' in locals() and uploaded_file:
                             with col_r4:
                                 porcentaje = (incremento / rend_actual * 100) if rend_actual > 0 else 0
                                 st.metric("📊 Porcentaje", f"+{porcentaje:.1f}%")
+                        
+                        # Datos meteorológicos de NASA POWER
                         if resultados.get('df_power') is not None:
                             st.markdown("---")
                             st.subheader("🌤️ DATOS METEOROLÓGICOS NASA POWER")
                             df_power = resultados['df_power']
+                            
                             tab_p1, tab_p2, tab_p3, tab_p4 = st.tabs(["🌞 Radiación Solar", "💨 Viento", "🌡️ Temperatura", "💧 Precipitación"])
+                            
                             with tab_p1:
                                 fig_rad = crear_grafico_personalizado(
                                     df_power.set_index('fecha')['radiacion_solar'],
@@ -4239,6 +4284,7 @@ if 'uploaded_file' in locals() and uploaded_file:
                                     '#ffffff'
                                 )
                                 st.pyplot(fig_rad)
+                            
                             with tab_p2:
                                 fig_viento = crear_grafico_personalizado(
                                     df_power.set_index('fecha')['viento_2m'],
@@ -4249,6 +4295,7 @@ if 'uploaded_file' in locals() and uploaded_file:
                                     '#ffffff'
                                 )
                                 st.pyplot(fig_viento)
+                            
                             with tab_p3:
                                 fig_temp = crear_grafico_personalizado(
                                     df_power.set_index('fecha')['temperatura'],
@@ -4259,6 +4306,7 @@ if 'uploaded_file' in locals() and uploaded_file:
                                     '#ffffff'
                                 )
                                 st.pyplot(fig_temp)
+                            
                             with tab_p4:
                                 fig_precip = crear_grafico_barras_personalizado(
                                     df_power.set_index('fecha')['precipitacion'],
@@ -4269,6 +4317,7 @@ if 'uploaded_file' in locals() and uploaded_file:
                                     '#ffffff'
                                 )
                                 st.pyplot(fig_precip)
+                            
                             st.subheader("📊 RESUMEN METEOROLÓGICO")
                             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
                             with col_m1:
@@ -4278,282 +4327,135 @@ if 'uploaded_file' in locals() and uploaded_file:
                             with col_m3:
                                 st.metric("🌡️ Temperatura Promedio", f"{df_power['temperatura'].mean():.1f} °C")
                             with col_m4:
-                                st.metric("💧 Precipitación Total", f"{df_power['precipitacion'].sum():.1f} mm")
-                        st.markdown("---")
-                        st.subheader("📥 DESCARGAR REPORTES COMPLETOS")
-                        estadisticas = generar_resumen_estadisticas(
-                            resultados['gdf_analizado'],
-                            analisis_tipo,
-                            cultivo,
-                            resultados.get('df_power')
-                        )
-                        recomendaciones = generar_recomendaciones_generales(
-                            resultados['gdf_analizado'],
-                            analisis_tipo,
-                            cultivo
-                        )
-                        mapa_reporte = None
-                        if analisis_tipo == "FERTILIDAD ACTUAL":
-                            mapa_reporte = crear_mapa_fertilidad_integrada(
-                                resultados['gdf_analizado'],
-                                cultivo,
-                                satelite_seleccionado,
-                                st.session_state.get('mostrar_mapa_inta', False)
-                            )
-                        elif analisis_tipo == "RECOMENDACIONES NPK":
-                            mapa_reporte = crear_mapa_npk_con_esri(
-                                resultados['gdf_analizado'],
-                                nutriente,
-                                cultivo,
-                                satelite_seleccionado,
-                                st.session_state.get('mostrar_mapa_inta', False)
-                            )
-                        col_d1, col_d2, col_d3 = st.columns(3)
-                        with col_d1:
-                            if st.button("📄 Generar Reporte PDF"):
-                                pdf_reporte = generar_reporte_pdf(
-                                    resultados['gdf_analizado'],
-                                    cultivo,
-                                    analisis_tipo,
-                                    resultados['area_total'],
-                                    nutriente if analisis_tipo == "RECOMENDACIONES NPK" else None,
-                                    satelite_seleccionado,
-                                    indice_seleccionado,
-                                    BytesIO(mapa_reporte) if mapa_reporte else None,
-                                    estadisticas,
-                                    recomendaciones
-                                )
-                                if pdf_reporte:
-                                    st.download_button(
-                                        label="📥 Descargar PDF",
-                                        data=pdf_reporte,
-                                        file_name=f"reporte_{cultivo}_{analisis_tipo}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                                        mime="application/pdf"
-                                    )
-                        with col_d2:
-                            if st.button("📝 Generar Reporte DOCX"):
-                                docx_reporte = generar_reporte_docx(
-                                    resultados['gdf_analizado'],
-                                    cultivo,
-                                    analisis_tipo,
-                                    resultados['area_total'],
-                                    nutriente if analisis_tipo == "RECOMENDACIONES NPK" else None,
-                                    satelite_seleccionado,
-                                    indice_seleccionado,
-                                    BytesIO(mapa_reporte) if mapa_reporte else None,
-                                    estadisticas,
-                                    recomendaciones
-                                )
-                                if docx_reporte:
-                                    st.download_button(
-                                        label="📥 Descargar DOCX",
-                                        data=docx_reporte,
-                                        file_name=f"reporte_{cultivo}_{analisis_tipo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
-                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                    )
-                        with col_d3:
-                            geojson_data, nombre_geojson = exportar_a_geojson(resultados['gdf_analizado'], f"resultados_{cultivo}")
-                            if geojson_data:
-                                st.download_button(
-                                    label="🗺️ Descargar GeoJSON",
-                                    data=geojson_data,
-                                    file_name=nombre_geojson,
-                                    mime="application/geo+json"
-                                )
+                                st.metric("💧 Precipitación Promedio", f"{df_power['precipitacion'].mean():.1f} mm/día")
+                    
+                    else:
+                        st.error("❌ Error al ejecutar el análisis. Por favor, verifique los parámetros.")
+            
+            else:
+                st.error("❌ No se pudo cargar la parcela. Verifique el formato del archivo.")
+        
         except Exception as e:
             st.error(f"❌ Error al procesar la parcela: {str(e)}")
             import traceback
             st.error(f"Detalle: {traceback.format_exc()}")
 
-# FORMATOS ACEPTADOS Y METODOLOGÍA
-with st.expander("📋 FORMATOS DE ARCHIVO ACEPTADOS"):
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("**🗺️ Shapefile (.zip)**")
+# Mensaje inicial cuando no hay archivo cargado
+else:
+    st.info("👈 **Suba un archivo de parcela en el panel izquierdo para comenzar el análisis.**")
+    
+    # Mostrar información sobre el sistema
+    st.markdown("---")
+    st.subheader("ℹ️ INFORMACIÓN DEL SISTEMA")
+    
+    col_info1, col_info2 = st.columns(2)
+    
+    with col_info1:
         st.markdown("""
-- Archivo ZIP que contiene:
-- .shp (geometrías)
-- .shx (índice)
-- .dbf (atributos)
-- .prj (proyección, opcional)
-- Se recomienda usar EPSG:4326 (WGS84)
-""")
-    with col2:
-        st.markdown("**🌐 KML (.kml)**")
+        ### 🚀 CARACTERÍSTICAS PRINCIPALES
+        
+        **🌱 Cultivos Soportados:**
+        - 🍇 **Vid**: Malbec, Cabernet Sauvignon, Chardonnay, Syrah, Bonarda
+        - 🫒 **Olivo**: Arbequina, Arbosana, Picual, Manzanilla
+        - 🥗 **Hortalizas**: Tomate, Cebolla, Papa, Zanahoria, Lechuga, Ajo
+        
+        **🛰️ Fuentes de Datos:**
+        - Sentinel-2 (10m resolución)
+        - Landsat-8 (30m resolución)
+        - NASA POWER (datos meteorológicos)
+        - INTA (mapas de suelos regionales)
+        
+        **📊 Análisis Disponibles:**
+        - Fertilidad actual del suelo (NPK)
+        - Recomendaciones de fertilización
+        - Textura del suelo (clasificación USDA)
+        - Curvas de nivel y pendientes
+        """)
+    
+    with col_info2:
         st.markdown("""
-- Formato Keyhole Markup Language
-- Usado por Google Earth
-- Contiene geometrías y atributos
-- Puede incluir estilos y colores
-- Siempre en EPSG:4326
-""")
-    with col3:
-        st.markdown("**📦 KMZ (.kmz)**")
+        ### 💡 METODOLOGÍAS CIENTÍFICAS
+        
+        **🧪 Estimación NPK por Teledetección:**
+        - **Nitrógeno**: NDRE + Regresión Espectral
+        - **Fósforo**: Índice SWIR-VIS
+        - **Potasio**: Índice de Estrés Hídrico
+        
+        **🏗️ Clasificación USDA:**
+        - Sistema textural actualizado
+        - 12 clases texturales
+        - Recomendaciones específicas por textura
+        
+        **💰 Análisis Económico:**
+        - ROI de fertilización
+        - VAN y TIR del proyecto
+        - Punto de equilibrio
+        - Relación beneficio/costo
+        """)
+    
+    st.markdown("---")
+    st.subheader("📋 FORMATOS DE ARCHIVO ACEPTADOS")
+    
+    formatos_col1, formatos_col2, formatos_col3 = st.columns(3)
+    
+    with formatos_col1:
         st.markdown("""
-- Versión comprimida de KML
-- Archivo ZIP con extensión .kmz
-- Puede incluir recursos (imágenes, etc.)
-- Compatible con Google Earth
-- Siempre en EPSG:4326
-""")
+        ### 🗺️ Shapefile
+        - Archivo .ZIP con todos los componentes
+        - Debe contener .shp, .shx, .dbf, .prj
+        - Sistema de coordenadas preferido: WGS84 (EPSG:4326)
+        """)
+    
+    with formatos_col2:
+        st.markdown("""
+        ### 📍 KML/KMZ
+        - Archivos .kml (Google Earth)
+        - Archivos .kmz (KML comprimido)
+        - Polígonos o multipolígonos
+        - Compatible con Google Maps/Earth
+        """)
+    
+    with formatos_col3:
+        st.markdown("""
+        ### 🎯 RECOMENDACIONES
+        - Un solo polígono por archivo
+        - Área máxima recomendada: 1000 ha
+        - Verifique que el CRS sea WGS84
+        - Use polígonos simples sin huecos
+        """)
 
-with st.expander("🔬 METODOLOGÍA CIENTÍFICA APLICADA"):
-    st.markdown("""
-### **🌱 METODOLOGÍAS CIENTÍFICAS PARA ESTIMAR NPK CON TELEDETECCIÓN**
-#### **🛰️ PARA SENTINEL-2:**
-**NITRÓGENO (N):**
-- **Método:** NDRE + Regresión Espectral (Clevers & Gitelson, 2013)
-- **Fórmula:** `N = 150 * NDRE + 50 * (B8A/B5)`
-- **Bandas:** B5 (Red Edge 1), B8A (Red Edge 4)
-- **Precisión esperada:** R² = 0.75
-**FÓSFORO (P):**
-- **Método:** Índice SWIR-VIS (Miphokasap et al., 2012)
-- **Fórmula:** `P = 80 * (B11/B4)^0.5 + 20`
-- **Bandas:** B4 (Rojo), B11 (SWIR 1)
-- **Precisión esperada:** R² = 0.65
-**POTASIO (K):**
-- **Método:** Índice de Estrés Hídrico (Jackson et al., 2004)
-- **Fórmula:** `K = 120 * NDII + 40 * (B8/B12)`
-- **Bandas:** B8 (NIR), B11 (SWIR 1), B12 (SWIR 2)
-- **Precisión esperada:** R² = 0.70
-#### **🛰️ PARA LANDSAT-8:**
-**NITRÓGENO (N):**
-- **Método:** TCARI/OSAVI (Haboudane et al., 2002)
-- **Fórmula:** `TCARI = 3 × [(B5-B4) - 0.2 × (B5-B3) × (B5/B4)]`
-**FÓSFORO (P):**
-- **Método:** Relación SWIR1-Verde (Chen et al., 2010)
-- **Fórmula:** `P = 60 × (B6/B3)^0.7 + 25`
-**POTASIO (K):**
-- **Método:** Índice NIR-SWIR (Thenkabail et al., 2000)
-- **Fórmula:** `K = 100 × (B5-B7)/(B5+B7) + 50`
-### **🍇 VARIEDADES DE VID IMPLEMENTADAS (MENDOZA):**
-**MALBEC:**
-- **Rendimiento Base:** 8.0 ton/ha
-- **Rendimiento Óptimo:** 12.0 ton/ha
-- **Requerimiento N:** 90 kg/ha
-- **Respuesta N:** 0.015 ton/kg N
-**CABERNET SAUVIGNON:**
-- **Rendimiento Base:** 7.0 ton/ha
-- **Rendimiento Óptimo:** 11.0 ton/ha
-- **Requerimiento N:** 85 kg/ha
-- **Respuesta N:** 0.014 ton/kg N
-**CHARDONNAY:**
-- **Rendimiento Base:** 9.0 ton/ha
-- **Rendimiento Óptimo:** 13.0 ton/ha
-- **Requerimiento N:** 95 kg/ha
-- **Respuesta N:** 0.016 ton/kg N
-**SYRAH:**
-- **Rendimiento Base:** 7.5 ton/ha
-- **Rendimiento Óptimo:** 11.5 ton/ha
-- **Requerimiento N:** 80 kg/ha
-- **Respuesta N:** 0.013 ton/kg N
-**BONARDA:**
-- **Rendimiento Base:** 10.0 ton/ha
-- **Rendimiento Óptimo:** 14.0 ton/ha
-- **Requerimiento N:** 95 kg/ha
-- **Respuesta N:** 0.017 ton/kg N
-### **🫒 VARIEDADES DE OLIVO IMPLEMENTADAS (MENDOZA):**
-**ARBEQUINA:**
-- **Rendimiento Base:** 6.0 ton/ha
-- **Rendimiento Óptimo:** 10.0 ton/ha
-- **Requerimiento N:** 70 kg/ha
-- **Respuesta N:** 0.010 ton/kg N
-**ARBOSANA:**
-- **Rendimiento Base:** 5.5 ton/ha
-- **Rendimiento Óptimo:** 9.5 ton/ha
-- **Requerimiento N:** 65 kg/ha
-- **Respuesta N:** 0.009 ton/kg N
-**PICUAL:**
-- **Rendimiento Base:** 7.0 ton/ha
-- **Rendimiento Óptimo:** 11.0 ton/ha
-- **Requerimiento N:** 75 kg/ha
-- **Respuesta N:** 0.011 ton/kg N
-**MANZANILLA:**
-- **Rendimiento Base:** 5.0 ton/ha
-- **Rendimiento Óptimo:** 8.0 ton/ha
-- **Requerimiento N:** 60 kg/ha
-- **Respuesta N:** 0.008 ton/kg N
-### **🥬 HORTALIZAS DE MENDOZA:**
-**TOMATE:**
-- **Rendimiento Base:** 40.0 ton/ha
-- **Rendimiento Óptimo:** 80.0 ton/ha
-- **Requerimiento N:** 160 kg/ha
-- **Respuesta N:** 0.25 ton/kg N
-**CEBOLLA:**
-- **Rendimiento Base:** 30.0 ton/ha
-- **Rendimiento Óptimo:** 60.0 ton/ha
-- **Requerimiento N:** 130 kg/ha
-- **Respuesta N:** 0.20 ton/kg N
-**PAPA:**
-- **Rendimiento Base:** 25.0 ton/ha
-- **Rendimiento Óptimo:** 50.0 ton/ha
-- **Requerimiento N:** 180 kg/ha
-- **Respuesta N:** 0.18 ton/kg N
-**ZANAHORIA:**
-- **Rendimiento Base:** 35.0 ton/ha
-- **Rendimiento Óptimo:** 70.0 ton/ha
-- **Requerimiento N:** 110 kg/ha
-- **Respuesta N:** 0.16 ton/kg N
-**LECHUGA:**
-- **Rendimiento Base:** 20.0 ton/ha
-- **Rendimiento Óptimo:** 40.0 ton/ha
-- **Requerimiento N:** 120 kg/ha
-- **Respuesta N:** 0.22 ton/kg N
-**AJO:**
-- **Rendimiento Base:** 8.0 ton/ha
-- **Rendimiento Óptimo:** 15.0 ton/ha
-- **Requerimiento N:** 140 kg/ha
-- **Respuesta N:** 0.14 ton/kg N
-### **🏗️ SISTEMA DE CLASIFICACIÓN USDA PARA TEXTURAS:**
-**CLASES PRINCIPALES:**
-- **Franco arenoso:** Excelente drenaje, ideal para vid y olivo en zonas áridas
-- **Franco limoso:** Equilibrio ideal para la mayoría de cultivos
-- **Arcilla:** Alta fertilidad pero difícil manejo
-- **Limo:** Alta capacidad de retención de agua
-**VENTAJAS DEL SISTEMA USDA:**
-1. **Estándar internacional:** Reconocido globalmente
-2. **Precisión:** Basado en el triángulo de texturas
-3. **Compatibilidad:** Integrable con sistemas de información agrícola
-4. **Recomendaciones específicas:** Manejo adaptado a cada clase
-### **🌱 INTEGRACIÓN CON EL INTA:**
-**DATOS REGIONALES UTILIZADOS:**
-- **Oeste (Mendoza, San Juan):** MO promedio 1.5% (Franco arenoso)
-- **Pampa Húmeda:** MO promedio 3.8% (Franco limoso)
-- **NOA:** MO promedio 2.2% (Franco arcilloso)
-- **NEA:** MO promedio 4.5% (Arcilla limosa)
-- **Patagonia:** MO promedio 5.2% (Franco volcánico)
-**FUENTE:** Mapas de Suelos del INTA (Programa Nacional de Suelos - PRONAS)
-### **🔥 MAPAS DE CALOR DE POTENCIAL DE COSECHA:**
-**RENDIMIENTO ACTUAL:**
-- Basado en fertilidad real del suelo (NPK existente)
-- Considera humedad disponible (NDWI)
-- Incluye vigor vegetativo (NDVI)
-- Ajustado por condiciones climáticas (NASA POWER)
-**RENDIMIENTO PROYECTADO:**
-- Considera aplicación de recomendaciones NPK
-- Calcula incremento esperado por fertilización
-- Incluye eficiencias de absorción por cultivo
-- Muestra potencial máximo alcanzable
-### **📊 VALIDACIÓN CIENTÍFICA:**
-- **Calibración:** Modelos calibrados con datos de campo de estudios publicados
-- **Validación:** Comparación con datos de laboratorio (R² entre 0.65-0.75)
-- **Limitaciones:** Precisión afectada por cobertura de nubes, sombras y fenología del cultivo
-### **💡 RECOMENDACIONES:**
-1. **Validación de campo:** Siempre validar con análisis de suelo de laboratorio
-2. **Época óptima:** Análisis en etapas vegetativas (V6-V10 para maíz)
-3. **Condiciones ideales:** Imágenes con <10% cobertura de nubes
-4. **Complementar:** Usar junto con análisis de textura USDA y topografía
-### **📚 REFERENCIAS CIENTÍFICAS:**
-1. Clevers & Gitelson (2013). Remote estimation of crop and grass chlorophyll.
-2. Miphokasap et al. (2012). Estimation of soil phosphorus using hyperspectral data.
-3. Jackson et al. (2004). Vegetation water content estimation using NDII.
-4. Haboudane et al. (2002). Hyperspectral vegetation indices for nitrogen assessment.
-5. Chen et al. (2010). Estimation of soil properties using Landsat imagery.
-6. Thenkabail et al. (2000). Hyperspectral vegetation indices for crop characterization.
-7. USDA Soil Texture Classification System (2023).
-8. INTA - Programa Nacional de Suelos (PRONAS, 2023).
-""")
-
-# Contacto para versión completa
+# Footer de la aplicación
 st.markdown("---")
-st.info("📧 ¿Desea soliciatar el analisis de su campo/lote? Contacte a **Martin Ernesto Cano**: +5493525 532313 | mawucano@gmail.com")
+st.markdown("""
+<div style="text-align: center; color: #94a3b8; padding: 20px;">
+<p>🔬 <strong>Analizador Multi-Cultivo Satellital v2.0</strong> • Desarrollado por Martin Ernesto Cano • Enero 2026</p>
+<p>🌐 Integra datos de NASA POWER, Google Earth Engine, INTA y metodologías científicas para vid, olivo y hortalizas</p>
+<p>⚠️ <em>Este es un sistema de apoyo a decisiones. Los resultados deben validarse con análisis de laboratorio.</em></p>
+</div>
+""", unsafe_allow_html=True)
+
+# ===== FUNCIÓN PARA LIMPIAR CACHÉ Y RECURSOS =====
+def limpiar_recursos():
+    """Limpia recursos temporales y caché"""
+    try:
+        # Cerrar figuras de matplotlib
+        plt.close('all')
+        
+        # Limpiar variables de sesión si es necesario
+        if 'temp_files' in st.session_state:
+            for temp_file in st.session_state.temp_files:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                except:
+                    pass
+        
+        # Liberar memoria
+        import gc
+        gc.collect()
+        
+    except Exception as e:
+        pass  # Silenciar errores de limpieza
+
+# Ejecutar limpieza al final
+limpiar_recursos()
