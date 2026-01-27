@@ -3292,7 +3292,7 @@ Número de zonas: {len(gdf_analizado)}"""
         return None
 def generar_reporte_completo_docx(resultados_dict):
     """
-    Genera un reporte DOCX completo con todos los análisis realizados.
+    Genera un reporte DOCX COMPLETO con todos los análisis realizados.
     
     Args:
         resultados_dict: Diccionario con todos los resultados de análisis
@@ -3305,71 +3305,144 @@ def generar_reporte_completo_docx(resultados_dict):
             - mapa_recomendaciones: BytesIO del mapa de recomendaciones
             - mapa_texturas: BytesIO del mapa de texturas
             - mapa_curvas: BytesIO del mapa de curvas
+            - mapa_rendimiento_actual: BytesIO del mapa de rendimiento actual
+            - mapa_rendimiento_proyectado: BytesIO del mapa de rendimiento proyectado
+            - mapa_comparativo: BytesIO del mapa comparativo
             - resultados_economicos: Diccionario con análisis económico
             - analisis_tipo: Tipo de análisis realizado
             - nutriente: Nutriente analizado (si aplica)
             - satelite: Satélite usado
+            - estadisticas_pendiente: Estadísticas de pendiente (si aplica)
+            - curvas_nivel: Lista de curvas de nivel (si aplica)
     """
     try:
         doc = Document()
         
-        # ===== PORTADA =====
-        title = doc.add_heading('REPORTE COMPLETO DE ANÁLISIS AGRÍCOLA', 0)
+        # ===== 1. PORTADA CON LOGO Y DATOS =====
+        # Título principal
+        title = doc.add_heading('INFORME TÉCNICO COMPLETO DE ANÁLISIS AGRÍCOLA', 0)
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        # Información básica
-        doc.add_paragraph(f"Cultivo: {resultados_dict.get('cultivo', 'No especificado')}")
-        doc.add_paragraph(f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-        doc.add_paragraph(f"Área total: {resultados_dict.get('area_total', 0):.2f} ha")
-        doc.add_paragraph(f"Análisis: {resultados_dict.get('analisis_tipo', 'Completo')}")
+        # Línea decorativa
+        doc.add_paragraph('_' * 80).alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        if 'variedad' in st.session_state:
-            doc.add_paragraph(f"Variedad: {st.session_state['variedad']}")
+        # Información del cultivo
+        cultivo = resultados_dict.get('cultivo', 'No especificado')
+        doc.add_heading(f'CULTIVO: {cultivo}', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Información varietal
+        if 'variedad' in st.session_state and st.session_state['variedad']:
+            doc.add_paragraph(f'Variedad: {st.session_state["variedad"]}').alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Información técnica
+        info_table = doc.add_table(rows=4, cols=2)
+        info_table.style = 'Light Grid'
+        info_table.autofit = True
+        
+        cells = info_table.rows[0].cells
+        cells[0].text = 'Fecha del Análisis'
+        cells[1].text = datetime.now().strftime('%d/%m/%Y %H:%M')
+        
+        cells = info_table.rows[1].cells
+        cells[0].text = 'Área Analizada'
+        cells[1].text = f"{resultados_dict.get('area_total', 0):.2f} hectáreas"
+        
+        cells = info_table.rows[2].cells
+        cells[0].text = 'Satélite Utilizado'
+        cells[1].text = resultados_dict.get('satelite', 'No especificado')
+        
+        cells = info_table.rows[3].cells
+        cells[0].text = 'Tipo de Análisis'
+        cells[1].text = resultados_dict.get('analisis_tipo', 'Completo')
+        
+        for row in info_table.rows:
+            for cell in row.cells:
+                cell.paragraphs[0].runs[0].font.bold = True
         
         doc.add_page_break()
         
-        # ===== 1. RESUMEN EJECUTIVO =====
+        # ===== 2. ÍNDICE DEL DOCUMENTO =====
+        doc.add_heading('ÍNDICE DEL DOCUMENTO', level=1)
+        
+        indice = [
+            "1. RESUMEN EJECUTIVO",
+            "2. ANÁLISIS DE FERTILIDAD DEL SUELO (NPK)",
+            "3. RECOMENDACIONES DE FERTILIZACIÓN",
+            "4. ANÁLISIS ECONÓMICO DETALLADO",
+            "5. DATOS CLIMATOLÓGICOS (NASA POWER)",
+            "6. ANÁLISIS DE TEXTURA DEL SUELO (USDA)",
+            "7. ANÁLISIS TOPOGRÁFICO Y CURVAS DE NIVEL",
+            "8. POTENCIAL DE COSECHA Y RENDIMIENTO",
+            "9. MAPAS Y VISUALIZACIONES",
+            "10. RECOMENDACIONES GENERALES Y PLAN DE ACCIÓN",
+            "11. ANEXOS TÉCNICOS"
+        ]
+        
+        for item in indice:
+            p = doc.add_paragraph()
+            p.style = 'List Bullet'
+            p.add_run(item).bold = True
+        
+        doc.add_page_break()
+        
+        # ===== 3. RESUMEN EJECUTIVO =====
         doc.add_heading('1. RESUMEN EJECUTIVO', level=1)
         
-        resumen_text = f"""
-        Este reporte presenta un análisis integral del cultivo de {resultados_dict.get('cultivo', 'N/A')} 
-        realizado mediante técnicas de teledetección y análisis agronómico avanzado.
-        
-        Principales hallazgos:
-        • Área analizada: {resultados_dict.get('area_total', 0):.2f} hectáreas
-        • Cultivo: {resultados_dict.get('cultivo', 'N/A')}
-        • Fuente de datos: {resultados_dict.get('satelite', 'No especificado')}
-        • Metodología: Análisis de fertilidad, textura, topografía y potencial económico
-        """
-        
-        for linea in resumen_text.strip().split('\n'):
-            if linea.strip():
-                doc.add_paragraph(linea.strip())
-        
-        doc.add_page_break()
-        
-        # ===== 2. FERTILIDAD DEL SUELO =====
-        if 'gdf_analizado' in resultados_dict:
-            gdf_analizado = resultados_dict['gdf_analizado']
-            doc.add_heading('2. FERTILIDAD DEL SUELO (NPK)', level=1)
+        # Resumen estadístico rápido
+        gdf_analizado = resultados_dict.get('gdf_analizado', None)
+        if gdf_analizado is not None and not gdf_analizado.empty:
+            resumen_text = f"""
+            Este informe presenta un análisis integral del cultivo de {cultivo} 
+            realizado mediante técnicas avanzadas de teledetección y análisis agronómico.
             
-            if 'npk_integrado' in gdf_analizado.columns:
-                npk_prom = gdf_analizado['npk_integrado'].mean()
-                doc.add_paragraph(f"Índice de fertilidad integrado: {npk_prom:.3f}")
+            Principales hallazgos:
+            • Área total analizada: {resultados_dict.get('area_total', 0):.2f} hectáreas
+            • Número de zonas de manejo diferenciado: {len(gdf_analizado)}
+            • Fuente de datos satelitales: {resultados_dict.get('satelite', 'No especificado')}
+            • Metodología: Análisis integrado de fertilidad, textura, topografía y potencial económico
             
-            # Tabla de nutrientes
+            {"• Variedad analizada: " + st.session_state.get('variedad', 'No especificada') if st.session_state.get('variedad') else ""}
+            """
+            
+            for linea in resumen_text.strip().split('\n'):
+                if linea.strip():
+                    doc.add_paragraph(linea.strip())
+        
+        # ===== 4. ANÁLISIS DE FERTILIDAD DEL SUELO (NPK) =====
+        doc.add_heading('2. ANÁLISIS DE FERTILIDAD DEL SUELO (NPK)', level=1)
+        
+        if gdf_analizado is not None and not gdf_analizado.empty:
+            # Tabla de fertilidad promedio
+            doc.add_heading('Niveles Promedio de Nutrientes', level=2)
+            
             table_data = []
-            table_data.append(['Nutriente', 'Promedio (kg/ha)', 'Mínimo', 'Máximo'])
+            table_data.append(['Nutriente', 'Nivel Actual (kg/ha)', 'Nivel Óptimo (kg/ha)', 'Estado'])
             
-            nutrientes = ['nitrogeno_actual', 'fosforo_actual', 'potasio_actual']
-            nombres = ['Nitrógeno', 'Fósforo', 'Potasio']
+            # Obtener parámetros del cultivo
+            if cultivo in ['VID', 'OLIVO']:
+                params_cultivo = PARAMETROS_CULTIVOS[cultivo]
+            else:
+                params_cultivo = PARAMETROS_HORTALIZAS[cultivo]
             
-            for col, nombre in zip(nutrientes, nombres):
-                if col in gdf_analizado.columns:
-                    prom = gdf_analizado[col].mean()
-                    minimo = gdf_analizado[col].min()
-                    maximo = gdf_analizado[col].max()
-                    table_data.append([nombre, f"{prom:.1f}", f"{minimo:.1f}", f"{maximo:.1f}"])
+            # Ajustar por variedad si existe
+            if 'variedad_params' in st.session_state and st.session_state['variedad_params']:
+                params_cultivo.update({
+                    'NITROGENO': {'optimo': st.session_state['variedad_params']['NITROGENO_OPTIMO']},
+                    'FOSFORO': {'optimo': st.session_state['variedad_params']['FOSFORO_OPTIMO']},
+                    'POTASIO': {'optimo': st.session_state['variedad_params']['POTASIO_OPTIMO']}
+                })
+            
+            nutrientes = [
+                ('Nitrógeno', 'nitrogeno_actual', params_cultivo['NITROGENO']['optimo']),
+                ('Fósforo', 'fosforo_actual', params_cultivo['FOSFORO']['optimo']),
+                ('Potasio', 'potasio_actual', params_cultivo['POTASIO']['optimo'])
+            ]
+            
+            for nombre, columna, optimo in nutrientes:
+                if columna in gdf_analizado.columns:
+                    promedio = gdf_analizado[columna].mean()
+                    estado = "✅ ÓPTIMO" if promedio >= optimo * 0.9 else "⚠️ DEFICIENTE" if promedio >= optimo * 0.7 else "❌ CRÍTICO"
+                    table_data.append([nombre, f"{promedio:.1f}", f"{optimo:.1f}", estado])
             
             if len(table_data) > 1:
                 table = doc.add_table(rows=len(table_data), cols=4)
@@ -3377,181 +3450,365 @@ def generar_reporte_completo_docx(resultados_dict):
                 
                 for i, row_data in enumerate(table_data):
                     for j, cell_data in enumerate(row_data):
-                        table.cell(i, j).text = str(cell_data)
+                        cell = table.cell(i, j)
+                        cell.text = str(cell_data)
+                        if i == 0:
+                            cell.paragraphs[0].runs[0].font.bold = True
         
-        # ===== 3. RECOMENDACIONES DE FERTILIZACIÓN =====
+        # ===== 5. RECOMENDACIONES DE FERTILIZACIÓN =====
         if 'nutriente' in resultados_dict and 'valor_recomendado' in gdf_analizado.columns:
             doc.add_heading('3. RECOMENDACIONES DE FERTILIZACIÓN', level=1)
-            doc.add_paragraph(f"Nutriente analizado: {resultados_dict['nutriente']}")
             
-            rec_prom = gdf_analizado['valor_recomendado'].mean()
-            total_kg = (gdf_analizado['valor_recomendado'] * gdf_analizado['area_ha']).sum()
+            nutriente = resultados_dict['nutriente']
+            doc.add_paragraph(f"Nutriente analizado para fertilización: {nutriente}")
             
-            doc.add_paragraph(f"Recomendación promedio: {rec_prom:.1f} kg/ha")
-            doc.add_paragraph(f"Total requerido: {total_kg:.0f} kg")
-            
-            # Tabla por zona
-            if len(gdf_analizado) <= 20:  # Mostrar solo si no son muchas zonas
-                table = doc.add_table(rows=len(gdf_analizado)+1, cols=4)
-                table.style = 'Table Grid'
-                table.cell(0, 0).text = "Zona"
-                table.cell(0, 1).text = "Área (ha)"
-                table.cell(0, 2).text = "Nivel Actual"
-                table.cell(0, 3).text = "Recomendación"
+            # Cálculo de necesidades totales
+            if 'valor_recomendado' in gdf_analizado.columns and 'area_ha' in gdf_analizado.columns:
+                total_recomendado = (gdf_analizado['valor_recomendado'] * gdf_analizado['area_ha']).sum()
+                promedio_recomendado = gdf_analizado['valor_recomendado'].mean()
                 
-                for idx, row in gdf_analizado.iterrows():
-                    i = idx + 1
-                    table.cell(i, 0).text = str(row['id_zona'])
-                    table.cell(i, 1).text = f"{row['area_ha']:.2f}"
-                    col_actual = f"{resultados_dict['nutriente'].lower()}_actual"
-                    if col_actual in row:
-                        table.cell(i, 2).text = f"{row[col_actual]:.1f}"
-                    table.cell(i, 3).text = f"{row['valor_recomendado']:.1f}"
+                doc.add_paragraph(f"Recomendación promedio: {promedio_recomendado:.1f} kg/ha")
+                doc.add_paragraph(f"Total requerido para el campo: {total_recomendado:.0f} kg")
+                
+                # Tabla detallada por zona (solo primeras 10 zonas)
+                if len(gdf_analizado) > 0:
+                    doc.add_heading('Recomendaciones por Zona (primeras 10)', level=2)
+                    table = doc.add_table(rows=min(11, len(gdf_analizado)+1), cols=4)
+                    table.style = 'Table Grid'
+                    
+                    headers = ['Zona', 'Área (ha)', 'Nivel Actual', 'Recomendación (kg)']
+                    for j, header in enumerate(headers):
+                        table.cell(0, j).text = header
+                        table.cell(0, j).paragraphs[0].runs[0].font.bold = True
+                    
+                    for i, (idx, row) in enumerate(gdf_analizado.head(10).iterrows()):
+                        table.cell(i+1, 0).text = str(row['id_zona'])
+                        table.cell(i+1, 1).text = f"{row['area_ha']:.2f}"
+                        
+                        col_actual = f"{nutriente.lower()}_actual"
+                        if col_actual in row:
+                            table.cell(i+1, 2).text = f"{row[col_actual]:.1f}"
+                        
+                        table.cell(i+1, 3).text = f"{row['valor_recomendado']:.1f}"
         
-        # ===== 4. ANÁLISIS ECONÓMICO =====
+        # ===== 6. ANÁLISIS ECONÓMICO DETALLADO =====
         if 'resultados_economicos' in resultados_dict:
-            doc.add_heading('4. ANÁLISIS ECONÓMICO', level=1)
+            doc.add_heading('4. ANÁLISIS ECONÓMICO DETALLADO', level=1)
             eco = resultados_dict['resultados_economicos']
             
-            # Tabla de indicadores económicos
+            # Tabla de indicadores económicos clave
+            doc.add_heading('Indicadores Económicos Clave', level=2)
+            
             indicadores = [
-                ("Rendimiento actual", f"{eco.get('rendimiento_actual_ton_ha', 0):.1f} ton/ha"),
-                ("Rendimiento proyectado", f"{eco.get('rendimiento_proy_ton_ha', 0):.1f} ton/ha"),
-                ("Incremento esperado", f"{eco.get('incremento_rendimiento_ton_ha', 0):.1f} ton/ha"),
-                ("ROI fertilización", f"{eco.get('roi_fertilizacion_%', 0):.0f}%"),
-                ("VAN del proyecto", f"${eco.get('van_usd', 0):,.0f}"),
-                ("TIR", f"{eco.get('tir_%', 0):.1f}%"),
-                ("Relación B/C", f"{eco.get('relacion_bc_proy', 0):.2f}"),
-                ("Incremento ingreso total", f"${eco.get('incremento_ingreso_total_usd', 0):,.0f}")
+                ("Rendimiento Actual", f"{eco.get('rendimiento_actual_ton_ha', 0):.1f} ton/ha"),
+                ("Rendimiento Proyectado", f"{eco.get('rendimiento_proy_ton_ha', 0):.1f} ton/ha"),
+                ("Incremento Esperado", f"{eco.get('incremento_rendimiento_ton_ha', 0):.1f} ton/ha"),
+                ("Costo Total por Hectárea", f"${eco.get('costo_total_ha', 0):,.0f}"),
+                ("Costo Fertilización por Hectárea", f"${eco.get('costo_fertilizacion_ha', 0):,.0f}"),
+                ("Ingreso Actual por Hectárea", f"${eco.get('ingreso_actual_ha', 0):,.0f}"),
+                ("Ingreso Proyectado por Hectárea", f"${eco.get('ingreso_proy_ha', 0):,.0f}"),
+                ("ROI Fertilización", f"{eco.get('roi_fertilizacion_%', 0):.0f}%"),
+                ("VAN del Proyecto (5 años)", f"${eco.get('van_usd', 0):,.0f}"),
+                ("TIR del Proyecto", f"{eco.get('tir_%', 0):.1f}%"),
+                ("Relación Beneficio/Costo", f"{eco.get('relacion_bc_proy', 0):.2f}"),
+                ("Punto de Equilibrio", f"{eco.get('punto_equilibrio_ha', 0):.1f} ha")
             ]
             
-            for nombre, valor in indicadores:
-                p = doc.add_paragraph()
-                p.add_run(f"{nombre}: ").bold = True
-                p.add_run(valor)
+            table = doc.add_table(rows=len(indicadores), cols=2)
+            table.style = 'Table Grid'
+            
+            for i, (nombre, valor) in enumerate(indicadores):
+                table.cell(i, 0).text = nombre
+                table.cell(i, 1).text = valor
+                table.cell(i, 0).paragraphs[0].runs[0].font.bold = True
+            
+            # Análisis de rentabilidad
+            doc.add_heading('Análisis de Rentabilidad', level=2)
+            
+            relacion_bc = eco.get('relacion_bc_proy', 0)
+            if relacion_bc > 1.5:
+                rentabilidad = "EXCELENTE"
+                color = RGBColor(0, 100, 0)  # Verde oscuro
+            elif relacion_bc > 1.2:
+                rentabilidad = "BUENA"
+                color = RGBColor(0, 128, 0)  # Verde
+            elif relacion_bc > 1.0:
+                rentabilidad = "LIMITE"
+                color = RGBColor(255, 165, 0)  # Naranja
+            else:
+                rentabilidad = "NO RENTABLE"
+                color = RGBColor(255, 0, 0)  # Rojo
+            
+            p = doc.add_paragraph()
+            p.add_run("Rentabilidad del Proyecto: ").bold = True
+            run = p.add_run(rentabilidad)
+            run.font.color.rgb = color
+            run.bold = True
         
-        # ===== 5. DATOS CLIMATOLÓGICOS =====
+        # ===== 7. DATOS CLIMATOLÓGICOS =====
         if 'df_power' in resultados_dict and resultados_dict['df_power'] is not None:
             doc.add_heading('5. DATOS CLIMATOLÓGICOS (NASA POWER)', level=1)
             df_power = resultados_dict['df_power']
             
             # Resumen estadístico
-            stats = [
-                ("Radiación solar promedio", f"{df_power['radiacion_solar'].mean():.1f} kWh/m²/día"),
-                ("Temperatura promedio", f"{df_power['temperatura'].mean():.1f} °C"),
-                ("Precipitación total", f"{df_power['precipitacion'].sum():.1f} mm"),
-                ("Velocidad del viento promedio", f"{df_power['viento_2m'].mean():.1f} m/s")
-            ]
-            
-            for nombre, valor in stats:
-                p = doc.add_paragraph()
-                p.add_run(f"{nombre}: ").bold = True
-                p.add_run(valor)
-            
-            # Tabla de datos diarios (solo últimos 7 días)
-            doc.add_heading('Datos Diarios (últimos 7 días)', level=2)
             if len(df_power) > 0:
-                df_recent = df_power.tail(7)
-                table = doc.add_table(rows=len(df_recent)+1, cols=5)
-                table.style = 'Table Grid'
+                stats = [
+                    ("Período Analizado", f"{len(df_power)} días"),
+                    ("Radiación Solar Promedio", f"{df_power['radiacion_solar'].mean():.1f} kWh/m²/día"),
+                    ("Temperatura Promedio", f"{df_power['temperatura'].mean():.1f} °C"),
+                    ("Precipitación Total", f"{df_power['precipitacion'].sum():.1f} mm"),
+                    ("Velocidad del Viento Promedio", f"{df_power['viento_2m'].mean():.1f} m/s"),
+                    ("Días con Precipitación", f"{(df_power['precipitacion'] > 0).sum()} días")
+                ]
                 
-                headers = ['Fecha', 'Radiación', 'Temperatura', 'Precipitación', 'Viento']
-                for j, header in enumerate(headers):
-                    table.cell(0, j).text = header
+                table = doc.add_table(rows=len(stats), cols=2)
+                table.style = 'Light Grid'
                 
-                for i, (_, row) in enumerate(df_recent.iterrows()):
-                    table.cell(i+1, 0).text = row['fecha'].strftime('%d/%m/%Y')
-                    table.cell(i+1, 1).text = f"{row['radiacion_solar']:.1f}"
-                    table.cell(i+1, 2).text = f"{row['temperatura']:.1f}"
-                    table.cell(i+1, 3).text = f"{row['precipitacion']:.1f}"
-                    table.cell(i+1, 4).text = f"{row['viento_2m']:.1f}"
+                for i, (nombre, valor) in enumerate(stats):
+                    table.cell(i, 0).text = nombre
+                    table.cell(i, 1).text = valor
+                    table.cell(i, 0).paragraphs[0].runs[0].font.bold = True
         
-        # ===== 6. TEXTURA DEL SUELO =====
-        if 'gdf_analizado' in resultados_dict and 'textura_suelo' in gdf_analizado.columns:
+        # ===== 8. ANÁLISIS DE TEXTURA DEL SUELO =====
+        if gdf_analizado is not None and 'textura_suelo' in gdf_analizado.columns:
             doc.add_heading('6. ANÁLISIS DE TEXTURA DEL SUELO (USDA)', level=1)
             
-            textura_pred = gdf_analizado['textura_suelo'].mode()[0] if len(gdf_analizado) > 0 else "No disponible"
-            doc.add_paragraph(f"Textura predominante: {textura_pred}")
-            
             # Distribución de texturas
-            if 'textura_suelo' in gdf_analizado.columns:
-                textura_counts = gdf_analizado['textura_suelo'].value_counts()
-                if len(textura_counts) > 0:
-                    doc.add_heading('Distribución de Texturas por Zona', level=2)
-                    for textura, count in textura_counts.items():
-                        porcentaje = (count / len(gdf_analizado)) * 100
-                        doc.add_paragraph(f"{textura}: {count} zonas ({porcentaje:.1f}%)")
-        
-        # ===== 7. CURVAS DE NIVEL Y TOPOGRAFÍA =====
-        if 'mapa_curvas' in resultados_dict:
-            doc.add_heading('7. ANÁLISIS TOPOGRÁFICO', level=1)
-            doc.add_paragraph("Incluye análisis de pendientes y curvas de nivel para planificación del riego y prevención de erosión.")
+            textura_counts = gdf_analizado['textura_suelo'].value_counts()
             
-            if 'estadisticas_pendiente' in resultados_dict:
-                stats = resultados_dict['estadisticas_pendiente']
-                if isinstance(stats, dict):
-                    pendientes = [
-                        ("Pendiente promedio", f"{stats.get('promedio', 0):.1f}%"),
-                        ("Pendiente máxima", f"{stats.get('max', 0):.1f}%"),
-                        ("Pendiente mínima", f"{stats.get('min', 0):.1f}%")
-                    ]
-                    
-                    for nombre, valor in pendientes:
-                        p = doc.add_paragraph()
-                        p.add_run(f"{nombre}: ").bold = True
-                        p.add_run(valor)
+            if len(textura_counts) > 0:
+                doc.add_heading('Distribución de Texturas', level=2)
+                
+                table = doc.add_table(rows=len(textura_counts)+1, cols=3)
+                table.style = 'Table Grid'
+                
+                headers = ['Textura USDA', 'Número de Zonas', 'Porcentaje']
+                for j, header in enumerate(headers):
+                    table.cell(0, j).text = header
+                    table.cell(0, j).paragraphs[0].runs[0].font.bold = True
+                
+                for i, (textura, count) in enumerate(textura_counts.items()):
+                    porcentaje = (count / len(gdf_analizado)) * 100
+                    table.cell(i+1, 0).text = textura
+                    table.cell(i+1, 1).text = str(count)
+                    table.cell(i+1, 2).text = f"{porcentaje:.1f}%"
         
-        # ===== 8. POTENCIAL DE COSECHA =====
-        if 'gdf_analizado' in resultados_dict and 'rendimiento_actual' in gdf_analizado.columns:
-            doc.add_heading('8. POTENCIAL DE COSECHA', level=1)
+        # ===== 9. ANÁLISIS TOPOGRÁFICO =====
+        if 'estadisticas_pendiente' in resultados_dict:
+            doc.add_heading('7. ANÁLISIS TOPOGRÁFICO Y CURVAS DE NIVEL', level=1)
+            stats_pend = resultados_dict['estadisticas_pendiente']
+            
+            if isinstance(stats_pend, dict):
+                doc.add_heading('Estadísticas de Pendiente', level=2)
+                
+                pendientes = [
+                    ("Pendiente Promedio", f"{stats_pend.get('promedio', 0):.1f}%"),
+                    ("Pendiente Mínima", f"{stats_pend.get('min', 0):.1f}%"),
+                    ("Pendiente Máxima", f"{stats_pend.get('max', 0):.1f}%"),
+                    ("Desviación Estándar", f"{stats_pend.get('std', 0):.1f}%")
+                ]
+                
+                for nombre, valor in pendientes:
+                    p = doc.add_paragraph()
+                    p.add_run(f"{nombre}: ").bold = True
+                    p.add_run(valor)
+        
+        # ===== 10. POTENCIAL DE COSECHA =====
+        if gdf_analizado is not None and 'rendimiento_actual' in gdf_analizado.columns:
+            doc.add_heading('8. POTENCIAL DE COSECHA Y RENDIMIENTO', level=1)
             
             rend_actual = gdf_analizado['rendimiento_actual'].mean()
+            rend_min = gdf_analizado['rendimiento_actual'].min()
+            rend_max = gdf_analizado['rendimiento_actual'].max()
+            rend_std = gdf_analizado['rendimiento_actual'].std()
+            
+            doc.add_heading('Estadísticas de Rendimiento Actual', level=2)
+            
+            stats_rend = [
+                ("Promedio", f"{rend_actual:.1f} ton/ha"),
+                ("Mínimo", f"{rend_min:.1f} ton/ha"),
+                ("Máximo", f"{rend_max:.1f} ton/ha"),
+                ("Variabilidad (Desviación)", f"{rend_std:.1f} ton/ha"),
+                ("Coeficiente de Variación", f"{(rend_std/rend_actual*100 if rend_actual>0 else 0):.1f}%")
+            ]
+            
+            table = doc.add_table(rows=len(stats_rend), cols=2)
+            table.style = 'Light Grid'
+            
+            for i, (nombre, valor) in enumerate(stats_rend):
+                table.cell(i, 0).text = nombre
+                table.cell(i, 1).text = valor
+                table.cell(i, 0).paragraphs[0].runs[0].font.bold = True
+            
+            # Análisis de potencial
             if 'rendimiento_proyectado' in gdf_analizado.columns:
                 rend_proy = gdf_analizado['rendimiento_proyectado'].mean()
                 incremento = gdf_analizado['incremento_rendimiento'].mean()
                 porcentaje = (incremento / rend_actual * 100) if rend_actual > 0 else 0
                 
-                doc.add_paragraph(f"Rendimiento actual promedio: {rend_actual:.1f} ton/ha")
-                doc.add_paragraph(f"Rendimiento proyectado con manejo: {rend_proy:.1f} ton/ha")
-                doc.add_paragraph(f"Incremento potencial: {incremento:.1f} ton/ha ({porcentaje:.1f}%)")
-            
-            # Distribución de rendimientos
-            if 'rendimiento_actual' in gdf_analizado.columns:
-                rend_min = gdf_analizado['rendimiento_actual'].min()
-                rend_max = gdf_analizado['rendimiento_actual'].max()
-                rend_std = gdf_analizado['rendimiento_actual'].std()
+                doc.add_heading('Potencial de Mejora con Manejo Óptimo', level=2)
                 
-                stats_rend = [
-                    ("Mínimo", f"{rend_min:.1f} ton/ha"),
-                    ("Máximo", f"{rend_max:.1f} ton/ha"),
-                    ("Variabilidad", f"{rend_std:.1f} ton/ha")
-                ]
+                p = doc.add_paragraph()
+                p.add_run(f"Incremento potencial de rendimiento: ").bold = True
+                p.add_run(f"{incremento:.1f} ton/ha ({porcentaje:.1f}%)")
                 
-                for nombre, valor in stats_rend:
-                    p = doc.add_paragraph()
-                    p.add_run(f"{nombre}: ").bold = True
-                    p.add_run(valor)
+                p = doc.add_paragraph()
+                p.add_run(f"Producción actual total estimada: ").bold = True
+                produccion_actual = rend_actual * resultados_dict.get('area_total', 0)
+                p.add_run(f"{produccion_actual:.0f} toneladas")
+                
+                p = doc.add_paragraph()
+                p.add_run(f"Producción potencial total: ").bold = True
+                produccion_potencial = rend_proy * resultados_dict.get('area_total', 0)
+                p.add_run(f"{produccion_potencial:.0f} toneladas")
         
-        # ===== 9. RECOMENDACIONES GENERALES =====
-        doc.add_heading('9. RECOMENDACIONES GENERALES', level=1)
+        doc.add_page_break()
         
-        recomendaciones = [
-            "1. Validar los resultados de fertilidad con análisis de suelo de laboratorio",
-            "2. Implementar agricultura de precisión para aplicación variable de insumos",
-            "3. Considerar riego por goteo para optimizar el uso del agua",
-            "4. Monitorear regularmente el estado del cultivo mediante índices de vegetación",
-            "5. Implementar prácticas de conservación de suelo en zonas con pendiente >10%",
-            "6. Realizar rotación de cultivos para mejorar la salud del suelo",
-            "7. Considerar coberturas vegetales para reducir erosión y mejorar materia orgánica"
+        # ===== 11. MAPAS Y VISUALIZACIONES =====
+        doc.add_heading('9. MAPAS Y VISUALIZACIONES', level=1)
+        doc.add_paragraph('Los siguientes mapas representan los resultados del análisis espacial realizado.')
+        
+        # Función auxiliar para agregar mapas
+        def agregar_mapa(mapa_buffer, titulo, descripcion):
+            if mapa_buffer:
+                try:
+                    doc.add_heading(titulo, level=2)
+                    if descripcion:
+                        doc.add_paragraph(descripcion)
+                    
+                    # Guardar temporalmente la imagen
+                    temp_img_path = f"temp_{titulo.replace(' ', '_').lower()}.png"
+                    with open(temp_img_path, "wb") as f:
+                        f.write(mapa_buffer.getvalue())
+                    
+                    # Agregar imagen al documento
+                    doc.add_picture(temp_img_path, width=Inches(6.0))
+                    
+                    # Agregar pie de foto
+                    doc.add_paragraph(f"Figura: {titulo}").alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    
+                    # Limpiar archivo temporal
+                    if os.path.exists(temp_img_path):
+                        os.remove(temp_img_path)
+                    
+                    doc.add_paragraph()  # Espacio entre mapas
+                    
+                except Exception as e:
+                    doc.add_paragraph(f"Error al incluir mapa {titulo}: {str(e)[:50]}...")
+        
+        # Agregar todos los mapas disponibles
+        mapas_disponibles = [
+            ('mapa_fertilidad', 'Mapa de Fertilidad Integrada (NPK)', 'Índice de fertilidad combinada de N, P y K'),
+            ('mapa_recomendaciones', 'Mapa de Recomendaciones de Fertilización', 'Recomendaciones específicas por zona'),
+            ('mapa_texturas', 'Mapa de Texturas del Suelo (USDA)', 'Clasificación textural según estándar USDA'),
+            ('mapa_curvas', 'Mapa de Curvas de Nivel y Pendientes', 'Análisis topográfico del terreno'),
+            ('mapa_rendimiento_actual', 'Mapa de Rendimiento Actual', 'Rendimiento estimado actual por zona'),
+            ('mapa_rendimiento_proyectado', 'Mapa de Rendimiento Proyectado', 'Potencial de rendimiento con manejo óptimo'),
+            ('mapa_comparativo', 'Mapa Comparativo de Rendimientos', 'Comparación rendimiento actual vs proyectado')
         ]
         
-        for rec in recomendaciones:
-            doc.add_paragraph(rec, style='List Bullet')
+        mapas_agregados = 0
+        for mapa_key, titulo, descripcion in mapas_disponibles:
+            if mapa_key in resultados_dict and resultados_dict[mapa_key] is not None:
+                agregar_mapa(resultados_dict[mapa_key], titulo, descripcion)
+                mapas_agregados += 1
+                
+                # Agregar salto de página después de cada 2 mapas para mejor organización
+                if mapas_agregados % 2 == 0:
+                    doc.add_page_break()
         
-        # ===== 10. ANEXOS =====
+        if mapas_agregados == 0:
+            doc.add_paragraph("No se generaron mapas para este análisis.")
+        
         doc.add_page_break()
-        doc.add_heading('10. ANEXOS', level=1)
-        doc.add_paragraph("Mapas y gráficos adicionales disponibles en versión digital del reporte.")
+        
+        # ===== 12. RECOMENDACIONES GENERALES =====
+        doc.add_heading('10. RECOMENDACIONES GENERALES Y PLAN DE ACCIÓN', level=1)
+        
+        doc.add_heading('Acciones Inmediatas (1-30 días)', level=2)
+        acciones_inmediatas = [
+            "1. Validar los resultados de fertilidad con análisis de suelo de laboratorio en puntos críticos",
+            "2. Programar la aplicación de fertilizantes según las recomendaciones por zona",
+            "3. Ajustar el sistema de riego según la textura del suelo identificada",
+            "4. Implementar monitoreo semanal del estado del cultivo mediante índices de vegetación"
+        ]
+        
+        for accion in acciones_inmediatas:
+            doc.add_paragraph(accion, style='List Bullet')
+        
+        doc.add_heading('Acciones a Mediano Plazo (1-6 meses)', level=2)
+        acciones_mediano = [
+            "5. Implementar agricultura de precisión para aplicación variable de insumos",
+            "6. Establecer prácticas de conservación de suelo en zonas con pendiente >10%",
+            "7. Planificar la rotación de cultivos para mejorar la salud del suelo",
+            "8. Instalar estaciones meteorológicas locales para validar datos satelitales"
+        ]
+        
+        for accion in acciones_mediano:
+            doc.add_paragraph(accion, style='List Bullet')
+        
+        doc.add_heading('Acciones a Largo Plazo (6-24 meses)', level=2)
+        acciones_largo = [
+            "9. Implementar sistema de riego por goteo con fertirriego",
+            "10. Desarrollar plan de manejo integrado de plagas y enfermedades",
+            "11. Establecer coberturas vegetales permanentes en períodos de descanso",
+            "12. Implementar sistema de telemetría para monitoreo continuo"
+        ]
+        
+        for accion in acciones_largo:
+            doc.add_paragraph(accion, style='List Bullet')
+        
+        # ===== 13. ANEXOS TÉCNICOS =====
+        doc.add_page_break()
+        doc.add_heading('11. ANEXOS TÉCNICOS', level=1)
+        
+        doc.add_heading('Metodologías Utilizadas', level=2)
+        metodologias = [
+            "• Estimación de NPK mediante teledetección: Basada en relaciones espectrales de bandas satelitales",
+            "• Clasificación textural USDA: Según proporciones de arena, limo y arcilla",
+            "• Modelado de rendimiento: Considera fertilidad, textura, topografía y clima",
+            "• Análisis económico: Incluye VAN, TIR, relación B/C y punto de equilibrio",
+            "• Datos climáticos: NASA POWER (radiación, temperatura, precipitación, viento)"
+        ]
+        
+        for metodo in metodologias:
+            doc.add_paragraph(metodo)
+        
+        doc.add_heading('Precisión y Limitaciones', level=2)
+        limitaciones = [
+            "• Precisión de estimación NPK: ±15-20% (validar con análisis de laboratorio)",
+            "• Resolución espacial: Depende del satélite utilizado (10m Sentinel-2, 30m Landsat-8)",
+            "• Frecuencia temporal: Limitada por cobertura de nubes y revisita del satélite",
+            "• Datos climáticos: Interpolados de estaciones NASA, precisión regional",
+            "• Recomendaciones: Ajustar según condiciones locales y experiencia del productor"
+        ]
+        
+        for limitacion in limitaciones:
+            doc.add_paragraph(limitacion)
+        
+        # ===== 14. FIRMAS Y CONTACTOS =====
+        doc.add_page_break()
+        doc.add_heading('FIRMAS Y CONTACTOS', level=1)
+        
+        contacto_table = doc.add_table(rows=4, cols=2)
+        contacto_table.style = 'Light Grid'
+        
+        contactos = [
+            ("Elaborado por:", "Sistema de Análisis Agrícola por Satélite"),
+            ("Versión del Software:", "2.0 (Análisis Integrado Multi-Cultivo)"),
+            ("Fecha de Generación:", datetime.now().strftime('%d/%m/%Y %H:%M:%S')),
+            ("Contacto Técnico:", "soporte@agroanalisis.com")
+        ]
+        
+        for i, (campo, valor) in enumerate(contactos):
+            contacto_table.cell(i, 0).text = campo
+            contacto_table.cell(i, 1).text = valor
+            contacto_table.cell(i, 0).paragraphs[0].runs[0].font.bold = True
+        
+        # Espacio para firma
+        doc.add_paragraph("\n\n\n")
+        doc.add_paragraph("___________________________")
+        doc.add_paragraph("Ing. Agrónomo Responsable").alignment = WD_ALIGN_PARAGRAPH.CENTER
         
         # ===== GUARDAR DOCUMENTO =====
         docx_output = BytesIO()
