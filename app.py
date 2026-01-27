@@ -1748,6 +1748,42 @@ def calcular_rendimiento_con_recomendaciones(gdf_analizado, cultivo):
     return rendimientos
 
 # ===== FUNCIONES PARA ANÁLISIS ECONÓMICO =====
+def obtener_estadisticas_completas(gdf_analizado, cultivo):
+    """Calcula estadísticas completas para el reporte"""
+    stats = {
+        'cultivo': cultivo,
+        'numero_zonas': len(gdf_analizado),
+        'area_total_ha': gdf_analizado['area_ha'].sum() if 'area_ha' in gdf_analizado.columns else 0
+    }
+    
+    # Fertilidad
+    if 'npk_integrado' in gdf_analizado.columns:
+        stats['fertilidad_promedio'] = gdf_analizado['npk_integrado'].mean()
+    
+    # Nutrientes
+    for nutriente in ['nitrogeno_actual', 'fosforo_actual', 'potasio_actual']:
+        if nutriente in gdf_analizado.columns:
+            stats[f'{nutriente}_prom'] = gdf_analizado[nutriente].mean()
+            stats[f'{nutriente}_min'] = gdf_analizado[nutriente].min()
+            stats[f'{nutriente}_max'] = gdf_analizado[nutriente].max()
+    
+    # Rendimiento
+    if 'rendimiento_actual' in gdf_analizado.columns:
+        stats['rendimiento_actual_prom'] = gdf_analizado['rendimiento_actual'].mean()
+        stats['rendimiento_actual_total'] = (gdf_analizado['rendimiento_actual'] * gdf_analizado['area_ha']).sum()
+    
+    if 'rendimiento_proyectado' in gdf_analizado.columns:
+        stats['rendimiento_proy_prom'] = gdf_analizado['rendimiento_proyectado'].mean()
+        stats['rendimiento_proy_total'] = (gdf_analizado['rendimiento_proyectado'] * gdf_analizado['area_ha']).sum()
+    
+    return stats
+
+def realizar_analisis_economico(gdf_analizado, cultivo, variedad_params, area_total):
+    precios_cultivo = PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS'][cultivo]
+    # ... (el resto de tu función existente)
+
+
+# ===== FUNCIONES PARA ANÁLISIS ECONÓMICO =====
 def realizar_analisis_economico(gdf_analizado, cultivo, variedad_params, area_total):
     precios_cultivo = PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS'][cultivo]
     precios_fert = PARAMETROS_ECONOMICOS['PRECIOS_FERTILIZANTES']
