@@ -3329,39 +3329,98 @@ def crear_mapa_npk_con_esri(gdf_analizado, nutriente, cultivo, satelite, mostrar
     try:
         if gdf_analizado.empty or 'id_zona' not in gdf_analizado.columns:
             return None
-        gdf_plot = gdf_analizado.to_crs(epsg=3857)
+        gdf_plot = gpd.GeoDataFrame(gdf_analizado.copy())
+        
+        # Convertir a EPSG:3857 para visualización
+        if str(gdf_plot.crs).upper() != 'EPSG:3857':
+            try:
+                gdf_plot = gdf_plot.to_crs('EPSG:3857')
+            except:
+                pass
+        
         fig, ax = plt.subplots(1, 1, figsize=(12, 8))
         fig.patch.set_facecolor('#0f172a')
         ax.set_facecolor('#0f172a')
+        
         mapeo_nutriente = {
             'NITRÓGENO': ('nitrogeno_actual', 'NITROGENO', 'NITRÓGENO (kg/ha)'),
             'FÓSFORO': ('fosforo_actual', 'FOSFORO', 'FÓSFORO (kg/ha)'),
             'POTASIO': ('potasio_actual', 'POTASIO', 'POTASIO (kg/ha)')
         }
+        
         if nutriente not in mapeo_nutriente:
             return None
+        
         columna, clave_param, titulo_nutriente = mapeo_nutriente[nutriente]
+        
         if columna not in gdf_analizado.columns:
             return None
-        vmin = obtener_parametros_cultivo(cultivo)[clave_param]['min'] * 0.7
-        vmax = obtener_parametros_cultivo(cultivo)[clave_param]['max'] * 1.2
+        
+        # Obtener parámetros con valores por defecto seguros
+        params = obtener_parametros_cultivo(cultivo)
+        vmin, vmax = 0, 100  # Valores por defecto
+        
+        # Intentar obtener valores de forma segura
+        try:
+            if clave_param in params:
+                param_data = params[clave_param]
+                if isinstance(param_data, dict) and 'min' in param_data and 'max' in param_data:
+                    vmin = param_data.get('min', 0) * 0.7
+                    vmax = param_data.get('max', 100) * 1.2
+                elif isinstance(param_data, (int, float)):
+                    vmin = param_data * 0.5
+                    vmax = param_data * 1.5
+        except Exception as e:
+            st.warning(f"Usando valores por defecto para {nutriente}: {e}")
+        
+        # Asegurar que vmax > vmin
         if vmin >= vmax:
-            vmin, vmax = 0, 100
-        cmap = LinearSegmentedColormap.from_list('nutriente_gee', PALETAS_GEE[clave_param])
+            vmin, vmax = 0, max(100, gdf_analizado[columna].max() * 1.2)
+        
+        # Obtener valores reales para normalización
+        valores = gdf_analizado[columna].fillna(0).values
+        vmin_actual = max(vmin, valores.min() * 0.8)
+        vmax_actual = min(vmax, valores.max() * 1.2)
+        
+        # Crear colormap
+        colors = PALETAS_GEE.get(clave_param, ['#00ff00', '#ffff00', '#ff0000'])
+        cmap = LinearSegmentedColormap.from_list('nutriente_gee', colors)
+        
+        # Plotear cada zona
         for idx, row in gdf_plot.iterrows():
-            valor = row.get(columna, 0)
-            valor_norm = max(0, min(1, (valor - vmin) / (vmax - vmin))) if vmax != vmin else 0.5
-            color = cmap(valor_norm)
-            gdf_plot.iloc[[idx]].plot(ax=ax, color=color, edgecolor='white', linewidth=1.5, alpha=0.7)
-            centroid = row.geometry.centroid
-            ax.annotate(f"Z{row['id_zona']}\n{valor:.0f}", (centroid.x, centroid.y),
-                        xytext=(5, 5), textcoords="offset points",
-                        fontsize=8, color='white', weight='bold',
-                        bbox=dict(boxstyle="round,pad=0.3", facecolor=(30/255, 41/255, 59/255, 0.9), edgecolor='white'))
+            try:
+                valor = gdf_analizado.iloc[idx][columna] if columna in gdf_analizado.columns else 0
+                valor_norm = max(0, min(1, (valor - vmin_actual) / (vmax_actual - vmin_actual))) if vmax_actual > vmin_actual else 0.5
+                color = cmap(valor_norm)
+                
+                # Asegurar que sea un GeoDataFrame válido
+                if hasattr(gdf_plot.iloc[[idx]], 'plot'):
+                    gdf_plot.iloc[[idx]].plot(ax=ax, color=color, edgecolor='white', linewidth=1.5, alpha=0.7)
+                
+                # Añadir etiqueta
+                if 'geometry' in row:
+                    if hasattr(row.geometry, 'centroid'):
+                        centroid = row.geometry.centroid
+                    else:
+                        centroid = row.geometry.representative_point()
+                    
+                    ax.annotate(f"Z{row['id_zona']}\n{valor:.0f}", 
+                                (centroid.x, centroid.y),
+                                xytext=(5, 5), textcoords="offset points",
+                                fontsize=8, color='white', weight='bold',
+                                bbox=dict(boxstyle="round,pad=0.3", 
+                                          facecolor=(30/255, 41/255, 59/255, 0.9), 
+                                          edgecolor='white'))
+            except Exception as e:
+                continue
+        
+        # Añadir mapa base
         try:
             ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, alpha=0.3)
         except Exception:
             pass
+        
+        # Añadir capa INTA si está habilitado
         if mostrar_capa_inta:
             try:
                 wms_url = "https://wms.inta.gob.ar/geoserver/inta/wms"
@@ -3373,29 +3432,39 @@ def crear_mapa_npk_con_esri(gdf_analizado, nutriente, cultivo, satelite, mostrar
                 )
             except Exception:
                 pass
+        
+        # Configurar título y etiquetas
         info_satelite = SATELITES_DISPONIBLES.get(satelite, SATELITES_DISPONIBLES['DATOS_SIMULADOS'])
-        ax.set_title(f'{ICONOS_CULTIVOS[cultivo]} ANÁLISIS DE {nutriente} - {cultivo}\n'
-                     f'{info_satelite["icono"]} {info_satelite["nombre"]} - {titulo_nutriente}',
+        ax.set_title(f'{ICONOS_CULTIVOS.get(cultivo, "🌱")} ANÁLISIS DE {nutriente} - {cultivo}\n'
+                     f'{info_satelite.get("icono", "🛰️")} {info_satelite.get("nombre", "Datos")} - {titulo_nutriente}',
                      fontsize=16, fontweight='bold', pad=20, color='white')
+        
         ax.set_xlabel('Longitud', color='white')
         ax.set_ylabel('Latitud', color='white')
         ax.tick_params(colors='white')
         ax.grid(True, alpha=0.3, color='#475569')
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
+        
+        # Crear colorbar
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin_actual, vmax=vmax_actual))
         sm.set_array([])
         cbar = plt.colorbar(sm, ax=ax, shrink=0.8)
         cbar.set_label(titulo_nutriente, fontsize=12, fontweight='bold', color='white')
         cbar.ax.yaxis.set_tick_params(color='white')
         cbar.outline.set_edgecolor('white')
         plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
+        
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='#0f172a')
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', 
+                    facecolor='#0f172a', edgecolor='none')
         plt.close(fig)
         buf.seek(0)
         return buf
+        
     except Exception as e:
-        st.error(f"Error creando mapa NPK: {str(e)}")
+        st.error(f"Error detallado creando mapa NPK: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
         return None
 
 def crear_mapa_fertilidad_integrada(gdf_analizado, cultivo, satelite, mostrar_capa_inta=False):
