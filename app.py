@@ -3270,8 +3270,19 @@ Sistema de coordenadas: EPSG:4326 (WGS84)
 Número de zonas: {len(gdf_analizado)}"""
         for linea in metadatos.strip().split('\n'):
             pdf.cell(0, 6, limpiar_texto_para_pdf(linea), 0, 1)
+        
+        # ===== CORRECCIÓN DEL ERROR =====
         pdf_output = BytesIO()
-        pdf_output.write(pdf.output(dest='S').encode('latin-1'))
+        pdf_bytes = pdf.output(dest='S')
+        # Verificar el tipo y manejarlo apropiadamente
+        if isinstance(pdf_bytes, str):
+            # Si es string, codificarlo
+            pdf_output.write(pdf_bytes.encode('latin-1', errors='replace'))
+        else:
+            # Si ya es bytes/bytearray, escribirlo directamente
+            pdf_output.write(pdf_bytes)
+        # ===== FIN DE CORRECCIÓN =====
+        
         pdf_output.seek(0)
         return pdf_output
     except Exception as e:
@@ -3279,7 +3290,6 @@ Número de zonas: {len(gdf_analizado)}"""
         import traceback
         st.error(f"Detalle: {traceback.format_exc()}")
         return None
-
 def generar_reporte_completo_docx(resultados_dict):
     """
     Genera un reporte DOCX completo con todos los análisis realizados.
