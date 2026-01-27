@@ -2990,6 +2990,33 @@ def exportar_a_geojson(gdf, nombre_base="parcela"):
         st.error(f"❌ Error exportando a GeoJSON: {str(e)}")
         return None, None
 
+# === AGREGAR AQUÍ LA NUEVA FUNCIÓN ===
+def crear_boton_descarga_geojson(gdf, nombre_base, tipo_analisis, cultivo):
+    """Crea un botón para descargar GeoJSON"""
+    try:
+        # Asegurar que tenemos un CRS válido
+        gdf_export = validar_y_corregir_crs(gdf.copy())
+        
+        # Convertir a GeoJSON
+        geojson_data = gdf_export.to_json()
+        
+        # Crear timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nombre_archivo = f"{nombre_base}_{tipo_analisis}_{cultivo}_{timestamp}.geojson"
+        
+        # Botón de descarga
+        st.download_button(
+            label="🗺️ Descargar GeoJSON",
+            data=geojson_data,
+            file_name=nombre_archivo,
+            mime="application/geo+json",
+            key=f"geojson_{tipo_analisis}_{timestamp}"
+        )
+        return True
+    except Exception as e:
+        st.error(f"Error al generar GeoJSON: {str(e)}")
+        return False
+
 def generar_resumen_estadisticas(gdf_analizado, analisis_tipo, cultivo, df_power=None):
     estadisticas = {}
     try:
