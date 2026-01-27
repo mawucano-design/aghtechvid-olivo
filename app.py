@@ -3168,6 +3168,282 @@ Número de zonas: {len(gdf_analizado)}"""
         st.error(f"Detalle: {traceback.format_exc()}")
         return None
 
+def generar_reporte_completo_docx(resultados_dict):
+    """
+    Genera un reporte DOCX completo con todos los análisis realizados.
+    
+    Args:
+        resultados_dict: Diccionario con todos los resultados de análisis
+            Debe contener:
+            - gdf_analizado: GeoDataFrame con datos de fertilidad
+            - cultivo: Nombre del cultivo
+            - area_total: Área total en ha
+            - df_power: DataFrame de datos NASA POWER
+            - mapa_fertilidad: BytesIO del mapa de fertilidad
+            - mapa_recomendaciones: BytesIO del mapa de recomendaciones
+            - mapa_texturas: BytesIO del mapa de texturas
+            - mapa_curvas: BytesIO del mapa de curvas
+            - resultados_economicos: Diccionario con análisis económico
+            - analisis_tipo: Tipo de análisis realizado
+            - nutriente: Nutriente analizado (si aplica)
+            - satelite: Satélite usado
+    """
+    try:
+        doc = Document()
+        
+        # ===== PORTADA =====
+        title = doc.add_heading('REPORTE COMPLETO DE ANÁLISIS AGRÍCOLA', 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Información básica
+        doc.add_paragraph(f"Cultivo: {resultados_dict.get('cultivo', 'No especificado')}")
+        doc.add_paragraph(f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        doc.add_paragraph(f"Área total: {resultados_dict.get('area_total', 0):.2f} ha")
+        doc.add_paragraph(f"Análisis: {resultados_dict.get('analisis_tipo', 'Completo')}")
+        
+        if 'variedad' in st.session_state:
+            doc.add_paragraph(f"Variedad: {st.session_state['variedad']}")
+        
+        doc.add_page_break()
+        
+        # ===== 1. RESUMEN EJECUTIVO =====
+        doc.add_heading('1. RESUMEN EJECUTIVO', level=1)
+        
+        resumen_text = f"""
+        Este reporte presenta un análisis integral del cultivo de {resultados_dict.get('cultivo', 'N/A')} 
+        realizado mediante técnicas de teledetección y análisis agronómico avanzado.
+        
+        Principales hallazgos:
+        • Área analizada: {resultados_dict.get('area_total', 0):.2f} hectáreas
+        • Cultivo: {resultados_dict.get('cultivo', 'N/A')}
+        • Fuente de datos: {resultados_dict.get('satelite', 'No especificado')}
+        • Metodología: Análisis de fertilidad, textura, topografía y potencial económico
+        """
+        
+        for linea in resumen_text.strip().split('\n'):
+            if linea.strip():
+                doc.add_paragraph(linea.strip())
+        
+        doc.add_page_break()
+        
+        # ===== 2. FERTILIDAD DEL SUELO =====
+        if 'gdf_analizado' in resultados_dict:
+            gdf_analizado = resultados_dict['gdf_analizado']
+            doc.add_heading('2. FERTILIDAD DEL SUELO (NPK)', level=1)
+            
+            if 'npk_integrado' in gdf_analizado.columns:
+                npk_prom = gdf_analizado['npk_integrado'].mean()
+                doc.add_paragraph(f"Índice de fertilidad integrado: {npk_prom:.3f}")
+            
+            # Tabla de nutrientes
+            table_data = []
+            table_data.append(['Nutriente', 'Promedio (kg/ha)', 'Mínimo', 'Máximo'])
+            
+            nutrientes = ['nitrogeno_actual', 'fosforo_actual', 'potasio_actual']
+            nombres = ['Nitrógeno', 'Fósforo', 'Potasio']
+            
+            for col, nombre in zip(nutrientes, nombres):
+                if col in gdf_analizado.columns:
+                    prom = gdf_analizado[col].mean()
+                    minimo = gdf_analizado[col].min()
+                    maximo = gdf_analizado[col].max()
+                    table_data.append([nombre, f"{prom:.1f}", f"{minimo:.1f}", f"{maximo:.1f}"])
+            
+            if len(table_data) > 1:
+                table = doc.add_table(rows=len(table_data), cols=4)
+                table.style = 'Table Grid'
+                
+                for i, row_data in enumerate(table_data):
+                    for j, cell_data in enumerate(row_data):
+                        table.cell(i, j).text = str(cell_data)
+        
+        # ===== 3. RECOMENDACIONES DE FERTILIZACIÓN =====
+        if 'nutriente' in resultados_dict and 'valor_recomendado' in gdf_analizado.columns:
+            doc.add_heading('3. RECOMENDACIONES DE FERTILIZACIÓN', level=1)
+            doc.add_paragraph(f"Nutriente analizado: {resultados_dict['nutriente']}")
+            
+            rec_prom = gdf_analizado['valor_recomendado'].mean()
+            total_kg = (gdf_analizado['valor_recomendado'] * gdf_analizado['area_ha']).sum()
+            
+            doc.add_paragraph(f"Recomendación promedio: {rec_prom:.1f} kg/ha")
+            doc.add_paragraph(f"Total requerido: {total_kg:.0f} kg")
+            
+            # Tabla por zona
+            if len(gdf_analizado) <= 20:  # Mostrar solo si no son muchas zonas
+                table = doc.add_table(rows=len(gdf_analizado)+1, cols=4)
+                table.style = 'Table Grid'
+                table.cell(0, 0).text = "Zona"
+                table.cell(0, 1).text = "Área (ha)"
+                table.cell(0, 2).text = "Nivel Actual"
+                table.cell(0, 3).text = "Recomendación"
+                
+                for idx, row in gdf_analizado.iterrows():
+                    i = idx + 1
+                    table.cell(i, 0).text = str(row['id_zona'])
+                    table.cell(i, 1).text = f"{row['area_ha']:.2f}"
+                    col_actual = f"{resultados_dict['nutriente'].lower()}_actual"
+                    if col_actual in row:
+                        table.cell(i, 2).text = f"{row[col_actual]:.1f}"
+                    table.cell(i, 3).text = f"{row['valor_recomendado']:.1f}"
+        
+        # ===== 4. ANÁLISIS ECONÓMICO =====
+        if 'resultados_economicos' in resultados_dict:
+            doc.add_heading('4. ANÁLISIS ECONÓMICO', level=1)
+            eco = resultados_dict['resultados_economicos']
+            
+            # Tabla de indicadores económicos
+            indicadores = [
+                ("Rendimiento actual", f"{eco.get('rendimiento_actual_ton_ha', 0):.1f} ton/ha"),
+                ("Rendimiento proyectado", f"{eco.get('rendimiento_proy_ton_ha', 0):.1f} ton/ha"),
+                ("Incremento esperado", f"{eco.get('incremento_rendimiento_ton_ha', 0):.1f} ton/ha"),
+                ("ROI fertilización", f"{eco.get('roi_fertilizacion_%', 0):.0f}%"),
+                ("VAN del proyecto", f"${eco.get('van_usd', 0):,.0f}"),
+                ("TIR", f"{eco.get('tir_%', 0):.1f}%"),
+                ("Relación B/C", f"{eco.get('relacion_bc_proy', 0):.2f}"),
+                ("Incremento ingreso total", f"${eco.get('incremento_ingreso_total_usd', 0):,.0f}")
+            ]
+            
+            for nombre, valor in indicadores:
+                p = doc.add_paragraph()
+                p.add_run(f"{nombre}: ").bold = True
+                p.add_run(valor)
+        
+        # ===== 5. DATOS CLIMATOLÓGICOS =====
+        if 'df_power' in resultados_dict and resultados_dict['df_power'] is not None:
+            doc.add_heading('5. DATOS CLIMATOLÓGICOS (NASA POWER)', level=1)
+            df_power = resultados_dict['df_power']
+            
+            # Resumen estadístico
+            stats = [
+                ("Radiación solar promedio", f"{df_power['radiacion_solar'].mean():.1f} kWh/m²/día"),
+                ("Temperatura promedio", f"{df_power['temperatura'].mean():.1f} °C"),
+                ("Precipitación total", f"{df_power['precipitacion'].sum():.1f} mm"),
+                ("Velocidad del viento promedio", f"{df_power['viento_2m'].mean():.1f} m/s")
+            ]
+            
+            for nombre, valor in stats:
+                p = doc.add_paragraph()
+                p.add_run(f"{nombre}: ").bold = True
+                p.add_run(valor)
+            
+            # Tabla de datos diarios (solo últimos 7 días)
+            doc.add_heading('Datos Diarios (últimos 7 días)', level=2)
+            if len(df_power) > 0:
+                df_recent = df_power.tail(7)
+                table = doc.add_table(rows=len(df_recent)+1, cols=5)
+                table.style = 'Table Grid'
+                
+                headers = ['Fecha', 'Radiación', 'Temperatura', 'Precipitación', 'Viento']
+                for j, header in enumerate(headers):
+                    table.cell(0, j).text = header
+                
+                for i, (_, row) in enumerate(df_recent.iterrows()):
+                    table.cell(i+1, 0).text = row['fecha'].strftime('%d/%m/%Y')
+                    table.cell(i+1, 1).text = f"{row['radiacion_solar']:.1f}"
+                    table.cell(i+1, 2).text = f"{row['temperatura']:.1f}"
+                    table.cell(i+1, 3).text = f"{row['precipitacion']:.1f}"
+                    table.cell(i+1, 4).text = f"{row['viento_2m']:.1f}"
+        
+        # ===== 6. TEXTURA DEL SUELO =====
+        if 'gdf_analizado' in resultados_dict and 'textura_suelo' in gdf_analizado.columns:
+            doc.add_heading('6. ANÁLISIS DE TEXTURA DEL SUELO (USDA)', level=1)
+            
+            textura_pred = gdf_analizado['textura_suelo'].mode()[0] if len(gdf_analizado) > 0 else "No disponible"
+            doc.add_paragraph(f"Textura predominante: {textura_pred}")
+            
+            # Distribución de texturas
+            if 'textura_suelo' in gdf_analizado.columns:
+                textura_counts = gdf_analizado['textura_suelo'].value_counts()
+                if len(textura_counts) > 0:
+                    doc.add_heading('Distribución de Texturas por Zona', level=2)
+                    for textura, count in textura_counts.items():
+                        porcentaje = (count / len(gdf_analizado)) * 100
+                        doc.add_paragraph(f"{textura}: {count} zonas ({porcentaje:.1f}%)")
+        
+        # ===== 7. CURVAS DE NIVEL Y TOPOGRAFÍA =====
+        if 'mapa_curvas' in resultados_dict:
+            doc.add_heading('7. ANÁLISIS TOPOGRÁFICO', level=1)
+            doc.add_paragraph("Incluye análisis de pendientes y curvas de nivel para planificación del riego y prevención de erosión.")
+            
+            if 'estadisticas_pendiente' in resultados_dict:
+                stats = resultados_dict['estadisticas_pendiente']
+                if isinstance(stats, dict):
+                    pendientes = [
+                        ("Pendiente promedio", f"{stats.get('promedio', 0):.1f}%"),
+                        ("Pendiente máxima", f"{stats.get('max', 0):.1f}%"),
+                        ("Pendiente mínima", f"{stats.get('min', 0):.1f}%")
+                    ]
+                    
+                    for nombre, valor in pendientes:
+                        p = doc.add_paragraph()
+                        p.add_run(f"{nombre}: ").bold = True
+                        p.add_run(valor)
+        
+        # ===== 8. POTENCIAL DE COSECHA =====
+        if 'gdf_analizado' in resultados_dict and 'rendimiento_actual' in gdf_analizado.columns:
+            doc.add_heading('8. POTENCIAL DE COSECHA', level=1)
+            
+            rend_actual = gdf_analizado['rendimiento_actual'].mean()
+            if 'rendimiento_proyectado' in gdf_analizado.columns:
+                rend_proy = gdf_analizado['rendimiento_proyectado'].mean()
+                incremento = gdf_analizado['incremento_rendimiento'].mean()
+                porcentaje = (incremento / rend_actual * 100) if rend_actual > 0 else 0
+                
+                doc.add_paragraph(f"Rendimiento actual promedio: {rend_actual:.1f} ton/ha")
+                doc.add_paragraph(f"Rendimiento proyectado con manejo: {rend_proy:.1f} ton/ha")
+                doc.add_paragraph(f"Incremento potencial: {incremento:.1f} ton/ha ({porcentaje:.1f}%)")
+            
+            # Distribución de rendimientos
+            if 'rendimiento_actual' in gdf_analizado.columns:
+                rend_min = gdf_analizado['rendimiento_actual'].min()
+                rend_max = gdf_analizado['rendimiento_actual'].max()
+                rend_std = gdf_analizado['rendimiento_actual'].std()
+                
+                stats_rend = [
+                    ("Mínimo", f"{rend_min:.1f} ton/ha"),
+                    ("Máximo", f"{rend_max:.1f} ton/ha"),
+                    ("Variabilidad", f"{rend_std:.1f} ton/ha")
+                ]
+                
+                for nombre, valor in stats_rend:
+                    p = doc.add_paragraph()
+                    p.add_run(f"{nombre}: ").bold = True
+                    p.add_run(valor)
+        
+        # ===== 9. RECOMENDACIONES GENERALES =====
+        doc.add_heading('9. RECOMENDACIONES GENERALES', level=1)
+        
+        recomendaciones = [
+            "1. Validar los resultados de fertilidad con análisis de suelo de laboratorio",
+            "2. Implementar agricultura de precisión para aplicación variable de insumos",
+            "3. Considerar riego por goteo para optimizar el uso del agua",
+            "4. Monitorear regularmente el estado del cultivo mediante índices de vegetación",
+            "5. Implementar prácticas de conservación de suelo en zonas con pendiente >10%",
+            "6. Realizar rotación de cultivos para mejorar la salud del suelo",
+            "7. Considerar coberturas vegetales para reducir erosión y mejorar materia orgánica"
+        ]
+        
+        for rec in recomendaciones:
+            doc.add_paragraph(rec, style='List Bullet')
+        
+        # ===== 10. ANEXOS =====
+        doc.add_page_break()
+        doc.add_heading('10. ANEXOS', level=1)
+        doc.add_paragraph("Mapas y gráficos adicionales disponibles en versión digital del reporte.")
+        
+        # ===== GUARDAR DOCUMENTO =====
+        docx_output = BytesIO()
+        doc.save(docx_output)
+        docx_output.seek(0)
+        
+        return docx_output
+        
+    except Exception as e:
+        st.error(f"Error generando reporte completo: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
+        return None
+
 def generar_reporte_docx(gdf_analizado, cultivo, analisis_tipo, area_total,
                          nutriente=None, satelite=None, indice=None,
                          mapa_buffer=None, estadisticas=None, recomendaciones=None):
@@ -4408,7 +4684,75 @@ if 'uploaded_file' in locals() and uploaded_file:
             st.error(f"❌ Error al procesar la parcela: {str(e)}")
             import traceback
             st.error(f"Detalle: {traceback.format_exc()}")
-
+# ===== BOTÓN PARA GENERAR REPORTE COMPLETO =====
+if 'resultados_guardados' in st.session_state and st.session_state['resultados_guardados']:
+    st.markdown("---")
+    st.subheader("📋 REPORTE COMPLETO")
+    
+    col_rep1, col_rep2 = st.columns(2)
+    
+    with col_rep1:
+        if st.button("📄 Generar Reporte Completo (DOCX)", type="secondary"):
+            with st.spinner("Generando reporte completo..."):
+                try:
+                    # Recopilar todos los datos para el reporte
+                    resultados_completos = {
+                        'gdf_analizado': st.session_state['resultados_guardados']['gdf_analizado'],
+                        'cultivo': st.session_state['resultados_guardados']['cultivo'],
+                        'area_total': st.session_state['resultados_guardados']['area_total'],
+                        'analisis_tipo': st.session_state['resultados_guardados']['analisis_tipo'],
+                        'nutriente': st.session_state['resultados_guardados'].get('nutriente'),
+                        'satelite': st.session_state['resultados_guardados'].get('satelite_seleccionado'),
+                        'df_power': st.session_state['resultados_guardados'].get('df_power')
+                    }
+                    
+                    # Si hay análisis económico, agregarlo
+                    if 'resultados_economicos' in locals():
+                        resultados_completos['resultados_economicos'] = resultados_economicos
+                    
+                    # Generar reporte
+                    reporte_completo = generar_reporte_completo_docx(resultados_completos)
+                    
+                    if reporte_completo:
+                        st.success("✅ Reporte completo generado exitosamente!")
+                        
+                        # Botón de descarga
+                        st.download_button(
+                            label="📥 Descargar Reporte Completo (DOCX)",
+                            data=reporte_completo,
+                            file_name=f"reporte_completo_{st.session_state['resultados_guardados']['cultivo']}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                    
+                except Exception as e:
+                    st.error(f"Error generando reporte: {str(e)}")
+    
+    with col_rep2:
+        if st.button("📊 Resumen Ejecutivo (PDF)", type="secondary"):
+            with st.spinner("Generando resumen PDF..."):
+                try:
+                    # Generar resumen PDF
+                    pdf_resumen = generar_reporte_pdf(
+                        st.session_state['resultados_guardados']['gdf_analizado'],
+                        st.session_state['resultados_guardados']['cultivo'],
+                        st.session_state['resultados_guardados']['analisis_tipo'],
+                        st.session_state['resultados_guardados']['area_total'],
+                        st.session_state['resultados_guardados'].get('nutriente'),
+                        st.session_state['resultados_guardados'].get('satelite_seleccionado'),
+                        st.session_state['resultados_guardados'].get('indice_seleccionado'),
+                        st.session_state['resultados_guardados'].get('mapa_buffer')
+                    )
+                    
+                    if pdf_resumen:
+                        st.download_button(
+                            label="📥 Descargar Resumen (PDF)",
+                            data=pdf_resumen,
+                            file_name=f"resumen_{st.session_state['resultados_guardados']['cultivo']}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                            mime="application/pdf"
+                        )
+                        
+                except Exception as e:
+                    st.error(f"Error generando PDF: {str(e)}")
 # Mensaje inicial cuando no hay archivo cargado
 else:
     st.info("👈 **Suba un archivo de parcela en el panel izquierdo para comenzar el análisis.**")
