@@ -1792,7 +1792,57 @@ def realizar_analisis_economico(gdf_analizado, cultivo, variedad_params, area_to
     rend_actual_prom = gdf_analizado['rendimiento_actual'].mean()
     rend_proy_prom = gdf_analizado['rendimiento_proyectado'].mean()
     incremento_prom = gdf_analizado['incremento_rendimiento'].mean()
+    
+    # ===== CALCULAR FERTILIZANTE NECESARIO BASADO EN DEFICIENCIAS REALES =====
     fertilizante_necesario = {'NITRÓGENO': 0, 'FÓSFORO': 0, 'POTASIO': 0}
+    
+    # Obtener parámetros del cultivo
+    if cultivo in ['VID', 'OLIVO']:
+        params_cultivo = PARAMETROS_CULTIVOS[cultivo]
+    else:
+        params_cultivo = PARAMETROS_HORTALIZAS[cultivo]
+    
+    # Ajustar por variedad si se proporcionan parámetros
+    if variedad_params:
+        # Si tenemos parámetros de variedad, usarlos para los valores óptimos
+        n_optimo = variedad_params.get('NITROGENO_OPTIMO', params_cultivo['NITROGENO']['optimo'])
+        p_optimo = variedad_params.get('FOSFORO_OPTIMO', params_cultivo['FOSFORO']['optimo'])
+        k_optimo = variedad_params.get('POTASIO_OPTIMO', params_cultivo['POTASIO']['optimo'])
+    else:
+        # Usar valores generales del cultivo
+        n_optimo = params_cultivo['NITROGENO']['optimo']
+        p_optimo = params_cultivo['FOSFORO']['optimo']
+        k_optimo = params_cultivo['POTASIO']['optimo']
+    
+    # Calcular deficiencias totales en todo el campo
+    for idx, row in gdf_analizado.iterrows():
+        area_zona = row['area_ha']
+        
+        # Nitrógeno
+        n_actual = row.get('nitrogeno_actual', 0)
+        if n_actual < n_optimo:
+            deficiencia_n = (n_optimo - n_actual) * area_zona
+            fertilizante_necesario['NITRÓGENO'] += deficiencia_n
+        
+        # Fósforo
+        p_actual = row.get('fosforo_actual', 0)
+        if p_actual < p_optimo:
+            deficiencia_p = (p_optimo - p_actual) * area_zona
+            fertilizante_necesario['FÓSFORO'] += deficiencia_p
+        
+        # Potasio
+        k_actual = row.get('potasio_actual', 0)
+        if k_actual < k_optimo:
+            deficiencia_k = (k_optimo - k_actual) * area_zona
+            fertilizante_necesario['POTASIO'] += deficiencia_k
+    
+    # Convertir a kg/ha para cálculo de costos (promedio por hectárea)
+    if area_total > 0:
+        fertilizante_necesario['NITRÓGENO'] = fertilizante_necesario['NITRÓGENO'] / area_total
+        fertilizante_necesario['FÓSFORO'] = fertilizante_necesario['FÓSFORO'] / area_total
+        fertilizante_necesario['POTASIO'] = fertilizante_necesario['POTASIO'] / area_total
+    # ===== FIN DEL CÁLCULO DE FERTILIZANTE NECESARIO =====
+    
     costos = {}
     costos['semilla'] = precios_cultivo['costo_semilla']
     costos['herbicidas'] = precios_cultivo['costo_herbicidas']
@@ -1801,6 +1851,7 @@ def realizar_analisis_economico(gdf_analizado, cultivo, variedad_params, area_to
     costos['cosecha'] = precios_cultivo['costo_cosecha']
     costos['otros'] = precios_cultivo['costo_otros']
     costos_fertilizacion = 0
+    
     if fertilizante_necesario['NITRÓGENO'] > 0:
         fuente_n = conversion['NITRÓGENO']['fuente_principal']
         contenido_n = conversion['NITRÓGENO']['contenido_nutriente']
@@ -1808,6 +1859,7 @@ def realizar_analisis_economico(gdf_analizado, cultivo, variedad_params, area_to
         kg_fertilizante_n = (fertilizante_necesario['NITRÓGENO'] / contenido_n) / eficiencia_n
         costo_n = (kg_fertilizante_n / 1000) * precios_fert[fuente_n]
         costos_fertilizacion += costo_n
+    
     if fertilizante_necesario['FÓSFORO'] > 0:
         fuente_p = conversion['FÓSFORO']['fuente_principal']
         contenido_p = conversion['FÓSFORO']['contenido_nutriente']
@@ -1815,6 +1867,7 @@ def realizar_analisis_economico(gdf_analizado, cultivo, variedad_params, area_to
         kg_fertilizante_p = (fertilizante_necesario['FÓSFORO'] / contenido_p) / eficiencia_p
         costo_p = (kg_fertilizante_p / 1000) * precios_fert[fuente_p]
         costos_fertilizacion += costo_p
+    
     if fertilizante_necesario['POTASIO'] > 0:
         fuente_k = conversion['POTASIO']['fuente_principal']
         contenido_k = conversion['POTASIO']['contenido_nutriente']
@@ -1822,6 +1875,7 @@ def realizar_analisis_economico(gdf_analizado, cultivo, variedad_params, area_to
         kg_fertilizante_k = (fertilizante_necesario['POTASIO'] / contenido_k) / eficiencia_k
         costo_k = (kg_fertilizante_k / 1000) * precios_fert[fuente_k]
         costos_fertilizacion += costo_k
+    
     costos['fertilizacion'] = costos_fertilizacion
     costo_total_ha = sum(costos.values())
     ingresos_actual_ha = rend_actual_prom * precios_cultivo['precio_ton']
@@ -1829,16 +1883,19 @@ def realizar_analisis_economico(gdf_analizado, cultivo, variedad_params, area_to
     ingresos_proy_ha = rend_proy_prom * precios_cultivo['precio_ton']
     margen_proy_ha = ingresos_proy_ha - costo_total_ha
     incremento_margen_ha = margen_proy_ha - margen_actual_ha
+    
     if costos_fertilizacion > 0:
         roi_fertilizacion = (incremento_margen_ha / costos_fertilizacion) * 100
     else:
         roi_fertilizacion = 0
+    
     if costo_total_ha > 0:
         relacion_bc_actual = margen_actual_ha / costo_total_ha
         relacion_bc_proy = margen_proy_ha / costo_total_ha
     else:
         relacion_bc_actual = 0
         relacion_bc_proy = 0
+    
     flujos = []
     for año in range(financieros['periodo_analisis']):
         factor_inflacion = (1 + financieros['inflacion_esperada']) ** año
@@ -1848,15 +1905,18 @@ def realizar_analisis_economico(gdf_analizado, cultivo, variedad_params, area_to
         if año == 0:
             flujo_neto -= costos_fertilizacion * area_total
         flujos.append(flujo_neto)
+    
     van = 0
     for t, flujo in enumerate(flujos):
         van += flujo / ((1 + financieros['tasa_descuento']) ** t)
+    
     def calcular_tir(flujos):
         def npv(tasa):
             npv_val = 0
             for t, flujo in enumerate(flujos):
                 npv_val += flujo / ((1 + tasa) ** t)
             return npv_val
+        
         low = 0.0
         high = 1.0
         for _ in range(100):
@@ -1865,12 +1925,16 @@ def realizar_analisis_economico(gdf_analizado, cultivo, variedad_params, area_to
                 low = mid
             else:
                 high = mid
+        
         return (low + high) / 2
+    
     tir = calcular_tir(flujos) * 100
+    
     if incremento_margen_ha > 0:
         punto_equilibrio_ha = costos_fertilizacion / incremento_margen_ha
     else:
         punto_equilibrio_ha = 0
+    
     resultados_economicos = {
         'cultivo': cultivo,
         'area_total_ha': area_total,
@@ -1897,6 +1961,7 @@ def realizar_analisis_economico(gdf_analizado, cultivo, variedad_params, area_to
         'incremento_ingreso_total_usd': incremento_margen_ha * area_total,
         'costo_fertilizacion_total_usd': costos_fertilizacion * area_total
     }
+    
     return resultados_economicos
 
 def mostrar_analisis_economico(resultados_economicos):
