@@ -4401,7 +4401,7 @@ with st.sidebar:
         PARAMETROS_ECONOMICOS['PARAMETROS_FINANCIEROS']['tasa_descuento'] = tasa_descuento
         PARAMETROS_ECONOMICOS['PARAMETROS_FINANCIEROS']['inflacion_esperada'] = inflacion
     st.session_state['usar_inta'] = usar_inta
-    st.session_state['mostrar_capa_inta'] = mostrar_capa_inta
+    st.session_state['mostrar_mapa_inta'] = mostrar_mapa_inta
 
 # ===== FUNCIONES DE VISUALIZACIÓN DE RESULTADOS =====
 def mostrar_resultados_fertilidad(gdf_analizado, cultivo, area_total, satelite, mostrar_capa_inta=False):
