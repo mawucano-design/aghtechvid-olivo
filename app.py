@@ -4423,11 +4423,6 @@ def mostrar_resultados_recomendaciones(gdf_analizado, cultivo, nutriente, area_t
             mime="text/csv"
         )
 
-# app.py — Versión final con VID, OLIVO y HORTALIZAS de MENDOZA (CORREGIDO)
-# Autor: Martin Ernesto Cano
-# Fecha: Enero 2026
-
-# ... (todo el código anterior se mantiene igual hasta la línea donde está el problema) ...
 
 # ===== CLASIFICACIÓN DE PENDIENTES (definición faltante) =====
 CLASIFICACION_PENDIENTES = {
