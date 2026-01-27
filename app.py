@@ -2076,6 +2076,8 @@ def mostrar_analisis_economico(resultados_economicos):
         )
 
 # ===== FUNCIONES PARA GENERAR MAPAS DE CALOR DE RENDIMIENTO =====
+# (Se mantienen las funciones originales crear_mapa_calor_rendimiento_actual, crear_mapa_calor_rendimiento_proyectado, etc.)
+
 def crear_mapa_calor_rendimiento_actual(gdf_analizado, cultivo):
     try:
         if 'rendimiento_actual' not in gdf_analizado.columns:
@@ -2371,7 +2373,7 @@ def crear_mapa_comparativo_calor(gdf_analizado, cultivo):
         z_proyectado = gdf_plot['rendimiento_proyectado'].values
         incrementos = z_proyectado - z_actual
         vmin = min(z_actual.min(), z_proyectado.min()) * 0.9
-        vmax = max(z_actual.max(), z_proyectado.max()) * 1.2
+        vmax = max(z_actual.max(), z_proyectado.max()) * 1.1
         x_min, y_min, x_max, y_max = gdf_plot.total_bounds
         xi = np.linspace(x_min, x_max, 150)
         yi = np.linspace(y_min, y_max, 150)
@@ -2451,7 +2453,7 @@ def crear_mapa_comparativo_calor_fallback(gdf_analizado, cultivo):
         cmap_actual = plt.cm.YlOrRd
         cmap_proyectado = plt.cm.RdYlGn
         vmin = min(gdf_plot['rendimiento_actual'].min(), gdf_plot['rendimiento_proyectado'].min()) * 0.9
-        vmax = max(gdf_plot['rendimiento_actual'].max(), gdf_plot['rendimiento_proyectado'].max()) * 1.2
+        vmax = max(gdf_plot['rendimiento_actual'].max(), gdf_plot['rendimiento_proyectado'].max()) * 1.1
         for idx, row in gdf_plot.iterrows():
             valor = row['rendimiento_actual']
             valor_norm = (valor - vmin) / (vmax - vmin) if vmax != vmin else 0.5
@@ -3089,8 +3091,6 @@ Porcentaje de Aumento: {porcentaje:.1f}%
                     os.remove(temp_img_path)
             except Exception as e:
                 pdf.cell(0, 8, limpiar_texto_para_pdf(f"Error al incluir mapa: {str(e)[:50]}..."), 0, 1)
-        else:
-            pdf.cell(0, 8, limpiar_texto_para_pdf("Mapa no disponible para este análisis"), 0, 1)
         pdf.set_font('Arial', 'B', 14)
         pdf.cell(0, 10, '4. RESUMEN DE ZONAS', 0, 1)
         pdf.set_font('Arial', '', 10)
@@ -3250,8 +3250,6 @@ def generar_reporte_docx(gdf_analizado, cultivo, analisis_tipo, area_total,
                 doc.add_paragraph()
             except Exception as e:
                 doc.add_paragraph(f'Error al incluir mapa: {str(e)[:50]}...')
-        else:
-            doc.add_paragraph('Mapa no disponible para este análisis')
         doc.add_heading('4. RESUMEN DE ZONAS', level=1)
         if gdf_analizado is not None and not gdf_analizado.empty:
             columnas_mostrar = ['id_zona', 'area_ha']
@@ -3847,6 +3845,7 @@ with st.sidebar:
         variedad = st.selectbox("Variedad de Olivo:", list(VARIEDADES_OLIVO.keys()), index=0)
         st.session_state['variedad'] = variedad
         st.session_state['variedad_params'] = VARIEDADES_OLIVO[variedad]
+    # Para hortalizas, no hay variedades específicas en este nivel
     if 'variedad' in st.session_state and st.session_state['variedad']:
         params = st.session_state['variedad_params']
         st.info(f"""
@@ -4041,327 +4040,6 @@ def mostrar_resultados_recomendaciones(gdf_analizado, cultivo, nutriente, area_t
             file_name=f"recomendaciones_{nutriente}_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
             mime="text/csv"
         )
-
-# ===== INTERFAZ PRINCIPAL =====
-if 'uploaded_file' in locals() and uploaded_file:
-    with st.spinner("Cargando parcela..."):
-        try:
-            gdf = cargar_archivo_parcela(uploaded_file)
-            if gdf is not None:
-                st.success(f"✅ **Parcela cargada exitosamente:** {len(gdf)} polígono(s)")
-                area_total = calcular_superficie(gdf)
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("**📊 INFORMACIÓN DE LA PARCELA:**")
-                    st.write(f"- Polígonos: {len(gdf)}")
-                    st.write(f"- Área total: {area_total:.1f} ha")
-                    st.write(f"- CRS: {gdf.crs}")
-                    st.write(f"- Formato: {uploaded_file.name.split('.')[-1].upper()}")
-                    st.write("**📍 Vista Previa:**")
-                    fig, ax = plt.subplots(figsize=(8, 6))
-                    fig.patch.set_facecolor('#0f172a')
-                    ax.set_facecolor('#0f172a')
-                    gdf.plot(ax=ax, color='lightgreen', edgecolor='white', alpha=0.7)
-                    ax.set_title(f"Parcela: {uploaded_file.name}", color='white')
-                    ax.set_xlabel("Longitud", color='white')
-                    ax.set_ylabel("Latitud", color='white')
-                    ax.tick_params(colors='white')
-                    ax.grid(True, alpha=0.3, color='#475569')
-                    st.pyplot(fig)
-                with col2:
-                    st.write("**🎯 CONFIGURACIÓN GEE:**")
-                    st.write(f"- Cultivo: {ICONOS_CULTIVOS[cultivo]} {cultivo}")
-                    if cultivo in ["VID", "OLIVO"] and 'variedad' in st.session_state:
-                        st.write(f"- Variedad: {st.session_state['variedad']}")
-                    st.write(f"- Análisis: {analisis_tipo}")
-                    st.write(f"- Zonas: {n_divisiones}")
-                    if st.session_state.get('usar_inta', True):
-                        st.write("🌱 **INTA Activado:** Estimación regional de materia orgánica")
-                    else:
-                        st.write("⚠️ **INTA Desactivado:** Estimación genérica")
-                    if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"]:
-                        st.write(f"- Satélite: {SATELITES_DISPONIBLES[satelite_seleccionado]['nombre']}")
-                        st.write(f"- Índice: {indice_seleccionado}")
-                        st.write(f"- Período: {fecha_inicio} a {fecha_fin}")
-                    elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL":
-                        st.write(f"- Intervalo curvas: {intervalo_curvas} m")
-                        st.write(f"- Resolución DEM: {resolucion_dem} m")
-                if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary"):
-                    resultados = None
-                    if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"]:
-                        resultados = ejecutar_analisis(
-                            gdf, nutriente, analisis_tipo, n_divisiones,
-                            cultivo, satelite_seleccionado, indice_seleccionado,
-                            fecha_inicio, fecha_fin,
-                            usar_inta=st.session_state.get('usar_inta', True),
-                            mostrar_capa_inta=st.session_state.get('mostrar_mapa_inta', False)
-                        )
-                    elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL":
-                        resultados = ejecutar_analisis(
-                            gdf, None, analisis_tipo, n_divisiones,
-                            cultivo, None, None, None, None,
-                            intervalo_curvas, resolucion_dem,
-                            usar_inta=st.session_state.get('usar_inta', True),
-                            mostrar_capa_inta=st.session_state.get('mostrar_mapa_inta', False)
-                        )
-                    else:
-                        resultados = ejecutar_analisis(
-                            gdf, None, analisis_tipo, n_divisiones,
-                            cultivo, None, None, None, None,
-                            usar_inta=st.session_state.get('usar_inta', True),
-                            mostrar_capa_inta=st.session_state.get('mostrar_mapa_inta', False)
-                        )
-                    if resultados and resultados['exitoso']:
-                        st.session_state['resultados_guardados'] = {
-                            'gdf_analizado': resultados['gdf_analizado'],
-                            'analisis_tipo': analisis_tipo,
-                            'cultivo': cultivo,
-                            'area_total': resultados['area_total'],
-                            'nutriente': nutriente,
-                            'satelite_seleccionado': satelite_seleccionado,
-                            'indice_seleccionado': indice_seleccionado,
-                            'mapa_buffer': resultados.get('mapa_buffer'),
-                            'X': None,
-                            'Y': None,
-                            'Z': None,
-                            'pendiente_grid': None,
-                            'gdf_original': gdf if analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL" else None,
-                            'df_power': resultados.get('df_power'),
-                            'usar_inta': st.session_state.get('usar_inta', True),
-                            'mostrar_mapa_inta': st.session_state.get('mostrar_mapa_inta', False)
-                        }
-                        st.success("✅ Análisis completado exitosamente!")
-                        if analisis_tipo == "FERTILIDAD ACTUAL":
-                            mostrar_resultados_fertilidad(
-                                resultados['gdf_analizado'],
-                                cultivo,
-                                resultados['area_total'],
-                                satelite_seleccionado,
-                                st.session_state.get('mostrar_mapa_inta', False)
-                            )
-                        elif analisis_tipo == "RECOMENDACIONES NPK":
-                            mostrar_resultados_recomendaciones(
-                                resultados['gdf_analizado'],
-                                cultivo,
-                                nutriente,
-                                resultados['area_total'],
-                                satelite_seleccionado,
-                                st.session_state.get('mostrar_mapa_inta', False)
-                            )
-                        elif analisis_tipo == "ANÁLISIS DE TEXTURA":
-                            mostrar_resultados_textura(
-                                resultados['gdf_analizado'],
-                                cultivo,
-                                resultados['area_total'],
-                                st.session_state.get('mostrar_mapa_inta', False)
-                            )
-                        elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL":
-                            X, Y, Z, bounds = generar_dem_sintetico(gdf, resolucion_dem)
-                            pendiente_grid = calcular_pendiente_simple(X, Y, Z, resolucion_dem)
-                            curvas, elevaciones = generar_curvas_nivel_simple(X, Y, Z, intervalo_curvas, gdf)
-                            mostrar_resultados_curvas_nivel(
-                                X, Y, Z, pendiente_grid, curvas, elevaciones,
-                                gdf, cultivo, resultados['area_total']
-                            )
-                        # ===== SECCIÓN DE GENERACIÓN DE REPORTES =====
-                        st.markdown("---")
-                        st.subheader("📄 GENERACIÓN DE REPORTES COMPLETOS")
-                        
-                        col_pdf, col_docx = st.columns(2)
-                        
-                        with col_pdf:
-                            if st.button("📊 Generar Reporte PDF Completo", type="secondary"):
-                                with st.spinner("Generando reporte PDF..."):
-                                    # Obtener estadísticas y recomendaciones
-                                    estadisticas = generar_resumen_estadisticas(
-                                        resultados['gdf_analizado'], 
-                                        analisis_tipo, 
-                                        cultivo, 
-                                        resultados.get('df_power')
-                                    )
-                                    recomendaciones = generar_recomendaciones_generales(
-                                        resultados['gdf_analizado'], 
-                                        analisis_tipo, 
-                                        cultivo
-                                    )
-                                    
-                                    # Obtener mapa correspondiente
-                                    mapa_buffer = None
-                                    if analisis_tipo == "FERTILIDAD ACTUAL":
-                                        mapa_buffer = crear_mapa_fertilidad_integrada(
-                                            resultados['gdf_analizado'], 
-                                            cultivo, 
-                                            satelite_seleccionado,
-                                            st.session_state.get('mostrar_mapa_inta', False)
-                                        )
-                                    elif analisis_tipo == "RECOMENDACIONES NPK":
-                                        mapa_buffer = crear_mapa_npk_con_esri(
-                                            resultados['gdf_analizado'],
-                                            nutriente,
-                                            cultivo,
-                                            satelite_seleccionado,
-                                            st.session_state.get('mostrar_mapa_inta', False)
-                                        )
-                                    elif analisis_tipo == "ANÁLISIS DE TEXTURA":
-                                        mapa_buffer = crear_mapa_texturas_con_esri(
-                                            resultados['gdf_analizado'],
-                                            cultivo,
-                                            st.session_state.get('mostrar_mapa_inta', False)
-                                        )
-                                    
-                                    # Generar el reporte PDF
-                                    pdf_buffer = generar_reporte_pdf(
-                                        resultados['gdf_analizado'],
-                                        cultivo,
-                                        analisis_tipo,
-                                        resultados['area_total'],
-                                        nutriente=nutriente if analisis_tipo == "RECOMENDACIONES NPK" else None,
-                                        satelite=satelite_seleccionado,
-                                        indice=indice_seleccionado if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"] else None,
-                                        mapa_buffer=mapa_buffer,
-                                        estadisticas=estadisticas,
-                                        recomendaciones=recomendaciones
-                                    )
-                                    
-                                    if pdf_buffer:
-                                        st.success("✅ Reporte PDF generado exitosamente!")
-                                        st.download_button(
-                                            label="📥 Descargar Reporte PDF",
-                                            data=pdf_buffer,
-                                            file_name=f"reporte_completo_{cultivo}_{analisis_tipo}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                                            mime="application/pdf"
-                                        )
-                                    else:
-                                        st.error("❌ Error al generar el reporte PDF")
-                        
-                        with col_docx:
-                            if st.button("📝 Generar Reporte Word (DOCX)", type="secondary"):
-                                with st.spinner("Generando reporte Word..."):
-                                    # Obtener estadísticas y recomendaciones
-                                    estadisticas = generar_resumen_estadisticas(
-                                        resultados['gdf_analizado'], 
-                                        analisis_tipo, 
-                                        cultivo, 
-                                        resultados.get('df_power')
-                                    )
-                                    recomendaciones = generar_recomendaciones_generales(
-                                        resultados['gdf_analizado'], 
-                                        analisis_tipo, 
-                                        cultivo
-                                    )
-                                    
-                                    # Obtener mapa correspondiente
-                                    mapa_buffer = None
-                                    if analisis_tipo == "FERTILIDAD ACTUAL":
-                                        mapa_buffer = crear_mapa_fertilidad_integrada(
-                                            resultados['gdf_analizado'], 
-                                            cultivo, 
-                                            satelite_seleccionado,
-                                            st.session_state.get('mostrar_mapa_inta', False)
-                                        )
-                                    elif analisis_tipo == "RECOMENDACIONES NPK":
-                                        mapa_buffer = crear_mapa_npk_con_esri(
-                                            resultados['gdf_analizado'],
-                                            nutriente,
-                                            cultivo,
-                                            satelite_seleccionado,
-                                            st.session_state.get('mostrar_mapa_inta', False)
-                                        )
-                                    elif analisis_tipo == "ANÁLISIS DE TEXTURA":
-                                        mapa_buffer = crear_mapa_texturas_con_esri(
-                                            resultados['gdf_analizado'],
-                                            cultivo,
-                                            st.session_state.get('mostrar_mapa_inta', False)
-                                        )
-                                    
-                                    # Generar el reporte DOCX
-                                    docx_buffer = generar_reporte_docx(
-                                        resultados['gdf_analizado'],
-                                        cultivo,
-                                        analisis_tipo,
-                                        resultados['area_total'],
-                                        nutriente=nutriente if analisis_tipo == "RECOMENDACIONES NPK" else None,
-                                        satelite=satelite_seleccionado,
-                                        indice=indice_seleccionado if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"] else None,
-                                        mapa_buffer=mapa_buffer,
-                                        estadisticas=estadisticas,
-                                        recomendaciones=recomendaciones
-                                    )
-                                    
-                                    if docx_buffer:
-                                        st.success("✅ Reporte Word generado exitosamente!")
-                                        st.download_button(
-                                            label="📥 Descargar Reporte Word",
-                                            data=docx_buffer,
-                                            file_name=f"reporte_completo_{cultivo}_{analisis_tipo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
-                                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                        )
-                                    else:
-                                        st.error("❌ Error al generar el reporte Word")
-                                        
-                        if analisis_tipo == "RECOMENDACIONES NPK" and 'rendimiento_actual' in resultados['gdf_analizado'].columns:
-                            st.markdown("---")
-                            st.subheader("💰 ANÁLISIS ECONÓMICO")
-                            variedad_params = None
-                            if 'variedad_params' in st.session_state:
-                                variedad_params = st.session_state['variedad_params']
-                            
-                            try:
-                                resultados_economicos = realizar_analisis_economico(
-                                    resultados['gdf_analizado'],
-                                    cultivo,
-                                    variedad_params,
-                                    resultados['area_total']
-                                )
-                                mostrar_analisis_economico(resultados_economicos)
-                            except Exception as e:
-                                st.error(f"Error en análisis económico: {str(e)}")
-                                
-                            st.markdown("---")
-                            st.subheader("🔥 MAPAS DE CALOR DE RENDIMIENTO")
-                            tab1, tab2, tab3 = st.tabs(["🌾 Rendimiento Actual", "🚀 Rendimiento Proyectado", "📊 Comparativo"])
-                            with tab1:
-                                st.subheader("🌾 RENDIMIENTO ACTUAL (sin fertilización)")
-                                mapa_actual = crear_mapa_calor_rendimiento_actual(resultados['gdf_analizado'], cultivo)
-                                if mapa_actual:
-                                    st.image(mapa_actual, use_container_width=True)
-                                    st.download_button(
-                                        "📥 Descargar Mapa de Rendimiento Actual",
-                                        mapa_actual,
-                                        f"rendimiento_actual_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
-                                        "image/png"
-                                    )
-                            with tab2:
-                                st.subheader("🚀 RENDIMIENTO PROYECTADO (con fertilización)")
-                                mapa_proyectado = crear_mapa_calor_rendimiento_proyectado(resultados['gdf_analizado'], cultivo)
-                                if mapa_proyectado:
-                                    st.image(mapa_proyectado, use_container_width=True)
-                                    st.download_button(
-                                        "📥 Descargar Mapa de Rendimiento Proyectado",
-                                        mapa_proyectado,
-                                        f"rendimiento_proyectado_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
-                                        "image/png"
-                                    )
-                            with tab3:
-                                st.subheader("📊 MAPA COMPARATIVO")
-                                mapa_comparativo = crear_mapa_comparativo_calor(resultados['gdf_analizado'], cultivo)
-                                if mapa_comparativo:
-                                    st.image(mapa_comparativo, use_container_width=True)
-                                    st.download_button(
-                                        "📥 Descargar Mapa Comparativo",
-                                        mapa_comparativo,
-                                        f"comparativo_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
-                                        "image/png"
-                                    )
-                            col_r1, col_r2, col_r3, col_r4 = st.columns(4)
-                            with col_r1:
-                                rend_actual = resultados['gdf_analizado']['rendimiento_actual'].mean()
-                                st.metric("📊 Rendimiento Actual", f"{rend_actual:.1f} ton/ha")
-                            with col_r2:
-                                rend_proy = resultados['gdf_analizado']['rendimiento_proyectado'].mean()
-                                st.metric("🚀 Rendimiento Proyectado", f"{rend_proy:.1f} ton/ha")
-                            with col_r3:
-                                incremento = resultados['gdf_analizado']['increment
 
 # ===== INTERFAZ PRINCIPAL =====
 if 'uploaded_file' in locals() and uploaded_file:
