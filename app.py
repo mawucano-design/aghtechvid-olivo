@@ -4194,7 +4194,7 @@ def ejecutar_analisis(gdf, nutriente, analisis_tipo, n_divisiones, cultivo,
             resultados['exitoso'] = True
 
             # === DATOS DE NASA POWER ===
-            if satelite:
+            if satelite and fecha_inicio and fecha_fin:
                 df_power = obtener_datos_nasa_power(gdf, fecha_inicio, fecha_fin)
                 if df_power is not None:
                     resultados['df_power'] = df_power
@@ -4327,13 +4327,14 @@ def mostrar_resultados_curvas_nivel(X, Y, Z, pendiente_grid, curvas, elevaciones
             st.metric("🔄 Número de Curvas", f"{num_curvas}")
 
     st.subheader("🔥 MAPA DE CALOR DE PENDIENTES")
-    st.image(mapa_pendientes, use_container_width=True)
-    st.download_button(
-        "📥 Descargar Mapa de Pendientes",
-        mapa_pendientes,
-        f"mapa_pendientes_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
-        "image/png"
-    )
+    if 'mapa_pendientes' in locals():
+        st.image(mapa_pendientes, use_container_width=True)
+        st.download_button(
+            "📥 Descargar Mapa de Pendientes",
+            mapa_pendientes.getvalue() if hasattr(mapa_pendientes, 'getvalue') else mapa_pendientes,
+            f"mapa_pendientes_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+            "image/png"
+        )
 
     st.subheader("⚠️ ANÁLISIS DE RIESGO DE EROSION")
     if 'stats_pendiente' in locals() and 'distribucion' in stats_pendiente:
@@ -4418,148 +4419,8 @@ def mostrar_resultados_curvas_nivel(X, Y, Z, pendiente_grid, curvas, elevaciones
         )
 
 # ===== SIDEBAR MEJORADO CON OPCIÓN DEL INTA =====
-with st.sidebar:
-    st.markdown('<div class="sidebar-title">⚙️ CONFIGURACIÓN</div>', unsafe_allow_html=True)
-    cultivo = st.selectbox("Cultivo:", ["VID", "OLIVO", "HORTALIZAS DE HOJA"])
-    
-    # Selección de variedad según cultivo
-    if cultivo == "VID":
-        variedad = st.selectbox(
-            "Variedad de Vid:",
-            list(VARIEDADES_VID.keys()),
-            index=0
-        )
-        st.session_state['variedad'] = variedad
-        st.session_state['variedad_params'] = VARIEDADES_VID[variedad]
-    elif cultivo == "OLIVO":
-        variedad = st.selectbox(
-            "Variedad de Olivo:",
-            list(VARIEDADES_OLIVO.keys()),
-            index=0
-        )
-        st.session_state['variedad'] = variedad
-        st.session_state['variedad_params'] = VARIEDADES_OLIVO[variedad]
-    elif cultivo == "HORTALIZAS DE HOJA":
-        variedad = st.selectbox(
-            "Variedad de Hortaliza:",
-            list(VARIEDADES_HORTALIZAS.keys()),
-            index=0
-        )
-        st.session_state['variedad'] = variedad
-        st.session_state['variedad_params'] = VARIEDADES_HORTALIZAS[variedad]
-
-    # Mostrar información de la variedad seleccionada
-    if 'variedad' in st.session_state and st.session_state['variedad']:
-        params = st.session_state['variedad_params']
-        st.info(f"""
-        **📊 {st.session_state['variedad']}**
-        - Potencial: {params['RENDIMIENTO_BASE']} - {params['RENDIMIENTO_OPTIMO']} ton/ha
-        - Ciclo: {params.get('CICLO', 'N/D')} días
-        - Región: {params.get('REGION', 'N/D')}
-        """)
-    st.image(IMAGENES_CULTIVOS[cultivo], use_container_width=True)
-
-    # Mostrar metodología NPK seleccionada
-    if satelite_seleccionado in METODOLOGIAS_NPK:
-        st.info(f"**Metodología {satelite_seleccionado}:**")
-        for nutriente_metodo, info in METODOLOGIAS_NPK[satelite_seleccionado].items():
-            st.write(f"- **{nutriente_metodo}**: {info['metodo']}")
-
-    # ===== NUEVO: INTEGRACIÓN CON EL INTA =====
-    with st.sidebar.expander("🌱 INTEGRACIÓN CON EL INTA"):
-        usar_inta = st.checkbox(
-            "✅ Usar datos del INTA para materia orgánica",
-            value=True,
-            help="Activa la estimación de materia orgánica basada en mapas reales del INTA por región"
-        )
-        
-        mostrar_mapa_inta = st.checkbox(
-            "🗺️ Mostrar capa base del INTA",
-            value=False,
-            help="Superpone el mapa de suelos del INTA como capa base (requiere conexión a internet)"
-        )
-        
-        if usar_inta:
-            st.info("🔍 La materia orgánica se estimará usando datos regionales del INTA")
-        else:
-            st.warning("⚠️ Se usará estimación genérica basada en cultivo")
-
-    analisis_tipo = st.selectbox("Tipo de Análisis:", ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK", "ANÁLISIS DE TEXTURA", "ANÁLISIS DE CURVAS DE NIVEL"])
-    if analisis_tipo == "RECOMENDACIONES NPK":
-        nutriente = st.selectbox("Nutriente:", ["NITRÓGENO", "FÓSFORO", "POTASIO"])
-
-    st.subheader("🛰️ Fuente de Datos Satelitales")
-    satelite_seleccionado = st.selectbox(
-        "Satélite:",
-        ["SENTINEL-2", "LANDSAT-8", "DATOS_SIMULADOS"],
-        help="Selecciona la fuente de datos satelitales"
-    )
-    if satelite_seleccionado in SATELITES_DISPONIBLES:
-        info_satelite = SATELITES_DISPONIBLES[satelite_seleccionado]
-        st.info(f"""
-        **{info_satelite['icono']} {info_satelite['nombre']}**
-        - Resolución: {info_satelite['resolucion']}
-        - Revisita: {info_satelite['revisita']}
-        - Índices: {', '.join(info_satelite['indices'][:3])}
-        """)
-
-    if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"]:
-        st.subheader("📊 Índices de Vegetación")
-        if satelite_seleccionado == "SENTINEL-2":
-            indice_seleccionado = st.selectbox("Índice:", SATELITES_DISPONIBLES['SENTINEL-2']['indices'])
-        elif satelite_seleccionado == "LANDSAT-8":
-            indice_seleccionado = st.selectbox("Índice:", SATELITES_DISPONIBLES['LANDSAT-8']['indices'])
-        else:
-            indice_seleccionado = st.selectbox("Índice:", SATELITES_DISPONIBLES['DATOS_SIMULADOS']['indices'])
-
-    if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"]:
-        st.subheader("📅 Rango Temporal")
-        fecha_fin = st.date_input("Fecha fin", datetime.now())
-        fecha_inicio = st.date_input("Fecha inicio", datetime.now() - timedelta(days=30))
-
-    st.subheader("🎯 División de Parcela")
-    n_divisiones = st.slider("Número de zonas de manejo:", min_value=16, max_value=48, value=32)
-
-    if analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL":
-        st.subheader("🏔️ Configuración Curvas de Nivel")
-        intervalo_curvas = st.slider("Intervalo entre curvas (metros):", 1.0, 20.0, 5.0, 1.0)
-        resolucion_dem = st.slider("Resolución DEM (metros):", 5.0, 50.0, 10.0, 5.0)
-
-    st.subheader("📤 Subir Parcela")
-    uploaded_file = st.file_uploader("Subir archivo de tu parcela", type=['zip', 'kml', 'kmz'],
-                                     help="Formatos aceptados: Shapefile (.zip), KML (.kml), KMZ (.kmz)")
-
-    # CONFIGURACIÓN ECONÓMICA
-    with st.sidebar.expander("💰 CONFIGURACIÓN ECONÓMICA"):
-        st.markdown("#### Precios de Mercado (USD)")
-        # Precios de cultivos
-        st.subheader("🌾 Precios Cultivos")
-        precio_vid = st.number_input("Vid (USD/ton)", value=800.0, min_value=500.0, max_value=1200.0)
-        precio_olivo = st.number_input("Olivo (USD/ton)", value=1200.0, min_value=800.0, max_value=1800.0)
-        precio_hortalizas = st.number_input("Hortalizas (USD/ton)", value=500.0, min_value=300.0, max_value=800.0)
-
-        # Actualizar precios en parámetros
-        PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['VID']['precio_ton'] = precio_vid
-        PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['OLIVO']['precio_ton'] = precio_olivo
-        PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['HORTALIZAS DE HOJA']['precio_ton'] = precio_hortalizas
-
-        st.subheader("🧪 Precios Fertilizantes")
-        precio_urea = st.number_input("Urea (USD/ton)", value=450.0, min_value=300.0, max_value=600.0)
-        precio_fosfato = st.number_input("Fosfato (USD/ton)", value=650.0, min_value=400.0, max_value=800.0)
-        precio_potasio = st.number_input("Potasio (USD/ton)", value=400.0, min_value=250.0, max_value=550.0)
-        PARAMETROS_ECONOMICOS['PRECIOS_FERTILIZANTES']['UREA'] = precio_urea
-        PARAMETROS_ECONOMICOS['PRECIOS_FERTILIZANTES']['FOSFATO_DIAMONICO'] = precio_fosfato
-        PARAMETROS_ECONOMICOS['PRECIOS_FERTILIZANTES']['CLORURO_POTASIO'] = precio_potasio
-
-        st.subheader("📈 Parámetros Financieros")
-        tasa_descuento = st.slider("Tasa Descuento (%)", 5.0, 20.0, 10.0, 0.5) / 100
-        inflacion = st.slider("Inflación Esperada (%)", 0.0, 15.0, 8.0, 0.5) / 100
-        PARAMETROS_ECONOMICOS['PARAMETROS_FINANCIEROS']['tasa_descuento'] = tasa_descuento
-        PARAMETROS_ECONOMICOS['PARAMETROS_FINANCIEROS']['inflacion_esperada'] = inflacion
-
-# Guardar estado de las opciones del INTA en session_state
-st.session_state['usar_inta'] = usar_inta
-st.session_state['mostrar_mapa_inta'] = mostrar_mapa_inta
+# NOTA: Esta sección debe estar dentro de la función main() o ser reestructurada
+# Por ahora, vamos a dejarla como está pero necesitamos moverla dentro de main()
 
 # ===== FUNCIONES DE VISUALIZACIÓN DE RESULTADOS =====
 def mostrar_resultados_fertilidad(gdf_analizado, cultivo, area_total, satelite, mostrar_capa_inta=False):
@@ -4874,6 +4735,150 @@ def main():
     gdf_textura_analizado = None
     dem_data_analizado = None
     
+    # ===== SIDEBAR MEJORADO CON OPCIÓN DEL INTA =====
+    with st.sidebar:
+        st.markdown('<div class="sidebar-title">⚙️ CONFIGURACIÓN</div>', unsafe_allow_html=True)
+        cultivo = st.selectbox("Cultivo:", ["VID", "OLIVO", "HORTALIZAS DE HOJA"])
+        
+        # Selección de variedad según cultivo
+        if cultivo == "VID":
+            variedad = st.selectbox(
+                "Variedad de Vid:",
+                list(VARIEDADES_VID.keys()),
+                index=0
+            )
+            st.session_state['variedad'] = variedad
+            st.session_state['variedad_params'] = VARIEDADES_VID[variedad]
+        elif cultivo == "OLIVO":
+            variedad = st.selectbox(
+                "Variedad de Olivo:",
+                list(VARIEDADES_OLIVO.keys()),
+                index=0
+            )
+            st.session_state['variedad'] = variedad
+            st.session_state['variedad_params'] = VARIEDADES_OLIVO[variedad]
+        elif cultivo == "HORTALIZAS DE HOJA":
+            variedad = st.selectbox(
+                "Variedad de Hortaliza:",
+                list(VARIEDADES_HORTALIZAS.keys()),
+                index=0
+            )
+            st.session_state['variedad'] = variedad
+            st.session_state['variedad_params'] = VARIEDADES_HORTALIZAS[variedad]
+
+        # Mostrar información de la variedad seleccionada
+        if 'variedad' in st.session_state and st.session_state['variedad']:
+            params = st.session_state['variedad_params']
+            st.info(f"""
+            **📊 {st.session_state['variedad']}**
+            - Potencial: {params['RENDIMIENTO_BASE']} - {params['RENDIMIENTO_OPTIMO']} ton/ha
+            - Ciclo: {params.get('CICLO', 'N/D')} días
+            - Región: {params.get('REGION', 'N/D')}
+            """)
+        st.image(IMAGENES_CULTIVOS[cultivo], use_container_width=True)
+
+        analisis_tipo = st.selectbox("Tipo de Análisis:", ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK", "ANÁLISIS DE TEXTURA", "ANÁLISIS DE CURVAS DE NIVEL"])
+        if analisis_tipo == "RECOMENDACIONES NPK":
+            nutriente = st.selectbox("Nutriente:", ["NITRÓGENO", "FÓSFORO", "POTASIO"])
+
+        st.subheader("🛰️ Fuente de Datos Satelitales")
+        satelite_seleccionado = st.selectbox(
+            "Satélite:",
+            ["SENTINEL-2", "LANDSAT-8", "DATOS_SIMULADOS"],
+            help="Selecciona la fuente de datos satelitales"
+        )
+        if satelite_seleccionado in SATELITES_DISPONIBLES:
+            info_satelite = SATELITES_DISPONIBLES[satelite_seleccionado]
+            st.info(f"""
+            **{info_satelite['icono']} {info_satelite['nombre']}**
+            - Resolución: {info_satelite['resolucion']}
+            - Revisita: {info_satelite['revisita']}
+            - Índices: {', '.join(info_satelite['indices'][:3])}
+            """)
+
+        # Mostrar metodología NPK seleccionada
+        if satelite_seleccionado in METODOLOGIAS_NPK:
+            st.info(f"**Metodología {satelite_seleccionado}:**")
+            for nutriente_metodo, info in METODOLOGIAS_NPK[satelite_seleccionado].items():
+                st.write(f"- **{nutriente_metodo}**: {info['metodo']}")
+
+        if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"]:
+            st.subheader("📊 Índices de Vegetación")
+            if satelite_seleccionado == "SENTINEL-2":
+                indice_seleccionado = st.selectbox("Índice:", SATELITES_DISPONIBLES['SENTINEL-2']['indices'])
+            elif satelite_seleccionado == "LANDSAT-8":
+                indice_seleccionado = st.selectbox("Índice:", SATELITES_DISPONIBLES['LANDSAT-8']['indices'])
+            else:
+                indice_seleccionado = st.selectbox("Índice:", SATELITES_DISPONIBLES['DATOS_SIMULADOS']['indices'])
+
+        if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"]:
+            st.subheader("📅 Rango Temporal")
+            fecha_fin = st.date_input("Fecha fin", datetime.now())
+            fecha_inicio = st.date_input("Fecha inicio", datetime.now() - timedelta(days=30))
+
+        st.subheader("🎯 División de Parcela")
+        n_divisiones = st.slider("Número de zonas de manejo:", min_value=16, max_value=48, value=32)
+
+        if analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL":
+            st.subheader("🏔️ Configuración Curvas de Nivel")
+            intervalo_curvas = st.slider("Intervalo entre curvas (metros):", 1.0, 20.0, 5.0, 1.0)
+            resolucion_dem = st.slider("Resolución DEM (metros):", 5.0, 50.0, 10.0, 5.0)
+
+        st.subheader("📤 Subir Parcela")
+        uploaded_file = st.file_uploader("Subir archivo de tu parcela", type=['zip', 'kml', 'kmz'],
+                                         help="Formatos aceptados: Shapefile (.zip), KML (.kml), KMZ (.kmz)")
+
+        # ===== NUEVO: INTEGRACIÓN CON EL INTA =====
+        with st.sidebar.expander("🌱 INTEGRACIÓN CON EL INTA"):
+            usar_inta = st.checkbox(
+                "✅ Usar datos del INTA para materia orgánica",
+                value=True,
+                help="Activa la estimación de materia orgánica basada en mapas reales del INTA por región"
+            )
+            
+            mostrar_mapa_inta = st.checkbox(
+                "🗺️ Mostrar capa base del INTA",
+                value=False,
+                help="Superpone el mapa de suelos del INTA como capa base (requiere conexión a internet)"
+            )
+            
+            if usar_inta:
+                st.info("🔍 La materia orgánica se estimará usando datos regionales del INTA")
+            else:
+                st.warning("⚠️ Se usará estimación genérica basada en cultivo")
+
+        # CONFIGURACIÓN ECONÓMICA
+        with st.sidebar.expander("💰 CONFIGURACIÓN ECONÓMICA"):
+            st.markdown("#### Precios de Mercado (USD)")
+            # Precios de cultivos
+            st.subheader("🌾 Precios Cultivos")
+            precio_vid = st.number_input("Vid (USD/ton)", value=800.0, min_value=500.0, max_value=1200.0)
+            precio_olivo = st.number_input("Olivo (USD/ton)", value=1200.0, min_value=800.0, max_value=1800.0)
+            precio_hortalizas = st.number_input("Hortalizas (USD/ton)", value=500.0, min_value=300.0, max_value=800.0)
+
+            # Actualizar precios en parámetros
+            PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['VID']['precio_ton'] = precio_vid
+            PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['OLIVO']['precio_ton'] = precio_olivo
+            PARAMETROS_ECONOMICOS['PRECIOS_CULTIVOS']['HORTALIZAS DE HOJA']['precio_ton'] = precio_hortalizas
+
+            st.subheader("🧪 Precios Fertilizantes")
+            precio_urea = st.number_input("Urea (USD/ton)", value=450.0, min_value=300.0, max_value=600.0)
+            precio_fosfato = st.number_input("Fosfato (USD/ton)", value=650.0, min_value=400.0, max_value=800.0)
+            precio_potasio = st.number_input("Potasio (USD/ton)", value=400.0, min_value=250.0, max_value=550.0)
+            PARAMETROS_ECONOMICOS['PRECIOS_FERTILIZANTES']['UREA'] = precio_urea
+            PARAMETROS_ECONOMICOS['PRECIOS_FERTILIZANTES']['FOSFATO_DIAMONICO'] = precio_fosfato
+            PARAMETROS_ECONOMICOS['PRECIOS_FERTILIZANTES']['CLORURO_POTASIO'] = precio_potasio
+
+            st.subheader("📈 Parámetros Financieros")
+            tasa_descuento = st.slider("Tasa Descuento (%)", 5.0, 20.0, 10.0, 0.5) / 100
+            inflacion = st.slider("Inflación Esperada (%)", 0.0, 15.0, 8.0, 0.5) / 100
+            PARAMETROS_ECONOMICOS['PARAMETROS_FINANCIEROS']['tasa_descuento'] = tasa_descuento
+            PARAMETROS_ECONOMICOS['PARAMETROS_FINANCIEROS']['inflacion_esperada'] = inflacion
+
+        # Guardar estado de las opciones del INTA en session_state
+        st.session_state['usar_inta'] = usar_inta
+        st.session_state['mostrar_mapa_inta'] = mostrar_mapa_inta
+    
     # Verificar si hay archivo cargado
     if uploaded_file is not None:
         with st.spinner("📂 Cargando archivo de parcela..."):
@@ -4898,7 +4903,7 @@ def main():
                         satelite=satelite_seleccionado,
                         indice=indice_seleccionado if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"] else None,
                         fecha_inicio=fecha_inicio if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"] else None,
-                        fecha_fin=fecha_fin if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"] else None,
+                        fecha_fin=fecha_fin if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONes NPK"] else None,
                         intervalo_curvas=intervalo_curvas if analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL" else 5.0,
                         resolucion_dem=resolucion_dem if analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL" else 10.0,
                         usar_inta=st.session_state.get('usar_inta', True),
