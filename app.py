@@ -557,90 +557,90 @@ st.markdown("""
 
 # ===== CONFIGURACIÓN DE SATÉLITES DISPONIBLES =====
 SATELITES_DISPONIBLES = {
-'SENTINEL-2': {
-'nombre': 'Sentinel-2',
-'resolucion': '10m',
-'revisita': '5 días',
-'bandas': ['B2', 'B3', 'B4', 'B5', 'B8', 'B8A', 'B11', 'B12'],
-'indices': ['NDVI', 'NDRE', 'GNDVI', 'OSAVI', 'MCARI', 'TCARI', 'NDII'],
-'icono': '🛰️',
-'bandas_np': {
-'N': ['B5', 'B8A'],  # Red Edge para NDRE
-'P': ['B4', 'B11'],  # Rojo y SWIR para fósforo
-'K': ['B8', 'B11', 'B12']  # NIR y SWIR para potasio
-}
-},
-'LANDSAT-8': {
-'nombre': 'Landsat 8',
-'resolucion': '30m',
-'revisita': '16 días',
-'bandas': ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 'B11'],
-'indices': ['NDVI', 'NDWI', 'EVI', 'SAVI', 'MSAVI', 'NDII'],
-'icono': '🛰️',
-'bandas_np': {
-'N': ['B4', 'B5'],  # Rojo y NIR para NDRE alternativo
-'P': ['B3', 'B6'],  # Verde y SWIR1
-'K': ['B5', 'B6', 'B7']  # NIR y SWIR
-}
-},
-'DATOS_SIMULADOS': {
-'nombre': 'Datos Simulados',
-'resolucion': '10m',
-'revisita': '5 días',
-'bandas': ['B2', 'B3', 'B4', 'B5', 'B8'],
-'indices': ['NDVI', 'NDRE', 'GNDVI'],
-'icono': '🔬'
-}
+    'SENTINEL-2': {
+        'nombre': 'Sentinel-2',
+        'resolucion': '10m',
+        'revisita': '5 días',
+        'bandas': ['B2', 'B3', 'B4', 'B5', 'B8', 'B8A', 'B11', 'B12'],
+        'indices': ['NDVI', 'NDRE', 'GNDVI', 'OSAVI', 'MCARI', 'TCARI', 'NDII'],
+        'icono': '🛰️',
+        'bandas_np': {
+            'N': ['B5', 'B8A'],  # Red Edge para NDRE
+            'P': ['B4', 'B11'],  # Rojo y SWIR para fósforo
+            'K': ['B8', 'B11', 'B12']  # NIR y SWIR para potasio
+        }
+    },
+    'LANDSAT-8': {
+        'nombre': 'Landsat 8',
+        'resolucion': '30m',
+        'revisita': '16 días',
+        'bandas': ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 'B11'],
+        'indices': ['NDVI', 'NDWI', 'EVI', 'SAVI', 'MSAVI', 'NDII'],
+        'icono': '🛰️',
+        'bandas_np': {
+            'N': ['B4', 'B5'],  # Rojo y NIR para NDRE alternativo
+            'P': ['B3', 'B6'],  # Verde y SWIR1
+            'K': ['B5', 'B6', 'B7']  # NIR y SWIR
+        }
+    },
+    'DATOS_SIMULADOS': {
+        'nombre': 'Datos Simulados',
+        'resolucion': '10m',
+        'revisita': '5 días',
+        'bandas': ['B2', 'B3', 'B4', 'B5', 'B8'],
+        'indices': ['NDVI', 'NDRE', 'GNDVI'],
+        'icono': '🔬'
+    }
 }
 
 # ===== NUEVAS METODOLOGÍAS PARA ESTIMAR NPK CON TELEDETECCIÓN =====
 METODOLOGIAS_NPK = {
-'SENTINEL-2': {
-'NITRÓGENO': {
-'metodo': 'NDRE + Regresión Espectral',
-'formula': 'N = 150 * NDRE + 50 * (B8A/B5)',
-'bandas': ['B5', 'B8A'],
-'r2_esperado': 0.75,
-'referencia': 'Clevers & Gitelson, 2013'
-},
-'FÓSFORO': {
-'metodo': 'Índice SWIR-VIS',
-'formula': 'P = 80 * (B11/B4)^0.5 + 20',
-'bandas': ['B4', 'B11'],
-'r2_esperado': 0.65,
-'referencia': 'Miphokasap et al., 2012'
-},
-'POTASIO': {
-'metodo': 'Índice de Estrés Hídrico',
-'formula': 'K = 120 * (B8 - B11)/(B8 + B12) + 40',
-'bandas': ['B8', 'B11', 'B12'],
-'r2_esperado': 0.70,
-'referencia': 'Jackson et al., 2004'
-}
-},
-'LANDSAT-8': {
-'NITRÓGENO': {
-'metodo': 'TCARI/OSAVI',
-'formula': 'N = 3*[(B5-B4)-0.2*(B5-B3)*(B5/B4)] / (1.16*(B5-B4)/(B5+B4+0.16))',
-'bandas': ['B3', 'B4', 'B5'],
-'r2_esperado': 0.72,
-'referencia': 'Haboudane et al., 2002'
-},
-'FÓSFORO': {
-'metodo': 'Relación SWIR1-Verde',
-'formula': 'P = 60 * (B6/B3)^0.7 + 25',
-'bandas': ['B3', 'B6'],
-'r2_esperado': 0.68,
-'referencia': 'Chen et al., 2010'
-},
-'POTASIO': {
-'metodo': 'Índice NIR-SWIR',
-'formula': 'K = 100 * (B5 - B7)/(B5 + B7) + 50',
-'bandas': ['B5', 'B7'],
-'r2_esperado': 0.69,
-'referencia': 'Thenkabail et al., 2000'
-}
-}
+    'SENTINEL-2': {
+        'NITRÓGENO': {
+            'metodo': 'NDRE + Regresión Espectral',
+            'formula': 'N = 150 * NDRE + 50 * (B8A/B5)',
+            'bandas': ['B5', 'B8A'],
+            'r2_esperado': 0.75,
+            'referencia': 'Clevers & Gitelson, 2013'
+        },
+        'FÓSFORO': {
+            'metodo': 'Índice SWIR-VIS',
+            'formula': 'P = 80 * (B11/B4)^0.5 + 20',
+            'bandas': ['B4', 'B11'],
+            'r2_esperado': 0.65,
+            'referencia': 'Miphokasap et al., 2012'
+        },
+        'POTASIO': {
+            'metodo': 'Índice de Estrés Hídrico',
+            'formula': 'K = 120 * (B8 - B11)/(B8 + B12) + 40',
+            'bandas': ['B8', 'B11', 'B12'],
+            'r2_esperado': 0.70,
+            'referencia': 'Jackson et al., 2004'
+        }
+    },
+    'LANDSAT-8': {
+        'NITRÓGENO': {
+            'metodo': 'TCARI/OSAVI',
+            'formula': 'N = 3*[(B5-B4)-0.2*(B5-B3)*(B5/B4)] / (1.16*(B5-B4)/(B5+B4+0.16))',
+            'bandas': ['B3', 'B4', 'B5'],
+            'r2_esperado': 0.72,
+            'referencia': 'Haboudane et al., 2002'
+        },
+        'FÓSFORO': {
+            'metodo': 'Relación SWIR1-Verde',
+            'formula': 'P = 60 * (B6/B3)^0.7 + 25',
+            'bandas': ['B3', 'B6'],
+            'r2_esperado': 0.68,
+            'referencia': 'Chen et al., 2010'
+        },
+        'POTASIO': {
+            'metodo': 'Índice NIR-SWIR',
+            'formula': 'K = 100 * (B5 - B7)/(B5 + B7) + 50',
+            'bandas': ['B5', 'B7'],
+            'r2_esperado': 0.69,
+            'referencia': 'Thenkabail et al., 2000'
+        }
+    }
 }
 
 # ===== CONFIGURACIÓN =====
@@ -648,291 +648,291 @@ METODOLOGIAS_NPK = {
 
 # ===== VARIEDADES DE VID PARA ARGENTINA =====
 VARIEDADES_VID = {
-'MALBEC': {
-'RENDIMIENTO_BASE': 10.0,
-'RENDIMIENTO_OPTIMO': 15.0,
-'RESPUESTA_N': 0.04,
-'RESPUESTA_P': 0.06,
-'RESPUESTA_K': 0.03,
-'NITROGENO_OPTIMO': 60,
-'FOSFORO_OPTIMO': 35,
-'POTASIO_OPTIMO': 150,
-'CICLO': 180,
-'TIPO': 'Tinto',
-'REGION': 'Mendoza'
-},
-'CABERNET SAUVIGNON': {
-'RENDIMIENTO_BASE': 8.0,
-'RENDIMIENTO_OPTIMO': 12.0,
-'RESPUESTA_N': 0.03,
-'RESPUESTA_P': 0.05,
-'RESPUESTA_K': 0.04,
-'NITROGENO_OPTIMO': 55,
-'FOSFORO_OPTIMO': 32,
-'POTASIO_OPTIMO': 145,
-'CICLO': 190,
-'TIPO': 'Tinto',
-'REGION': 'Mendoza'
-},
-'TORRONTÉS': {
-'RENDIMIENTO_BASE': 12.0,
-'RENDIMIENTO_OPTIMO': 18.0,
-'RESPUESTA_N': 0.05,
-'RESPUESTA_P': 0.07,
-'RESPUESTA_K': 0.035,
-'NITROGENO_OPTIMO': 65,
-'FOSFORO_OPTIMO': 38,
-'POTASIO_OPTIMO': 155,
-'CICLO': 175,
-'TIPO': 'Blanco',
-'REGION': 'Salta'
-},
-'CHARDONNAY': {
-'RENDIMIENTO_BASE': 9.0,
-'RENDIMIENTO_OPTIMO': 14.0,
-'RESPUESTA_N': 0.035,
-'RESPUESTA_P': 0.055,
-'RESPUESTA_K': 0.032,
-'NITROGENO_OPTIMO': 58,
-'FOSFORO_OPTIMO': 34,
-'POTASIO_OPTIMO': 148,
-'CICLO': 185,
-'TIPO': 'Blanco',
-'REGION': 'Mendoza'
-}
+    'MALBEC': {
+        'RENDIMIENTO_BASE': 10.0,
+        'RENDIMIENTO_OPTIMO': 15.0,
+        'RESPUESTA_N': 0.04,
+        'RESPUESTA_P': 0.06,
+        'RESPUESTA_K': 0.03,
+        'NITROGENO_OPTIMO': 60,
+        'FOSFORO_OPTIMO': 35,
+        'POTASIO_OPTIMO': 150,
+        'CICLO': 180,
+        'TIPO': 'Tinto',
+        'REGION': 'Mendoza'
+    },
+    'CABERNET SAUVIGNON': {
+        'RENDIMIENTO_BASE': 8.0,
+        'RENDIMIENTO_OPTIMO': 12.0,
+        'RESPUESTA_N': 0.03,
+        'RESPUESTA_P': 0.05,
+        'RESPUESTA_K': 0.04,
+        'NITROGENO_OPTIMO': 55,
+        'FOSFORO_OPTIMO': 32,
+        'POTASIO_OPTIMO': 145,
+        'CICLO': 190,
+        'TIPO': 'Tinto',
+        'REGION': 'Mendoza'
+    },
+    'TORRONTÉS': {
+        'RENDIMIENTO_BASE': 12.0,
+        'RENDIMIENTO_OPTIMO': 18.0,
+        'RESPUESTA_N': 0.05,
+        'RESPUESTA_P': 0.07,
+        'RESPUESTA_K': 0.035,
+        'NITROGENO_OPTIMO': 65,
+        'FOSFORO_OPTIMO': 38,
+        'POTASIO_OPTIMO': 155,
+        'CICLO': 175,
+        'TIPO': 'Blanco',
+        'REGION': 'Salta'
+    },
+    'CHARDONNAY': {
+        'RENDIMIENTO_BASE': 9.0,
+        'RENDIMIENTO_OPTIMO': 14.0,
+        'RESPUESTA_N': 0.035,
+        'RESPUESTA_P': 0.055,
+        'RESPUESTA_K': 0.032,
+        'NITROGENO_OPTIMO': 58,
+        'FOSFORO_OPTIMO': 34,
+        'POTASIO_OPTIMO': 148,
+        'CICLO': 185,
+        'TIPO': 'Blanco',
+        'REGION': 'Mendoza'
+    }
 }
 
 # ===== VARIEDADES DE OLIVO PARA ARGENTINA =====
 VARIEDADES_OLIVO = {
-'ARBEQUINA': {
-'RENDIMIENTO_BASE': 8.0,
-'RENDIMIENTO_OPTIMO': 12.0,
-'RESPUESTA_N': 0.025,
-'RESPUESTA_P': 0.04,
-'RESPUESTA_K': 0.03,
-'NITROGENO_OPTIMO': 50,
-'FOSFORO_OPTIMO': 25,
-'POTASIO_OPTIMO': 80,
-'CICLO': 210,
-'ACEITE': 'Alto (22-25%)',
-'REGION': 'La Rioja'
-},
-'MANZANILLA': {
-'RENDIMIENTO_BASE': 6.0,
-'RENDIMIENTO_OPTIMO': 9.0,
-'RESPUESTA_N': 0.02,
-'RESPUESTA_P': 0.035,
-'RESPUESTA_K': 0.025,
-'NITROGENO_OPTIMO': 45,
-'FOSFORO_OPTIMO': 22,
-'POTASIO_OPTIMO': 75,
-'CICLO': 200,
-'ACEITE': 'Medio (18-20%)',
-'REGION': 'Catamarca'
-},
-'PICUAL': {
-'RENDIMIENTO_BASE': 10.0,
-'RENDIMIENTO_OPTIMO': 15.0,
-'RESPUESTA_N': 0.03,
-'RESPUESTA_P': 0.045,
-'RESPUESTA_K': 0.035,
-'NITROGENO_OPTIMO': 55,
-'FOSFORO_OPTIMO': 28,
-'POTASIO_OPTIMO': 85,
-'CICLO': 220,
-'ACEITE': 'Muy Alto (25-28%)',
-'REGION': 'Mendoza'
-},
-'FRANTOIO': {
-'RENDIMIENTO_BASE': 7.0,
-'RENDIMIENTO_OPTIMO': 11.0,
-'RESPUESTA_N': 0.028,
-'RESPUESTA_P': 0.042,
-'RESPUESTA_K': 0.032,
-'NITROGENO_OPTIMO': 52,
-'FOSFORO_OPTIMO': 26,
-'POTASIO_OPTIMO': 82,
-'CICLO': 215,
-'ACEITE': 'Alto (20-23%)',
-'REGION': 'San Juan'
-}
+    'ARBEQUINA': {
+        'RENDIMIENTO_BASE': 8.0,
+        'RENDIMIENTO_OPTIMO': 12.0,
+        'RESPUESTA_N': 0.025,
+        'RESPUESTA_P': 0.04,
+        'RESPUESTA_K': 0.03,
+        'NITROGENO_OPTIMO': 50,
+        'FOSFORO_OPTIMO': 25,
+        'POTASIO_OPTIMO': 80,
+        'CICLO': 210,
+        'ACEITE': 'Alto (22-25%)',
+        'REGION': 'La Rioja'
+    },
+    'MANZANILLA': {
+        'RENDIMIENTO_BASE': 6.0,
+        'RENDIMIENTO_OPTIMO': 9.0,
+        'RESPUESTA_N': 0.02,
+        'RESPUESTA_P': 0.035,
+        'RESPUESTA_K': 0.025,
+        'NITROGENO_OPTIMO': 45,
+        'FOSFORO_OPTIMO': 22,
+        'POTASIO_OPTIMO': 75,
+        'CICLO': 200,
+        'ACEITE': 'Medio (18-20%)',
+        'REGION': 'Catamarca'
+    },
+    'PICUAL': {
+        'RENDIMIENTO_BASE': 10.0,
+        'RENDIMIENTO_OPTIMO': 15.0,
+        'RESPUESTA_N': 0.03,
+        'RESPUESTA_P': 0.045,
+        'RESPUESTA_K': 0.035,
+        'NITROGENO_OPTIMO': 55,
+        'FOSFORO_OPTIMO': 28,
+        'POTASIO_OPTIMO': 85,
+        'CICLO': 220,
+        'ACEITE': 'Muy Alto (25-28%)',
+        'REGION': 'Mendoza'
+    },
+    'FRANTOIO': {
+        'RENDIMIENTO_BASE': 7.0,
+        'RENDIMIENTO_OPTIMO': 11.0,
+        'RESPUESTa_N': 0.028,
+        'RESPUESTA_P': 0.042,
+        'RESPUESTA_K': 0.032,
+        'NITROGENO_OPTIMO': 52,
+        'FOSFORO_OPTIMO': 26,
+        'POTASIO_OPTIMO': 82,
+        'CICLO': 215,
+        'ACEITE': 'Alto (20-23%)',
+        'REGION': 'San Juan'
+    }
 }
 
 # ===== VARIEDADES DE HORTALIZAS DE HOJA PARA ARGENTINA =====
 VARIEDADES_HORTALIZAS = {
-'LECHUGA CRESPA': {
-'RENDIMIENTO_BASE': 25.0,
-'RENDIMIENTO_OPTIMO': 40.0,
-'RESPUESTA_N': 0.08,
-'RESPUESTA_P': 0.12,
-'RESPUESTA_K': 0.06,
-'NITROGENO_OPTIMO': 120,
-'FOSFORO_OPTIMO': 60,
-'POTASIO_OPTIMO': 150,
-'CICLO': 45,
-'TIPO': 'Hoja',
-'REGION': 'Cinturón Verde'
-},
-'ESPINACA': {
-'RENDIMIENTO_BASE': 15.0,
-'RENDIMIENTO_OPTIMO': 25.0,
-'RESPUESTA_N': 0.07,
-'RESPUESTA_P': 0.10,
-'RESPUESTA_K': 0.05,
-'NITROGENO_OPTIMO': 100,
-'FOSFORO_OPTIMO': 50,
-'POTASIO_OPTIMO': 120,
-'CICLO': 40,
-'TIPO': 'Hoja',
-'REGION': 'Cinturón Verde'
-},
-'ACELGA': {
-'RENDIMIENTO_BASE': 20.0,
-'RENDIMIENTO_OPTIMO': 35.0,
-'RESPUESTA_N': 0.075,
-'RESPUESTA_P': 0.11,
-'RESPUESTA_K': 0.055,
-'NITROGENO_OPTIMO': 110,
-'FOSFORO_OPTIMO': 55,
-'POTASIO_OPTIMO': 135,
-'CICLO': 55,
-'TIPO': 'Hoja',
-'REGION': 'Cinturón Verde'
-},
-'RÚCULA': {
-'RENDIMIENTO_BASE': 18.0,
-'RENDIMIENTO_OPTIMO': 30.0,
-'RESPUESTA_N': 0.085,
-'RESPUESTA_P': 0.13,
-'RESPUESTA_K': 0.065,
-'NITROGENO_OPTIMO': 125,
-'FOSFORO_OPTIMO': 65,
-'POTASIO_OPTIMO': 160,
-'CICLO': 35,
-'TIPO': 'Hoja',
-'REGION': 'Cinturón Verde'
-}
+    'LECHUGA CRESPA': {
+        'RENDIMIENTO_BASE': 25.0,
+        'RENDIMIENTO_OPTIMO': 40.0,
+        'RESPUESTA_N': 0.08,
+        'RESPUESTA_P': 0.12,
+        'RESPUESTA_K': 0.06,
+        'NITROGENO_OPTIMO': 120,
+        'FOSFORO_OPTIMO': 60,
+        'POTASIO_OPTIMO': 150,
+        'CICLO': 45,
+        'TIPO': 'Hoja',
+        'REGION': 'Cinturón Verde'
+    },
+    'ESPINACA': {
+        'RENDIMIENTO_BASE': 15.0,
+        'RENDIMIENTO_OPTIMO': 25.0,
+        'RESPUESTA_N': 0.07,
+        'RESPUESTA_P': 0.10,
+        'RESPUESTA_K': 0.05,
+        'NITROGENO_OPTIMO': 100,
+        'FOSFORO_OPTIMO': 50,
+        'POTASIO_OPTIMO': 120,
+        'CICLO': 40,
+        'TIPO': 'Hoja',
+        'REGION': 'Cinturón Verde'
+    },
+    'ACELGA': {
+        'RENDIMIENTO_BASE': 20.0,
+        'RENDIMIENTO_OPTIMO': 35.0,
+        'RESPUESTA_N': 0.075,
+        'RESPUESTA_P': 0.11,
+        'RESPUESTA_K': 0.055,
+        'NITROGENO_OPTIMO': 110,
+        'FOSFORO_OPTIMO': 55,
+        'POTASIO_OPTIMO': 135,
+        'CICLO': 55,
+        'TIPO': 'Hoja',
+        'REGION': 'Cinturón Verde'
+    },
+    'RÚCULA': {
+        'RENDIMIENTO_BASE': 18.0,
+        'RENDIMIENTO_OPTIMO': 30.0,
+        'RESPUESTA_N': 0.085,
+        'RESPUESTA_P': 0.13,
+        'RESPUESTA_K': 0.065,
+        'NITROGENO_OPTIMO': 125,
+        'FOSFORO_OPTIMO': 65,
+        'POTASIO_OPTIMO': 160,
+        'CICLO': 35,
+        'TIPO': 'Hoja',
+        'REGION': 'Cinturón Verde'
+    }
 }
 
 PARAMETROS_CULTIVOS = {
-'VID': {
-'NITROGENO': {'min': 40, 'max': 80, 'optimo': 60},
-'FOSFORO': {'min': 25, 'max': 45, 'optimo': 35},
-'POTASIO': {'min': 120, 'max': 180, 'optimo': 150},
-'MATERIA_ORGANICA_OPTIMA': 2.5,
-'HUMEDAD_OPTIMA': 0.25,
-'NDVI_OPTIMO': 0.75,
-'NDRE_OPTIMO': 0.45,
-'TCARI_OPTIMO': 0.35,
-'OSAVI_OPTIMO': 0.55,
-'RENDIMIENTO_BASE': 10.0,
-'RENDIMIENTO_OPTIMO': 15.0,
-'RESPUESTA_N': 0.04,
-'RESPUESTA_P': 0.06,
-'RESPUESTA_K': 0.03,
-'FACTOR_CLIMA': 0.8,
-'VARIEDAD_DEFAULT': 'MALBEC'
-},
-'OLIVO': {
-'NITROGENO': {'min': 35, 'max': 65, 'optimo': 50},
-'FOSFORO': {'min': 20, 'max': 35, 'optimo': 28},
-'POTASIO': {'min': 60, 'max': 100, 'optimo': 80},
-'MATERIA_ORGANICA_OPTIMA': 2.0,
-'HUMEDAD_OPTIMA': 0.20,
-'NDVI_OPTIMO': 0.70,
-'NDRE_OPTIMO': 0.40,
-'TCARI_OPTIMO': 0.30,
-'OSAVI_OPTIMO': 0.50,
-'RENDIMIENTO_BASE': 8.0,
-'RENDIMIENTO_OPTIMO': 12.0,
-'RESPUESTA_N': 0.025,
-'RESPUESTA_P': 0.04,
-'RESPUESTA_K': 0.03,
-'FACTOR_CLIMA': 0.75,
-'VARIEDAD_DEFAULT': 'ARBEQUINA'
-},
-'HORTALIZAS DE HOJA': {
-'NITROGENO': {'min': 90, 'max': 140, 'optimo': 115},
-'FOSFORO': {'min': 45, 'max': 75, 'optimo': 58},
-'POTASIO': {'min': 100, 'max': 180, 'optimo': 140},
-'MATERIA_ORGANICA_OPTIMA': 3.5,
-'HUMEDAD_OPTIMA': 0.35,
-'NDVI_OPTIMO': 0.85,
-'NDRE_OPTIMO': 0.55,
-'TCARI_OPTIMO': 0.45,
-'OSAVI_OPTIMO': 0.65,
-'RENDIMIENTO_BASE': 20.0,
-'RENDIMIENTO_OPTIMO': 32.0,
-'RESPUESTA_N': 0.075,
-'RESPUESTA_P': 0.11,
-'RESPUESTA_K': 0.055,
-'FACTOR_CLIMA': 0.85,
-'VARIEDAD_DEFAULT': 'LECHUGA CRESPA'
-}
+    'VID': {
+        'NITROGENO': {'min': 40, 'max': 80, 'optimo': 60},
+        'FOSFORO': {'min': 25, 'max': 45, 'optimo': 35},
+        'POTASIO': {'min': 120, 'max': 180, 'optimo': 150},
+        'MATERIA_ORGANICA_OPTIMA': 2.5,
+        'HUMEDAD_OPTIMA': 0.25,
+        'NDVI_OPTIMO': 0.75,
+        'NDRE_OPTIMO': 0.45,
+        'TCARI_OPTIMO': 0.35,
+        'OSAVI_OPTIMO': 0.55,
+        'RENDIMIENTO_BASE': 10.0,
+        'RENDIMIENTO_OPTIMO': 15.0,
+        'RESPUESTA_N': 0.04,
+        'RESPUESTA_P': 0.06,
+        'RESPUESTA_K': 0.03,
+        'FACTOR_CLIMA': 0.8,
+        'VARIEDAD_DEFAULT': 'MALBEC'
+    },
+    'OLIVO': {
+        'NITROGENO': {'min': 35, 'max': 65, 'optimo': 50},
+        'FOSFORO': {'min': 20, 'max': 35, 'optimo': 28},
+        'POTASIO': {'min': 60, 'max': 100, 'optimo': 80},
+        'MATERIA_ORGANICA_OPTIMA': 2.0,
+        'HUMEDAD_OPTIMA': 0.20,
+        'NDVI_OPTIMO': 0.70,
+        'NDRE_OPTIMO': 0.40,
+        'TCARI_OPTIMO': 0.30,
+        'OSAVI_OPTIMO': 0.50,
+        'RENDIMIENTO_BASE': 8.0,
+        'RENDIMIENTO_OPTIMO': 12.0,
+        'RESPUESTA_N': 0.025,
+        'RESPUESTA_P': 0.04,
+        'RESPUESTA_K': 0.03,
+        'FACTOR_CLIMA': 0.75,
+        'VARIEDAD_DEFAULT': 'ARBEQUINA'
+    },
+    'HORTALIZAS DE HOJA': {
+        'NITROGENO': {'min': 90, 'max': 140, 'optimo': 115},
+        'FOSFORO': {'min': 45, 'max': 75, 'optimo': 58},
+        'POTASIO': {'min': 100, 'max': 180, 'optimo': 140},
+        'MATERIA_ORGANICA_OPTIMA': 3.5,
+        'HUMEDAD_OPTIMA': 0.35,
+        'NDVI_OPTIMO': 0.85,
+        'NDRE_OPTIMO': 0.55,
+        'TCARI_OPTIMO': 0.45,
+        'OSAVI_OPTIMO': 0.65,
+        'RENDIMIENTO_BASE': 20.0,
+        'RENDIMIENTO_OPTIMO': 32.0,
+        'RESPUESTA_N': 0.075,
+        'RESPUESTA_P': 0.11,
+        'RESPUESTA_K': 0.055,
+        'FACTOR_CLIMA': 0.85,
+        'VARIEDAD_DEFAULT': 'LECHUGA CRESPA'
+    }
 }
 
 # ===== PARÁMETROS ECONÓMICOS PARA ARGENTINA (2025) - ACTUALIZADOS =====
 PARAMETROS_ECONOMICOS = {
-'PRECIOS_CULTIVOS': {
-'VID': {
-'precio_ton': 800,  # USD/ton (uva para vino)
-'costo_semilla': 3000,  # USD/ha (plantines)
-'costo_herbicidas': 120,
-'costo_insecticidas': 150,
-'costo_labores': 400,
-'costo_cosecha': 250,
-'costo_otros': 200
-},
-'OLIVO': {
-'precio_ton': 1200,  # USD/ton (aceituna para aceite)
-'costo_semilla': 2500,  # USD/ha (plantines)
-'costo_herbicidas': 100,
-'costo_insecticidas': 120,
-'costo_labores': 350,
-'costo_cosecha': 300,
-'costo_otros': 180
-},
-'HORTALIZAS DE HOJA': {
-'precio_ton': 500,  # USD/ton
-'costo_semilla': 800,  # USD/ha
-'costo_herbicidas': 150,
-'costo_insecticidas': 200,
-'costo_labores': 300,
-'costo_cosecha': 180,
-'costo_otros': 120
-}
-},
-'PRECIOS_FERTILIZANTES': {
-'UREA': 450,  # USD/ton
-'FOSFATO_DIAMONICO': 650,  # USD/ton
-'CLORURO_POTASIO': 400,  # USD/ton
-'SULFATO_AMONICO': 350,  # USD/ton
-'SUPERFOSFATO': 420  # USD/ton
-},
-'CONVERSION_NUTRIENTES': {
-'NITRÓGENO': {
-'fuente_principal': 'UREA',
-'contenido_nutriente': 0.46,  # 46% N
-'eficiencia': 0.6  # 60% eficiencia
-},
-'FÓSFORO': {
-'fuente_principal': 'FOSFATO_DIAMONICO',
-'contenido_nutriente': 0.18,  # 18% P2O5 (46% P)
-'eficiencia': 0.3  # 30% eficiencia
-},
-'POTASIO': {
-'fuente_principal': 'CLORURO_POTASIO',
-'contenido_nutriente': 0.60,  # 60% K2O (50% K)
-'eficiencia': 0.5  # 50% eficiencia
-}
-},
-'PARAMETROS_FINANCIEROS': {
-'tasa_descuento': 0.10,  # 10% anual
-'periodo_analisis': 5,  # 5 años
-'inflacion_esperada': 0.08,  # 8% anual
-'impuestos': 0.35,  # 35%
-'subsidios': 0.05  # 5% de subsidios
-}
+    'PRECIOS_CULTIVOS': {
+        'VID': {
+            'precio_ton': 800,  # USD/ton (uva para vino)
+            'costo_semilla': 3000,  # USD/ha (plantines)
+            'costo_herbicidas': 120,
+            'costo_insecticidas': 150,
+            'costo_labores': 400,
+            'costo_cosecha': 250,
+            'costo_otros': 200
+        },
+        'OLIVO': {
+            'precio_ton': 1200,  # USD/ton (aceituna para aceite)
+            'costo_semilla': 2500,  # USD/ha (plantines)
+            'costo_herbicidas': 100,
+            'costo_insecticidas': 120,
+            'costo_labores': 350,
+            'costo_cosecha': 300,
+            'costo_otros': 180
+        },
+        'HORTALIZAS DE HOJA': {
+            'precio_ton': 500,  # USD/ton
+            'costo_semilla': 800,  # USD/ha
+            'costo_herbicidas': 150,
+            'costo_insecticidas': 200,
+            'costo_labores': 300,
+            'costo_cosecha': 180,
+            'costo_otros': 120
+        }
+    },
+    'PRECIOS_FERTILIZANTES': {
+        'UREA': 450,  # USD/ton
+        'FOSFATO_DIAMONICO': 650,  # USD/ton
+        'CLORURO_POTASIO': 400,  # USD/ton
+        'SULFATO_AMONICO': 350,  # USD/ton
+        'SUPERFOSFATO': 420  # USD/ton
+    },
+    'CONVERSION_NUTRIENTES': {
+        'NITRÓGENO': {
+            'fuente_principal': 'UREA',
+            'contenido_nutriente': 0.46,  # 46% N
+            'eficiencia': 0.6  # 60% eficiencia
+        },
+        'FÓSFORO': {
+            'fuente_principal': 'FOSFATO_DIAMONICO',
+            'contenido_nutriente': 0.18,  # 18% P2O5 (46% P)
+            'eficiencia': 0.3  # 30% eficiencia
+        },
+        'POTASIO': {
+            'fuente_principal': 'CLORURO_POTASIO',
+            'contenido_nutriente': 0.60,  # 60% K2O (50% K)
+            'eficiencia': 0.5  # 50% eficiencia
+        }
+    },
+    'PARAMETROS_FINANCIEROS': {
+        'tasa_descuento': 0.10,  # 10% anual
+        'periodo_analisis': 5,  # 5 años
+        'inflacion_esperada': 0.08,  # 8% anual
+        'impuestos': 0.35,  # 35%
+        'subsidios': 0.05  # 5% de subsidios
+    }
 }
 
 # ===== NUEVA CLASIFICACIÓN USDA PARA TEXTURA DE SUELO =====
@@ -1004,220 +1004,220 @@ def clasificar_textura_usda(arena, limo, arcilla):
 
 # ===== PARÁMETROS DE TEXTURA DEL SUELO POR CULTIVO - ACTUALIZADO A USDA =====
 TEXTURA_SUELO_OPTIMA = {
-'VID': {
-'textura_optima': 'Franco arenoso',
-'arena_optima': 60,
-'limo_optima': 25,
-'arcilla_optima': 15,
-'densidad_aparente_optima': 1.4,
-'porosidad_optima': 0.45
-},
-'OLIVO': {
-'textura_optima': 'Franco limoso',
-'arena_optima': 45,
-'limo_optima': 35,
-'arcilla_optima': 20,
-'densidad_aparente_optima': 1.3,
-'porosidad_optima': 0.48
-},
-'HORTALIZAS DE HOJA': {
-'textura_optima': 'Franco limoso',
-'arena_optima': 40,
-'limo_optima': 40,
-'arcilla_optima': 20,
-'densidad_aparente_optima': 1.2,
-'porosidad_optima': 0.55
-}
+    'VID': {
+        'textura_optima': 'Franco arenoso',
+        'arena_optima': 60,
+        'limo_optima': 25,
+        'arcilla_optima': 15,
+        'densidad_aparente_optima': 1.4,
+        'porosidad_optima': 0.45
+    },
+    'OLIVO': {
+        'textura_optima': 'Franco limoso',
+        'arena_optima': 45,
+        'limo_optima': 35,
+        'arcilla_optima': 20,
+        'densidad_aparente_optima': 1.3,
+        'porosidad_optima': 0.48
+    },
+    'HORTALIZAS DE HOJA': {
+        'textura_optima': 'Franco limoso',
+        'arena_optima': 40,
+        'limo_optima': 40,
+        'arcilla_optima': 20,
+        'densidad_aparente_optima': 1.2,
+        'porosidad_optima': 0.55
+    }
 }
 
 # CLASIFICACIÓN DE PENDIENTES
 CLASIFICACION_PENDIENTES = {
-'PLANA (0-2%)': {'min': 0, 'max': 2, 'color': '#4daf4a', 'factor_erosivo': 0.1},
-'SUAVE (2-5%)': {'min': 2, 'max': 5, 'color': '#a6d96a', 'factor_erosivo': 0.3},
-'MODERADA (5-10%)': {'min': 5, 'max': 10, 'color': '#ffffbf', 'factor_erosivo': 0.6},
-'FUERTE (10-15%)': {'min': 10, 'max': 15, 'color': '#fdae61', 'factor_erosivo': 0.8},
-'MUY FUERTE (15-25%)': {'min': 15, 'max': 25, 'color': '#f46d43', 'factor_erosivo': 0.9},
-'EXTREMA (>25%)': {'min': 25, 'max': 100, 'color': '#d73027', 'factor_erosivo': 1.0}
+    'PLANA (0-2%)': {'min': 0, 'max': 2, 'color': '#4daf4a', 'factor_erosivo': 0.1},
+    'SUAVE (2-5%)': {'min': 2, 'max': 5, 'color': '#a6d96a', 'factor_erosivo': 0.3},
+    'MODERADA (5-10%)': {'min': 5, 'max': 10, 'color': '#ffffbf', 'factor_erosivo': 0.6},
+    'FUERTE (10-15%)': {'min': 10, 'max': 15, 'color': '#fdae61', 'factor_erosivo': 0.8},
+    'MUY FUERTE (15-25%)': {'min': 15, 'max': 25, 'color': '#f46d43', 'factor_erosivo': 0.9},
+    'EXTREMA (>25%)': {'min': 25, 'max': 100, 'color': '#d73027', 'factor_erosivo': 1.0}
 }
 
 # ===== RECOMENDACIONES POR TIPO DE TEXTURA USDA - ACTUALIZADO =====
 RECOMENDACIONES_TEXTURA = {
-'Franco limoso': {
-'propiedades': [
-"Equilibrio ideal arena-limo-arcilla",
-"Excelente estructura y porosidad",
-"Alta capacidad de retención de agua",
-"Fertilidad natural alta"
-],
-'limitantes': [
-"Puede compactarse con maquinaria pesada",
-"Moderadamente susceptible a erosión"
-],
-'manejo': [
-"Labranza mínima o conservacionista",
-"Rotación de cultivos",
-"Uso de coberturas vegetales",
-"Fertilización balanceada"
-]
-},
-'Franco': {
-'propiedades': [
-"Buena aireación y drenaje",
-"Fácil labranza",
-"Calentamiento rápido en primavera",
-"Retención moderada de nutrientes"
-],
-'limitantes': [
-"Menor retención de agua que suelos más arcillosos",
-"Requiere riego más frecuente"
-],
-'manejo': [
-"Riego por goteo o aspersión",
-"Fertilización fraccionada",
-"Mulching para conservar humedad"
-]
-},
-'Franco arcilloso limoso': {
-'propiedades': [
-"Alta capacidad de retención de agua",
-"Excelente retención de nutrientes",
-"Estructura estable",
-"Resistente a la erosión"
-],
-'limitantes': [
-"Lento drenaje",
-"Difícil labranza en condiciones húmedas",
-"Lento calentamiento en primavera"
-],
-'manejo': [
-"Sistemas de drenaje",
-"Labranza en condiciones óptimas de humedad",
-"Incorporación de materia orgánica"
-]
-},
-'Franco arenoso': {
-'propiedades': [
-"Excelente drenaje",
-"Fácil labranza en cualquier condición",
-"Rápido calentamiento",
-"Buen desarrollo radicular"
-],
-'limitantes': [
-"Baja retención de agua y nutrientes",
-"Alta lixiviación de fertilizantes",
-"Baja materia orgánica"
-],
-'manejo': [
-"Riego frecuente en pequeñas cantidades",
-"Fertilización fraccionada",
-"Aplicación de materia orgánica",
-"Cultivos de cobertura"
-]
-},
-'Arcilla': {
-'propiedades': [
-"Alta capacidad de retención de agua y nutrientes",
-"Estructura estable",
-"Alta fertilidad potencial"
-],
-'limitantes': [
-"Muy pesada cuando está húmeda",
-"Drenaje muy lento",
-"Difícil labranza",
-"Propensa a compactación"
-],
-'manejo': [
-"Drenaje artificial obligatorio",
-"Labranza en condiciones óptimas",
-"Encalamiento para mejorar estructura",
-"Cultivos tolerantes a humedad"
-]
-},
-'Arena franca': {
-'propiedades': [
-"Drenaje muy rápido",
-"Fácil labranza",
-"Rápido calentamiento",
-"Bajo riesgo de compactación"
-],
-'limitantes': [
-"Muy baja retención de agua",
-"Alta lixiviación de nutrientes",
-"Baja fertilidad natural"
-],
-'manejo': [
-"Riego por goteo con alta frecuencia",
-"Fertilización en múltiples aplicaciones",
-"Aplicación intensiva de materia orgánica",
-"Mulching para conservar humedad"
-]
-},
-'Arcilla limosa': {
-'propiedades': [
-"Muy alta retención de agua y nutrientes",
-"Estructura muy estable",
-"Excelente para cultivos exigentes"
-],
-'limitantes': [
-"Drenaje extremadamente lento",
-"Muy pesada para labranza",
-"Requiere manejo especializado"
-],
-'manejo': [
-"Sistemas de drenaje avanzados",
-"Labranza solo en condiciones óptimas",
-"Aplicación de yeso para mejorar estructura",
-"Camas elevadas para cultivos"
-]
-},
-'Limo': {
-'propiedades': [
-"Alta capacidad de retención de agua",
-"Fácil labranza",
-"Buena fertilidad natural"
-],
-'limitantes': [
-"Susceptible a compactación",
-"Propenso a formación de costra superficial",
-"Baja estabilidad estructural"
-],
-'manejo': [
-"Evitar labranza en condiciones húmedas",
-"Uso de coberturas vegetales",
-"Aplicación de materia orgánica",
-"Riego por aspersión ligera"
-]
-}
+    'Franco limoso': {
+        'propiedades': [
+            "Equilibrio ideal arena-limo-arcilla",
+            "Excelente estructura y porosidad",
+            "Alta capacidad de retención de agua",
+            "Fertilidad natural alta"
+        ],
+        'limitantes': [
+            "Puede compactarse con maquinaria pesada",
+            "Moderadamente susceptible a erosión"
+        ],
+        'manejo': [
+            "Labranza mínima o conservacionista",
+            "Rotación de cultivos",
+            "Uso de coberturas vegetales",
+            "Fertilización balanceada"
+        ]
+    },
+    'Franco': {
+        'propiedades': [
+            "Buena aireación y drenaje",
+            "Fácil labranza",
+            "Calentamiento rápido en primavera",
+            "Retención moderada de nutrientes"
+        ],
+        'limitantes': [
+            "Menor retención de agua que suelos más arcillosos",
+            "Requiere riego más frecuente"
+        ],
+        'manejo': [
+            "Riego por goteo o aspersión",
+            "Fertilización fraccionada",
+            "Mulching para conservar humedad"
+        ]
+    },
+    'Franco arcilloso limoso': {
+        'propiedades': [
+            "Alta capacidad de retención de agua",
+            "Excelente retención de nutrientes",
+            "Estructura estable",
+            "Resistente a la erosión"
+        ],
+        'limitantes': [
+            "Lento drenaje",
+            "Difícil labranza en condiciones húmedas",
+            "Lento calentamiento en primavera"
+        ],
+        'manejo': [
+            "Sistemas de drenaje",
+            "Labranza en condiciones óptimas de humedad",
+            "Incorporación de materia orgánica"
+        ]
+    },
+    'Franco arenoso': {
+        'propiedades': [
+            "Excelente drenaje",
+            "Fácil labranza en cualquier condición",
+            "Rápido calentamiento",
+            "Buen desarrollo radicular"
+        ],
+        'limitantes': [
+            "Baja retención de agua y nutrientes",
+            "Alta lixiviación de fertilizantes",
+            "Baja materia orgánica"
+        ],
+        'manejo': [
+            "Riego frecuente en pequeñas cantidades",
+            "Fertilización fraccionada",
+            "Aplicación de materia orgánica",
+            "Cultivos de cobertura"
+        ]
+    },
+    'Arcilla': {
+        'propiedades': [
+            "Alta capacidad de retención de agua y nutrientes",
+            "Estructura estable",
+            "Alta fertilidad potencial"
+        ],
+        'limitantes': [
+            "Muy pesada cuando está húmeda",
+            "Drenaje muy lento",
+            "Difícil labranza",
+            "Propensa a compactación"
+        ],
+        'manejo': [
+            "Drenaje artificial obligatorio",
+            "Labranza en condiciones óptimas",
+            "Encalamiento para mejorar estructura",
+            "Cultivos tolerantes a humedad"
+        ]
+    },
+    'Arena franca': {
+        'propiedades': [
+            "Drenaje muy rápido",
+            "Fácil labranza",
+            "Rápido calentamiento",
+            "Bajo riesgo de compactación"
+        ],
+        'limitantes': [
+            "Muy baja retención de agua",
+            "Alta lixiviación de nutrientes",
+            "Baja fertilidad natural"
+        ],
+        'manejo': [
+            "Riego por goteo con alta frecuencia",
+            "Fertilización en múltiples aplicaciones",
+            "Aplicación intensiva de materia orgánica",
+            "Mulching para conservar humedad"
+        ]
+    },
+    'Arcilla limosa': {
+        'propiedades': [
+            "Muy alta retención de agua y nutrientes",
+            "Estructura muy estable",
+            "Excelente para cultivos exigentes"
+        ],
+        'limitantes': [
+            "Drenaje extremadamente lento",
+            "Muy pesada para labranza",
+            "Requiere manejo especializado"
+        ],
+        'manejo': [
+            "Sistemas de drenaje avanzados",
+            "Labranza solo en condiciones óptimas",
+            "Aplicación de yeso para mejorar estructura",
+            "Camas elevadas para cultivos"
+        ]
+    },
+    'Limo': {
+        'propiedades': [
+            "Alta capacidad de retención de agua",
+            "Fácil labranza",
+            "Buena fertilidad natural"
+        ],
+        'limitantes': [
+            "Susceptible a compactación",
+            "Propenso a formación de costra superficial",
+            "Baja estabilidad estructural"
+        ],
+        'manejo': [
+            "Evitar labranza en condiciones húmedas",
+            "Uso de coberturas vegetales",
+            "Aplicación de materia orgánica",
+            "Riego por aspersión ligera"
+        ]
+    }
 }
 
 # ICONOS Y COLORES POR CULTIVO - ACTUALIZADO PARA NUEVOS CULTIVOS
 ICONOS_CULTIVOS = {
-'VID': '🍇',
-'OLIVO': '🫒',
-'HORTALIZAS DE HOJA': '🥬'
+    'VID': '🍇',
+    'OLIVO': '🫒',
+    'HORTALIZAS DE HOJA': '🥬'
 }
 COLORES_CULTIVOS = {
-'VID': '#6A0DAD',
-'OLIVO': '#808000',
-'HORTALIZAS DE HOJA': '#90EE90'
+    'VID': '#6A0DAD',
+    'OLIVO': '#808000',
+    'HORTALIZAS DE HOJA': '#90EE90'
 }
 
 # PALETAS GEE MEJORADAS
 PALETAS_GEE = {
-'FERTILIDAD': ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850', '#006837'],
-'NITROGENO': ['#00ff00', '#80ff00', '#ffff00', '#ff8000', '#ff0000'],
-'FOSFORO': ['#0000ff', '#4040ff', '#8080ff', '#c0c0ff', '#ffffff'],
-'POTASIO': ['#4B0082', '#6A0DAD', '#8A2BE2', '#9370DB', '#D8BFD8'],
-'TEXTURA': ['#8c510a', '#d8b365', '#f6e8c3', '#c7eae5', '#5ab4ac', '#01665e'],
-'ELEVACION': ['#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b', '#ffffbf', '#fee08b', '#fdae61', '#f46d43', '#d73027'],
-'PENDIENTE': ['#4daf4a', '#a6d96a', '#ffffbf', '#fdae61', '#f46d43', '#d73027']
+    'FERTILIDAD': ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850', '#006837'],
+    'NITROGENO': ['#00ff00', '#80ff00', '#ffff00', '#ff8000', '#ff0000'],
+    'FOSFORO': ['#0000ff', '#4040ff', '#8080ff', '#c0c0ff', '#ffffff'],
+    'POTASIO': ['#4B0082', '#6A0DAD', '#8A2BE2', '#9370DB', '#D8BFD8'],
+    'TEXTURA': ['#8c510a', '#d8b365', '#f6e8c3', '#c7eae5', '#5ab4ac', '#01665e'],
+    'ELEVACION': ['#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b', '#ffffbf', '#fee08b', '#fdae61', '#f46d43', '#d73027'],
+    'PENDIENTE': ['#4daf4a', '#a6d96a', '#ffffbf', '#fdae61', '#f46d43', '#d73027']
 }
 
 # URLs de imágenes para sidebar - ACTUALIZADAS PARA NUEVOS CULTIVOS
 IMAGENES_CULTIVOS = {
-'VID': 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=200&h=150&q=80',
-'OLIVO': 'https://images.unsplash.com/photo-1615485500605-3866d64cd48d?auto=format&fit=crop&w=200&h=150&q=80',
-'HORTALIZAS DE HOJA': 'https://images.unsplash.com/photo-1590779033100-9f60a05a013d?auto=format&fit=crop&w=200&h=150&q=80',
+    'VID': 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=200&h=150&q=80',
+    'OLIVO': 'https://images.unsplash.com/photo-1615485500605-3866d64cd48d?auto=format&fit=crop&w=200&h=150&q=80',
+    'HORTALIZAS DE HOJA': 'https://images.unsplash.com/photo-1590779033100-9f60a05a013d?auto=format&fit=crop&w=200&h=150&q=80',
 }
 
 # ===== FUNCIÓN AUXILIAR PARA CONVERSIÓN RGBA =====
@@ -2389,251 +2389,60 @@ def crear_mapa_calor_rendimiento_actual(gdf_analizado, cultivo):
         except:
             pass
 
-        # Configurar título y etiquetas
-        ax.set_title(f'🌾 MAPA DE CALOR - RENDIMIENTO ACTUAL\n{cultivo} (ton/ha)',
-                     fontsize=16, fontweight='bold', pad=20, color='white')
-        ax.set_xlabel('Longitud', color='white')
-        ax.set_ylabel('Latitud', color='white')
-        ax.tick_params(colors='white')
-        ax.grid(True, alpha=0.1, color='#475569', linestyle='--')
+     # Configurar título y etiquetas
+ax.set_title(f'🚀 MAPA DE CALOR - RENDIMIENTO PROYECTADO\n{cultivo} (con fertilización óptima)',
+             fontsize=16, fontweight='bold', pad=20, color='white')
+ax.set_xlabel('Longitud', color='white')
+ax.set_ylabel('Latitud', color='white')
+ax.tick_params(colors='white')
+ax.grid(True, alpha=0.1, color='#475569', linestyle='--')
 
-        # Barra de colores profesional
-        cbar = plt.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
-        cbar.set_label('Rendimiento (ton/ha)', fontsize=12, fontweight='bold', color='white')
-        cbar.ax.yaxis.set_tick_params(color='white')
+# Barra de colores principal
+cbar1 = plt.colorbar(im_proyectado, ax=ax, shrink=0.8, pad=0.02)
+cbar1.set_label('Rendimiento Proyectado (ton/ha)', fontsize=12, fontweight='bold', color='white')
+cbar1.ax.yaxis.set_tick_params(color='white')
+
+# Barra de colores para incrementos (más pequeña)
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+divider = make_axes_locatable(ax)
+cax2 = divider.append_axes("right", size="3%", pad=0.15)
+cbar2 = plt.colorbar(im_incremento, cax=cax2)
+cbar2.set_label('Incremento (ton/ha)', fontsize=9, color='white')
+cbar2.ax.yaxis.set_tick_params(color='white')
+
+# Configurar colores de barras
+for cbar in [cbar1, cbar2]:
+    if cbar:  # ✅ CORRECCIÓN: Verificar que la barra de colores existe
         cbar.outline.set_edgecolor('white')
         plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
 
-        # Leyenda de interpretación
-        stats = {
-            'promedio': z.mean(),
-            'min': z.min(),
-            'max': z.max(),
-            'std': z.std()
-        }
-        info_text = f"""
-        📊 ESTADÍSTICAS:
-        • Promedio: {stats['promedio']:.1f} ton/ha
-        • Mínimo: {stats['min']:.1f} ton/ha
-        • Máximo: {stats['max']:.1f} ton/ha
-        • Variación: {stats['std']:.1f} ton/ha
-        """
-        ax.text(0.02, 0.98, info_text, transform=ax.transAxes, fontsize=9,
-                verticalalignment='top', color='white',
-                bbox=dict(boxstyle="round,pad=0.3",
-                          facecolor=(30/255, 41/255, 59/255, 0.9),
-                          alpha=0.9, edgecolor='white'))
+# Estadísticas
+stats_text = f"""
+📈 ESTADÍSTICAS DE POTENCIAL:
+• Actual: {z_actual.mean():.1f} ton/ha
+• Proyectado: {z_proyectado.mean():.1f} ton/ha
+• Incremento: +{incrementos.mean():.1f} ton/ha
+• Aumento: +{(incrementos.mean()/z_actual.mean()*100 if z_actual.mean()>0 else 0):.1f}%
+"""
+ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=9,
+        verticalalignment='top', color='white',
+        bbox=dict(boxstyle="round,pad=0.3",
+                  facecolor=(30/255, 41/255, 59/255, 0.9),
+                  alpha=0.9, edgecolor='white'))
 
-        plt.tight_layout()
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight',
-                    facecolor='#0f172a', transparent=False)
-        buf.seek(0)
-        plt.close()
-        return buf
+plt.tight_layout()
+buf = io.BytesIO()
+plt.savefig(buf, format='png', dpi=200, bbox_inches='tight',
+            facecolor='#0f172a', transparent=False)
+buf.seek(0)
+plt.close()
+return buf
 
-    except Exception as e:
-        st.error(f"Error creando mapa de calor actual: {str(e)}")
-        # Fallback al método anterior si falla la interpolación
-        return crear_mapa_calor_rendimiento_actual_fallback(gdf_analizado, cultivo)
-
-def crear_mapa_calor_rendimiento_actual_fallback(gdf_analizado, cultivo):
-    """Versión fallback sin interpolación"""
-    try:
-        gdf_plot = gdf_analizado.to_crs(epsg=3857)
-        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
-        fig.patch.set_facecolor('#0f172a')
-        ax.set_facecolor('#0f172a')
-
-        # Valores de rendimiento
-        valores = gdf_plot['rendimiento_actual']
-        vmin = valores.min() * 0.9
-        vmax = valores.max() * 1.1
-
-        # Crear colormap profesional
-        colors = ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#ffffbf',
-                  '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850', '#006837']
-        cmap = LinearSegmentedColormap.from_list('rendimiento_actual', colors)
-
-        # Plotear cada zona con gradiente suave
-        for idx, row in gdf_plot.iterrows():
-            valor = row['rendimiento_actual']
-            valor_norm = (valor - vmin) / (vmax - vmin) if vmax != vmin else 0.5
-            valor_norm = max(0, min(1, valor_norm))
-            color = cmap(valor_norm)
-
-            # Dibujar polígono con borde suave
-            gdf_plot.iloc[[idx]].plot(ax=ax, color=color, edgecolor='white',
-                                      linewidth=1, alpha=0.85)
-
-            # Etiqueta con rendimiento
-            centroid = row.geometry.centroid
-            ax.annotate(f"{valor:.1f}t",
-                        (centroid.x, centroid.y),
-                        xytext=(0, 0), textcoords="offset points",
-                        fontsize=8, color='white', weight='bold',
-                        bbox=dict(boxstyle="circle,pad=0.2",
-                                  facecolor=(0, 0, 0, 0.6),
-                                  alpha=0.8, edgecolor='white'))
-
-        # Agregar mapa base
-        try:
-            ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, alpha=0.3)
-        except:
-            pass
-
-        ax.set_title(f'🌾 MAPA DE CALOR - RENDIMIENTO ACTUAL\n{cultivo} (ton/ha)',
-                     fontsize=16, fontweight='bold', pad=20, color='white')
-        ax.set_xlabel('Longitud', color='white')
-        ax.set_ylabel('Latitud', color='white')
-        ax.tick_params(colors='white')
-        ax.grid(True, alpha=0.2, color='#475569')
-
-        # Barra de colores mejorada
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
-        sm.set_array([])
-        cbar = plt.colorbar(sm, ax=ax, shrink=0.8)
-        cbar.set_label('Rendimiento (ton/ha)', fontsize=12, fontweight='bold', color='white')
-        cbar.ax.yaxis.set_tick_params(color='white')
-        cbar.outline.set_edgecolor('white')
-        plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
-
-        plt.tight_layout()
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='#0f172a')
-        buf.seek(0)
-        plt.close()
-        return buf
-
-    except Exception as e:
-        st.error(f"Error en fallback: {str(e)}")
-        return None
-
-def crear_mapa_calor_rendimiento_proyectado(gdf_analizado, cultivo):
-    """Crea mapa de calor para rendimiento proyectado con visualización profesional"""
-    try:
-        if 'rendimiento_proyectado' not in gdf_analizado.columns:
-            return None
-
-        gdf_plot = gdf_analizado.to_crs(epsg=3857)
-
-        # Crear figura con estilo moderno
-        fig, ax = plt.subplots(1, 1, figsize=(14, 8))
-        fig.patch.set_facecolor('#0f172a')
-        ax.set_facecolor('#0f172a')
-
-        # Obtener datos para interpolación
-        centroids = gdf_plot.geometry.centroid
-        x = np.array([c.x for c in centroids])
-        y = np.array([c.y for c in centroids])
-        z_proyectado = gdf_plot['rendimiento_proyectado'].values
-        z_actual = gdf_plot['rendimiento_actual'].values
-        incrementos = z_proyectado - z_actual
-
-        # Crear malla para interpolación
-        x_min, y_min, x_max, y_max = gdf_plot.total_bounds
-        xi = np.linspace(x_min, x_max, 200)
-        yi = np.linspace(y_min, y_max, 200)
-        xi, yi = np.meshgrid(xi, yi)
-
-        # Interpolación del rendimiento proyectado
-        try:
-            from scipy.interpolate import griddata
-            zi_proyectado = griddata((x, y), z_proyectado, (xi, yi), method='cubic', fill_value=np.nan)
-            zi_incremento = griddata((x, y), incrementos, (xi, yi), method='cubic', fill_value=np.nan)
-        except:
-            zi_proyectado = griddata((x, y), z_proyectado, (xi, yi), method='linear', fill_value=np.nan)
-            zi_incremento = griddata((x, y), incrementos, (xi, yi), method='linear', fill_value=np.nan)
-
-        # Crear mapa de calor con dos capas
-        im_proyectado = ax.contourf(xi, yi, zi_proyectado, levels=50, cmap='RdYlGn', alpha=0.7,
-                                    vmin=z_proyectado.min()*0.9, vmax=z_proyectado.max()*1.1)
-
-        # Superponer mapa de incrementos con transparencia
-        im_incremento = ax.contourf(xi, yi, zi_incremento, levels=20, cmap='viridis', alpha=0.4)
-
-        # Agregar líneas de contorno para rendimiento proyectado
-        contour = ax.contour(xi, yi, zi_proyectado, levels=8, colors='white', linewidths=1, alpha=0.6)
-
-        # Etiquetar las líneas de contorno
-        ax.clabel(contour, inline=True, fontsize=8, colors='white', fmt='%1.1f t')
-
-        # Agregar puntos de datos
-        for idx, (centroid, valor_proy, valor_act, inc) in enumerate(zip(centroids, z_proyectado, z_actual, incrementos)):
-            # Punto con tamaño proporcional al incremento
-            marker_size = 6 + (inc / max(incrementos) * 10) if max(incrementos) > 0 else 8
-            ax.plot(centroid.x, centroid.y, 'o', markersize=marker_size,
-                    markeredgecolor='white', markerfacecolor=plt.cm.RdYlGn((valor_proy - z_proyectado.min())/(z_proyectado.max() - z_proyectado.min())),
-                    markeredgewidth=1)
-
-            # Etiqueta con incremento
-            if idx % 3 == 0:  # Mostrar algunas etiquetas
-                ax.annotate(f"+{inc:.1f}t",
-                            (centroid.x, centroid.y),
-                            xytext=(0, 15), textcoords="offset points",
-                            fontsize=7, color='cyan', weight='bold',
-                            ha='center', va='center',
-                            bbox=dict(boxstyle="round,pad=0.2",
-                                      facecolor=(0, 0, 0, 0.7),
-                                      alpha=0.8))
-
-        # Agregar mapa base
-        try:
-            ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, alpha=0.3)
-        except:
-            pass
-
-        # Configurar título y etiquetas
-        ax.set_title(f'🚀 MAPA DE CALOR - RENDIMIENTO PROYECTADO\n{cultivo} (con fertilización óptima)',
-                     fontsize=16, fontweight='bold', pad=20, color='white')
-        ax.set_xlabel('Longitud', color='white')
-        ax.set_ylabel('Latitud', color='white')
-        ax.tick_params(colors='white')
-        ax.grid(True, alpha=0.1, color='#475569', linestyle='--')
-
-        # Barra de colores principal
-        cbar1 = plt.colorbar(im_proyectado, ax=ax, shrink=0.8, pad=0.02)
-        cbar1.set_label('Rendimiento Proyectado (ton/ha)', fontsize=12, fontweight='bold', color='white')
-        cbar1.ax.yaxis.set_tick_params(color='white')
-
-        # Barra de colores para incrementos (más pequeña)
-        from mpl_toolkits.axes_grid1 import make_axes_locatable
-        divider = make_axes_locatable(ax)
-        cax2 = divider.append_axes("right", size="3%", pad=0.15)
-        cbar2 = plt.colorbar(im_incremento, cax=cax2)
-        cbar2.set_label('Incremento (ton/ha)', fontsize=9, color='white')
-        cbar2.ax.yaxis.set_tick_params(color='white')
-
-        # Configurar colores de barras
-        for cbar in [cbar1, cbar2]:
-            cbar.outline.set_edgecolor('white')
-            plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
-
-        # Estadísticas
-        stats_text = f"""
-        📈 ESTADÍSTICAS DE POTENCIAL:
-        • Actual: {z_actual.mean():.1f} ton/ha
-        • Proyectado: {z_proyectado.mean():.1f} ton/ha
-        • Incremento: +{incrementos.mean():.1f} ton/ha
-        • Aumento: +{(incrementos.mean()/z_actual.mean()*100 if z_actual.mean()>0 else 0):.1f}%
-        """
-        ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=9,
-                verticalalignment='top', color='white',
-                bbox=dict(boxstyle="round,pad=0.3",
-                          facecolor=(30/255, 41/255, 59/255, 0.9),
-                          alpha=0.9, edgecolor='white'))
-
-        plt.tight_layout()
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight',
-                    facecolor='#0f172a', transparent=False)
-        buf.seek(0)
-        plt.close()
-        return buf
-
-    except Exception as e:
-        st.error(f"Error creando mapa de calor proyectado: {str(e)}")
-        return crear_mapa_calor_rendimiento_proyectado_fallback(gdf_analizado, cultivo)
+except Exception as e:
+    st.error(f"Error creando mapa de calor proyectado: {str(e)}")
+    import traceback
+    st.error(f"Detalle: {traceback.format_exc()}")
+    return crear_mapa_calor_rendimiento_proyectado_fallback(gdf_analizado, cultivo)
 
 def crear_mapa_calor_rendimiento_proyectado_fallback(gdf_analizado, cultivo):
     """Versión fallback sin interpolación"""
@@ -2707,6 +2516,8 @@ def crear_mapa_calor_rendimiento_proyectado_fallback(gdf_analizado, cultivo):
 
     except Exception as e:
         st.error(f"Error en fallback: {str(e)}")
+        import traceback
+        st.error(f"Detalle fallback: {traceback.format_exc()}")
         return None
 
 def crear_mapa_comparativo_calor(gdf_analizado, cultivo):
@@ -2744,7 +2555,8 @@ def crear_mapa_comparativo_calor(gdf_analizado, cultivo):
             from scipy.interpolate import griddata
             zi_actual = griddata((x, y), z_actual, (xi, yi), method='cubic', fill_value=np.nan)
             zi_proyectado = griddata((x, y), z_proyectado, (xi, yi), method='cubic', fill_value=np.nan)
-        except:
+        except Exception as e:
+            # Fallback a interpolación lineal
             zi_actual = griddata((x, y), z_actual, (xi, yi), method='linear', fill_value=np.nan)
             zi_proyectado = griddata((x, y), z_proyectado, (xi, yi), method='linear', fill_value=np.nan)
 
@@ -2764,13 +2576,18 @@ def crear_mapa_comparativo_calor(gdf_analizado, cultivo):
         ax2.clabel(contour2, inline=True, fontsize=8, colors='white', fmt='%1.1f t')
 
         # Superponer capa de incrementos
-        zi_incremento = griddata((x, y), incrementos, (xi, yi), method='linear', fill_value=np.nan)
-        im_incremento = ax2.contourf(xi, yi, zi_incremento, levels=15, cmap='Blues', alpha=0.3)
+        try:
+            zi_incremento = griddata((x, y), incrementos, (xi, yi), method='linear', fill_value=np.nan)
+            im_incremento = ax2.contourf(xi, yi, zi_incremento, levels=15, cmap='Blues', alpha=0.3)
+        except:
+            pass  # Si falla la interpolación de incrementos, continuar sin ella
 
         # Agregar puntos de datos con incremento
-        for centroid, valor, inc in zip(centroids, z_proyectado, incrementos):
-            ax2.plot(centroid.x, centroid.y, 'o', markersize=6 + (inc/max(incrementos)*3 if max(incrementos)>0 else 0),
-                     markeredgecolor='white', markerfacecolor=plt.cm.RdYlGn((valor - vmin)/(vmax - vmin)))
+        if len(incrementos) > 0 and max(incrementos) > 0:
+            for centroid, valor, inc in zip(centroids, z_proyectado, incrementos):
+                marker_size = 6 + (inc/max(incrementos)*3 if max(incrementos) > 0 else 0)
+                ax2.plot(centroid.x, centroid.y, 'o', markersize=marker_size,
+                         markeredgecolor='white', markerfacecolor=plt.cm.RdYlGn((valor - vmin)/(vmax - vmin)))
 
         # Títulos
         ax1.set_title('🌾 RENDIMIENTO ACTUAL\n(ton/ha)', fontsize=14, fontweight='bold', color='white', pad=15)
@@ -2793,8 +2610,9 @@ def crear_mapa_comparativo_calor(gdf_analizado, cultivo):
 
         # Configurar colores de barras
         for cbar in [cbar1, cbar2]:
-            cbar.outline.set_edgecolor('white')
-            plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
+            if cbar:  # ✅ CORRECCIÓN: Verificar que la barra existe
+                cbar.outline.set_edgecolor('white')
+                plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
 
         # Estadísticas comparativas
         rend_actual_prom = z_actual.mean()
@@ -2828,6 +2646,8 @@ def crear_mapa_comparativo_calor(gdf_analizado, cultivo):
 
     except Exception as e:
         st.error(f"Error creando mapa comparativo: {str(e)}")
+        import traceback
+        st.error(f"Detalle comparativo: {traceback.format_exc()}")
         return crear_mapa_comparativo_calor_fallback(gdf_analizado, cultivo)
 
 def crear_mapa_comparativo_calor_fallback(gdf_analizado, cultivo):
@@ -2908,9 +2728,10 @@ def crear_mapa_comparativo_calor_fallback(gdf_analizado, cultivo):
 
         # Configurar colores de barras
         for cbar in [cbar1, cbar2]:
-            cbar.ax.yaxis.set_tick_params(color='white')
-            cbar.outline.set_edgecolor('white')
-            plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
+            if cbar:  # ✅ CORRECCIÓN: Verificar que la barra existe
+                cbar.ax.yaxis.set_tick_params(color='white')
+                cbar.outline.set_edgecolor('white')
+                plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
 
         plt.tight_layout()
         buf = io.BytesIO()
@@ -2920,7 +2741,9 @@ def crear_mapa_comparativo_calor_fallback(gdf_analizado, cultivo):
         return buf
 
     except Exception as e:
-        st.error(f"Error en fallback: {str(e)}")
+        st.error(f"Error en fallback comparativo: {str(e)}")
+        import traceback
+        st.error(f"Detalle fallback comparativo: {traceback.format_exc()}")
         return None
 
 # ===== FUNCIONES PARA DATOS SATELITALES =====
@@ -2941,6 +2764,8 @@ def descargar_datos_landsat8(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
         return datos_simulados
     except Exception as e:
         st.error(f"❌ Error procesando Landsat 8: {str(e)}")
+        import traceback
+        st.error(f"Detalle Landsat: {traceback.format_exc()}")
         return None
 
 def descargar_datos_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
@@ -2960,6 +2785,8 @@ def descargar_datos_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
         return datos_simulados
     except Exception as e:
         st.error(f"❌ Error procesando Sentinel-2: {str(e)}")
+        import traceback
+        st.error(f"Detalle Sentinel: {traceback.format_exc()}")
         return None
 
 def generar_datos_simulados(gdf, cultivo, indice='NDVI'):
@@ -3071,67 +2898,73 @@ def clasificar_textura_suelo(arena, limo, arcilla):
     return clasificar_textura_usda(arena, limo, arcilla)
 
 def analizar_textura_suelo(gdf, cultivo):
-    gdf = validar_y_corregir_crs(gdf)
-    params_textura = TEXTURA_SUELO_OPTIMA[cultivo]
-    zonas_gdf = gdf.copy()
-    areas_ha_list = []
-    arena_list = []
-    limo_list = []
-    arcilla_list = []
-    textura_list = []
+    try:
+        gdf = validar_y_corregir_crs(gdf)
+        params_textura = TEXTURA_SUELO_OPTIMA[cultivo]
+        zonas_gdf = gdf.copy()
+        areas_ha_list = []
+        arena_list = []
+        limo_list = []
+        arcilla_list = []
+        textura_list = []
 
-    for idx, row in zonas_gdf.iterrows():
-        try:
-            area_gdf = gpd.GeoDataFrame({'geometry': [row.geometry]}, crs=zonas_gdf.crs)
-            area_ha = calcular_superficie(area_gdf)
-            if hasattr(area_ha, 'iloc'):
-                area_ha = float(area_ha.iloc[0])
-            elif hasattr(area_ha, '__len__') and len(area_ha) > 0:
-                area_ha = float(area_ha[0])
-            else:
-                area_ha = float(area_ha)
+        for idx, row in zonas_gdf.iterrows():
+            try:
+                area_gdf = gpd.GeoDataFrame({'geometry': [row.geometry]}, crs=zonas_gdf.crs)
+                area_ha = calcular_superficie(area_gdf)
+                if hasattr(area_ha, 'iloc'):
+                    area_ha = float(area_ha.iloc[0])
+                elif hasattr(area_ha, '__len__') and len(area_ha) > 0:
+                    area_ha = float(area_ha[0])
+                else:
+                    area_ha = float(area_ha)
 
-            centroid = row.geometry.centroid if hasattr(row.geometry, 'centroid') else row.geometry.representative_point()
-            seed_value = abs(hash(f"{centroid.x:.6f}_{centroid.y:.6f}_{cultivo}_textura")) % (2**32)
-            rng = np.random.RandomState(seed_value)
+                centroid = row.geometry.centroid if hasattr(row.geometry, 'centroid') else row.geometry.representative_point()
+                seed_value = abs(hash(f"{centroid.x:.6f}_{centroid.y:.6f}_{cultivo}_textura")) % (2**32)
+                rng = np.random.RandomState(seed_value)
 
-            # Simular composición basada en textura óptima
-            arena_optima = params_textura['arena_optima']
-            limo_optima = params_textura['limo_optima']
-            arcilla_optima = params_textura['arcilla_optima']
+                # Simular composición basada en textura óptima
+                arena_optima = params_textura['arena_optima']
+                limo_optima = params_textura['limo_optima']
+                arcilla_optima = params_textura['arcilla_optima']
 
-            # Variación alrededor del óptimo
-            arena_val = max(5, min(95, rng.normal(arena_optima, 10)))
-            limo_val = max(5, min(95, rng.normal(limo_optima, 8)))
-            arcilla_val = max(5, min(95, rng.normal(arcilla_optima, 7)))
+                # Variación alrededor del óptimo
+                arena_val = max(5, min(95, rng.normal(arena_optima, 10)))
+                limo_val = max(5, min(95, rng.normal(limo_optima, 8)))
+                arcilla_val = max(5, min(95, rng.normal(arcilla_optima, 7)))
 
-            total = arena_val + limo_val + arcilla_val
-            arena_pct = (arena_val / total) * 100
-            limo_pct = (limo_val / total) * 100
-            arcilla_pct = (arcilla_val / total) * 100
+                total = arena_val + limo_val + arcilla_val
+                arena_pct = (arena_val / total) * 100
+                limo_pct = (limo_val / total) * 100
+                arcilla_pct = (arcilla_val / total) * 100
 
-            textura = clasificar_textura_suelo(arena_pct, limo_pct, arcilla_pct)
+                textura = clasificar_textura_suelo(arena_pct, limo_pct, arcilla_pct)
 
-            areas_ha_list.append(area_ha)
-            arena_list.append(float(arena_pct))
-            limo_list.append(float(limo_pct))
-            arcilla_list.append(float(arcilla_pct))
-            textura_list.append(textura)
+                areas_ha_list.append(area_ha)
+                arena_list.append(float(arena_pct))
+                limo_list.append(float(limo_pct))
+                arcilla_list.append(float(arcilla_pct))
+                textura_list.append(textura)
 
-        except Exception as e:
-            areas_ha_list.append(0.0)
-            arena_list.append(float(params_textura['arena_optima']))
-            limo_list.append(float(params_textura['limo_optima']))
-            arcilla_list.append(float(params_textura['arcilla_optima']))
-            textura_list.append(params_textura['textura_optima'])
+            except Exception as e:
+                areas_ha_list.append(0.0)
+                arena_list.append(float(params_textura['arena_optima']))
+                limo_list.append(float(params_textura['limo_optima']))
+                arcilla_list.append(float(params_textura['arcilla_optima']))
+                textura_list.append(params_textura['textura_optima'])
 
-    zonas_gdf['area_ha'] = areas_ha_list
-    zonas_gdf['arena'] = arena_list
-    zonas_gdf['limo'] = limo_list
-    zonas_gdf['arcilla'] = arcilla_list
-    zonas_gdf['textura_suelo'] = textura_list
+        zonas_gdf['area_ha'] = areas_ha_list
+        zonas_gdf['arena'] = arena_list
+        zonas_gdf['limo'] = limo_list
+        zonas_gdf['arcilla'] = arcilla_list
+        zonas_gdf['textura_suelo'] = textura_list
 
-    return zonas_gdf
+        return zonas_gdf
+    except Exception as e:
+        st.error(f"Error en análisis de textura: {str(e)}")
+        import traceback
+        st.error(f"Detalle textura: {traceback.format_exc()}")
+        return gdf  # Devolver el GeoDataFrame original si hay error
 
 # ===== FUNCIONES DE CURVAS DE NIVEL =====
 def clasificar_pendiente(pendiente_porcentaje):
@@ -3141,145 +2974,162 @@ def clasificar_pendiente(pendiente_porcentaje):
     return "EXTREMA (>25%)", CLASIFICACION_PENDIENTES['EXTREMA (>25%)']['color']
 
 def calcular_estadisticas_pendiente_simple(pendiente_grid):
-    pendiente_flat = pendiente_grid.flatten()
-    pendiente_flat = pendiente_flat[~np.isnan(pendiente_flat)]
-    if len(pendiente_flat) == 0:
+    try:
+        pendiente_flat = pendiente_grid.flatten()
+        pendiente_flat = pendiente_flat[~np.isnan(pendiente_flat)]
+        if len(pendiente_flat) == 0:
+            return {'promedio': 0, 'min': 0, 'max': 0, 'std': 0, 'distribucion': {}}
+
+        stats = {
+            'promedio': float(np.mean(pendiente_flat)),
+            'min': float(np.min(pendiente_flat)),
+            'max': float(np.max(pendiente_flat)),
+            'std': float(np.std(pendiente_flat)),
+            'distribucion': {}
+        }
+
+        for categoria, params in CLASIFICACION_PENDIENTES.items():
+            mask = (pendiente_flat >= params['min']) & (pendiente_flat < params['max'])
+            stats['distribucion'][categoria] = {'porcentaje': float(np.sum(mask) / len(pendiente_flat) * 100), 'color': params['color']}
+
+        return stats
+    except Exception as e:
         return {'promedio': 0, 'min': 0, 'max': 0, 'std': 0, 'distribucion': {}}
-
-    stats = {
-        'promedio': float(np.mean(pendiente_flat)),
-        'min': float(np.min(pendiente_flat)),
-        'max': float(np.max(pendiente_flat)),
-        'std': float(np.std(pendiente_flat)),
-        'distribucion': {}
-    }
-
-    for categoria, params in CLASIFICACION_PENDIENTES.items():
-        mask = (pendiente_flat >= params['min']) & (pendiente_flat < params['max'])
-        stats['distribucion'][categoria] = {'porcentaje': float(np.sum(mask) / len(pendiente_flat) * 100), 'color': params['color']}
-
-    return stats
 
 def generar_dem_sintetico(gdf, resolucion=10.0):
     """
     Genera un DEM sintético determinístico basado en las coordenadas de la parcela.
     Mismo input → mismo output siempre.
     """
-    gdf = validar_y_corregir_crs(gdf)
-    bounds = gdf.total_bounds
-    minx, miny, maxx, maxy = bounds
+    try:
+        gdf = validar_y_corregir_crs(gdf)
+        bounds = gdf.total_bounds
+        minx, miny, maxx, maxy = bounds
 
-    # Crear una semilla determinística basada en las coordenadas de la parcela
-    centroid = gdf.geometry.unary_union.centroid
-    seed_value = int(centroid.x * 10000 + centroid.y * 10000) % (2**32)
+        # Crear una semilla determinística basada en las coordenadas de la parcela
+        centroid = gdf.geometry.unary_union.centroid
+        seed_value = int(centroid.x * 10000 + centroid.y * 10000) % (2**32)
 
-    # Inicializar el generador aleatorio con la semilla
-    rng = np.random.RandomState(seed_value)
+        # Inicializar el generador aleatorio con la semilla
+        rng = np.random.RandomState(seed_value)
 
-    num_cells = 50
-    x = np.linspace(minx, maxx, num_cells)
-    y = np.linspace(miny, maxy, num_cells)
-    X, Y = np.meshgrid(x, y)
+        num_cells = 50
+        x = np.linspace(minx, maxx, num_cells)
+        y = np.linspace(miny, maxy, num_cells)
+        X, Y = np.meshgrid(x, y)
 
-    # Valores fijos basados en la semilla
-    elevacion_base = rng.uniform(100, 300)
-    slope_x = rng.uniform(-0.001, 0.001)
-    slope_y = rng.uniform(-0.001, 0.001)
+        # Valores fijos basados en la semilla
+        elevacion_base = rng.uniform(100, 300)
+        slope_x = rng.uniform(-0.001, 0.001)
+        slope_y = rng.uniform(-0.001, 0.001)
 
-    relief = np.zeros_like(X)
-    n_hills = rng.randint(2, 5)
-    for _ in range(n_hills):
-        hill_center_x = rng.uniform(minx, maxx)
-        hill_center_y = rng.uniform(miny, maxy)
-        hill_radius = rng.uniform(0.001, 0.005)
-        hill_height = rng.uniform(10, 50)
-        dist = np.sqrt((X - hill_center_x)**2 + (Y - hill_center_y)**2)
-        relief += hill_height * np.exp(-(dist**2) / (2 * hill_radius**2))
+        relief = np.zeros_like(X)
+        n_hills = rng.randint(2, 5)
+        for _ in range(n_hills):
+            hill_center_x = rng.uniform(minx, maxx)
+            hill_center_y = rng.uniform(miny, maxy)
+            hill_radius = rng.uniform(0.001, 0.005)
+            hill_height = rng.uniform(10, 50)
+            dist = np.sqrt((X - hill_center_x)**2 + (Y - hill_center_y)**2)
+            relief += hill_height * np.exp(-(dist**2) / (2 * hill_radius**2))
 
-    noise = rng.randn(*X.shape) * 2
-    Z = elevacion_base + slope_x * (X - minx) + slope_y * (Y - miny) + relief + noise
-    Z = np.maximum(Z, 50)
+        noise = rng.randn(*X.shape) * 2
+        Z = elevacion_base + slope_x * (X - minx) + slope_y * (Y - miny) + relief + noise
+        Z = np.maximum(Z, 50)
 
-    return X, Y, Z, bounds
+        return X, Y, Z, bounds
+    except Exception as e:
+        st.error(f"Error generando DEM: {str(e)}")
+        return None, None, None, None
 
 def calcular_pendiente_simple(X, Y, Z, resolucion=10.0):
-    dy = np.gradient(Z, axis=0) / resolucion
-    dx = np.gradient(Z, axis=1) / resolucion
-    pendiente = np.sqrt(dx**2 + dy**2) * 100
-    pendiente = np.clip(pendiente, 0, 100)
-    return pendiente
+    try:
+        dy = np.gradient(Z, axis=0) / resolucion
+        dx = np.gradient(Z, axis=1) / resolucion
+        pendiente = np.sqrt(dx**2 + dy**2) * 100
+        pendiente = np.clip(pendiente, 0, 100)
+        return pendiente
+    except Exception as e:
+        st.error(f"Error calculando pendiente: {str(e)}")
+        return np.zeros_like(Z) if Z is not None else None
 
 def crear_mapa_pendientes_simple(X, Y, pendiente_grid, gdf_original):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    try:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
-    # Configurar estilo oscuro
-    fig.patch.set_facecolor('#0f172a')
-    ax1.set_facecolor('#0f172a')
-    ax2.set_facecolor('#0f172a')
+        # Configurar estilo oscuro
+        fig.patch.set_facecolor('#0f172a')
+        ax1.set_facecolor('#0f172a')
+        ax2.set_facecolor('#0f172a')
 
-    X_flat = X.flatten()
-    Y_flat = Y.flatten()
-    Z_flat = pendiente_grid.flatten()
-    valid_mask = ~np.isnan(Z_flat)
+        X_flat = X.flatten()
+        Y_flat = Y.flatten()
+        Z_flat = pendiente_grid.flatten()
+        valid_mask = ~np.isnan(Z_flat)
 
-    if np.sum(valid_mask) > 10:
-        scatter = ax1.scatter(X_flat[valid_mask], Y_flat[valid_mask], c=Z_flat[valid_mask], cmap='RdYlGn_r', s=20, alpha=0.7, vmin=0, vmax=30)
-        cbar = plt.colorbar(scatter, ax=ax1, shrink=0.8)
-        cbar.set_label('Pendiente (%)', color='white')
-        cbar.ax.yaxis.set_tick_params(color='white')
-        cbar.outline.set_edgecolor('white')
-        plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
+        if np.sum(valid_mask) > 10:
+            scatter = ax1.scatter(X_flat[valid_mask], Y_flat[valid_mask], c=Z_flat[valid_mask], cmap='RdYlGn_r', s=20, alpha=0.7, vmin=0, vmax=30)
+            cbar = plt.colorbar(scatter, ax=ax1, shrink=0.8)
+            cbar.set_label('Pendiente (%)', color='white')
+            cbar.ax.yaxis.set_tick_params(color='white')
+            cbar.outline.set_edgecolor('white')
+            plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
 
-        for porcentaje in [2, 5, 10, 15, 25]:
-            mask_cat = (Z_flat[valid_mask] >= porcentaje-1) & (Z_flat[valid_mask] <= porcentaje+1)
-            if np.sum(mask_cat) > 0:
-                x_center = np.mean(X_flat[valid_mask][mask_cat])
-                y_center = np.mean(Y_flat[valid_mask][mask_cat])
-                ax1.text(x_center, y_center, f'{porcentaje}%', fontsize=8, fontweight='bold', ha='center', va='center',
-                         bbox=dict(boxstyle="round,pad=0.3", facecolor=(30/255, 41/255, 59/255, 0.9), edgecolor='white'), color='white')
-    else:
-        ax1.text(0.5, 0.5, 'Datos insuficientes\npara mapa de calor', transform=ax1.transAxes, ha='center', va='center', fontsize=12, color='white')
+            for porcentaje in [2, 5, 10, 15, 25]:
+                mask_cat = (Z_flat[valid_mask] >= porcentaje-1) & (Z_flat[valid_mask] <= porcentaje+1)
+                if np.sum(mask_cat) > 0:
+                    x_center = np.mean(X_flat[valid_mask][mask_cat])
+                    y_center = np.mean(Y_flat[valid_mask][mask_cat])
+                    ax1.text(x_center, y_center, f'{porcentaje}%', fontsize=8, fontweight='bold', ha='center', va='center',
+                             bbox=dict(boxstyle="round,pad=0.3", facecolor=(30/255, 41/255, 59/255, 0.9), edgecolor='white'), color='white')
+        else:
+            ax1.text(0.5, 0.5, 'Datos insuficientes\npara mapa de calor', transform=ax1.transAxes, ha='center', va='center', fontsize=12, color='white')
 
-    gdf_original.plot(ax=ax1, color='none', edgecolor='white', linewidth=2)
-    ax1.set_title('Mapa de Calor de Pendientes', fontsize=12, fontweight='bold', color='white')
-    ax1.set_xlabel('Longitud', color='white')
-    ax1.set_ylabel('Latitud', color='white')
-    ax1.tick_params(colors='white')
-    ax1.grid(True, alpha=0.3, color='#475569')
+        gdf_original.plot(ax=ax1, color='none', edgecolor='white', linewidth=2)
+        ax1.set_title('Mapa de Calor de Pendientes', fontsize=12, fontweight='bold', color='white')
+        ax1.set_xlabel('Longitud', color='white')
+        ax1.set_ylabel('Latitud', color='white')
+        ax1.tick_params(colors='white')
+        ax1.grid(True, alpha=0.3, color='#475569')
 
-    if np.sum(valid_mask) > 0:
-        pendiente_data = Z_flat[valid_mask]
-        ax2.hist(pendiente_data, bins=30, edgecolor='white', color='#3b82f6', alpha=0.7)
+        if np.sum(valid_mask) > 0:
+            pendiente_data = Z_flat[valid_mask]
+            ax2.hist(pendiente_data, bins=30, edgecolor='white', color='#3b82f6', alpha=0.7)
 
-        for porcentaje, color in [(2, '#4daf4a'), (5, '#a6d96a'), (10, '#ffffbf'), (15, '#fdae61'), (25, '#f46d43')]:
-            ax2.axvline(x=porcentaje, color=color, linestyle='--', linewidth=1, alpha=0.7)
-            ax2.text(porcentaje+0.5, ax2.get_ylim()[1]*0.9, f'{porcentaje}%', color=color, fontsize=8)
+            for porcentaje, color in [(2, '#4daf4a'), (5, '#a6d96a'), (10, '#ffffbf'), (15, '#fdae61'), (25, '#f46d43')]:
+                ax2.axvline(x=porcentaje, color=color, linestyle='--', linewidth=1, alpha=0.7)
+                ax2.text(porcentaje+0.5, ax2.get_ylim()[1]*0.9, f'{porcentaje}%', color=color, fontsize=8)
 
-        stats_pendiente = calcular_estadisticas_pendiente_simple(pendiente_grid)
-        stats_text = f"""
-        Estadísticas:
-        • Mínima: {stats_pendiente['min']:.1f}%
-        • Máxima: {stats_pendiente['max']:.1f}%
-        • Promedio: {stats_pendiente['promedio']:.1f}%
-        • Desviación: {stats_pendiente['std']:.1f}%
-        """
-        ax2.text(0.02, 0.98, stats_text, transform=ax2.transAxes, fontsize=9, verticalalignment='top',
-                 color='white', bbox=dict(boxstyle="round,pad=0.3", facecolor=(30/255, 41/255, 59/255, 0.9), edgecolor='white'))
+            stats_pendiente = calcular_estadisticas_pendiente_simple(pendiente_grid)
+            stats_text = f"""
+            Estadísticas:
+            • Mínima: {stats_pendiente['min']:.1f}%
+            • Máxima: {stats_pendiente['max']:.1f}%
+            • Promedio: {stats_pendiente['promedio']:.1f}%
+            • Desviación: {stats_pendiente['std']:.1f}%
+            """
+            ax2.text(0.02, 0.98, stats_text, transform=ax2.transAxes, fontsize=9, verticalalignment='top',
+                     color='white', bbox=dict(boxstyle="round,pad=0.3", facecolor=(30/255, 41/255, 59/255, 0.9), edgecolor='white'))
 
-        ax2.set_xlabel('Pendiente (%)', color='white')
-        ax2.set_ylabel('Frecuencia', color='white')
-        ax2.set_title('Distribución de Pendientes', fontsize=12, fontweight='bold', color='white')
-        ax2.tick_params(colors='white')
-        ax2.grid(True, alpha=0.3, color='#475569')
-    else:
-        ax2.text(0.5, 0.5, 'Sin datos de pendiente', transform=ax2.transAxes, ha='center', va='center', fontsize=12, color='white')
+            ax2.set_xlabel('Pendiente (%)', color='white')
+            ax2.set_ylabel('Frecuencia', color='white')
+            ax2.set_title('Distribución de Pendientes', fontsize=12, fontweight='bold', color='white')
+            ax2.tick_params(colors='white')
+            ax2.grid(True, alpha=0.3, color='#475569')
+        else:
+            ax2.text(0.5, 0.5, 'Sin datos de pendiente', transform=ax2.transAxes, ha='center', va='center', fontsize=12, color='white')
 
-    plt.tight_layout()
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='#0f172a')
-    buf.seek(0)
-    plt.close()
-    return buf, calcular_estadisticas_pendiente_simple(pendiente_grid)
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='#0f172a')
+        buf.seek(0)
+        plt.close()
+        return buf, calcular_estadisticas_pendiente_simple(pendiente_grid)
+    except Exception as e:
+        st.error(f"Error creando mapa de pendientes: {str(e)}")
+        import traceback
+        st.error(f"Detalle mapa pendientes: {traceback.format_exc()}")
+        return None, {'promedio': 0, 'min': 0, 'max': 0, 'std': 0, 'distribucion': {}}
 
 def generar_curvas_nivel_simple(X, Y, Z, intervalo=5.0, gdf_original=None):
     curvas = []
@@ -3484,7 +3334,10 @@ def limpiar_texto_para_pdf(texto):
     }
     for original, reemplazo in reemplazos.items():
         texto = texto.replace(original, reemplazo)
-    texto = texto.encode('latin-1', errors='replace').decode('latin-1')
+    try:
+        texto = texto.encode('latin-1', errors='replace').decode('latin-1')
+    except:
+        texto = texto.encode('utf-8', errors='replace').decode('utf-8')
     return texto
 
 # ===== FUNCIÓN ÚNICA PARA GENERAR REPORTE COMPLETO EN DOCX - VERSIÓN CORREGIDA =====
@@ -3831,65 +3684,68 @@ def generar_reporte_completo_docx(gdf_analizado, cultivo, area_total, analisis_t
         if dem_data is not None:
             doc.add_heading('6. ANÁLISIS TOPOGRÁFICO', 1)
             
-            X, Y, Z, pendiente_grid, gdf_original = dem_data
-            
-            # 6.1. Estadísticas de pendiente
-            doc.add_heading('6.1. Estadísticas de Pendiente', 2)
-            
-            # Calcular estadísticas básicas
-            if hasattr(pendiente_grid, 'flatten'):
-                pendiente_flat = pendiente_grid.flatten()
-                pendiente_flat = pendiente_flat[~np.isnan(pendiente_flat)]
+            try:
+                X, Y, Z, pendiente_grid, gdf_original = dem_data
                 
-                if len(pendiente_flat) > 0:
-                    tabla_pendientes = doc.add_table(rows=5, cols=2)
-                    tabla_pendientes.style = 'Table Grid'
-                    
-                    datos_pendientes = [
-                        ("Pendiente mínima (%)", f"{np.min(pendiente_flat):.1f}"),
-                        ("Pendiente máxima (%)", f"{np.max(pendiente_flat):.1f}"),
-                        ("Pendiente promedio (%)", f"{np.mean(pendiente_flat):.1f}"),
-                        ("Desviación estándar (%)", f"{np.std(pendiente_flat):.1f}"),
-                        ("Área total analizada (ha)", f"{area_total:.2f}")
-                    ]
-                    
-                    for i, (concepto, valor) in enumerate(datos_pendientes):
-                        tabla_pendientes.cell(i, 0).text = concepto
-                        tabla_pendientes.cell(i, 0).paragraphs[0].runs[0].bold = True
-                        tabla_pendientes.cell(i, 1).text = valor
-            
-            # 6.2. Análisis de riesgo de erosión
-            doc.add_heading('6.2. Análisis de Riesgo de Erosión', 2)
-            
-            if hasattr(pendiente_grid, 'flatten'):
-                pendiente_flat = pendiente_grid.flatten()
-                pendiente_flat = pendiente_flat[~np.isnan(pendiente_flat)]
+                # 6.1. Estadísticas de pendiente
+                doc.add_heading('6.1. Estadísticas de Pendiente', 2)
                 
-                if len(pendiente_flat) > 0:
-                    porcentaje_suave = np.sum((pendiente_flat >= 0) & (pendiente_flat < 5)) / len(pendiente_flat) * 100
-                    porcentaje_moderada = np.sum((pendiente_flat >= 5) & (pendiente_flat < 10)) / len(pendiente_flat) * 100
-                    porcentaje_fuerte = np.sum(pendiente_flat >= 10) / len(pendiente_flat) * 100
+                # Calcular estadísticas básicas
+                if hasattr(pendiente_grid, 'flatten'):
+                    pendiente_flat = pendiente_grid.flatten()
+                    pendiente_flat = pendiente_flat[~np.isnan(pendiente_flat)]
                     
-                    riesgo_texto = doc.add_paragraph()
+                    if len(pendiente_flat) > 0:
+                        tabla_pendientes = doc.add_table(rows=5, cols=2)
+                        tabla_pendientes.style = 'Table Grid'
+                        
+                        datos_pendientes = [
+                            ("Pendiente mínima (%)", f"{np.min(pendiente_flat):.1f}"),
+                            ("Pendiente máxima (%)", f"{np.max(pendiente_flat):.1f}"),
+                            ("Pendiente promedio (%)", f"{np.mean(pendiente_flat):.1f}"),
+                            ("Desviación estándar (%)", f"{np.std(pendiente_flat):.1f}"),
+                            ("Área total analizada (ha)", f"{area_total:.2f}")
+                        ]
+                        
+                        for i, (concepto, valor) in enumerate(datos_pendientes):
+                            tabla_pendientes.cell(i, 0).text = concepto
+                            tabla_pendientes.cell(i, 0).paragraphs[0].runs[0].bold = True
+                            tabla_pendientes.cell(i, 1).text = valor
+                
+                # 6.2. Análisis de riesgo de erosión
+                doc.add_heading('6.2. Análisis de Riesgo de Erosión', 2)
+                
+                if hasattr(pendiente_grid, 'flatten'):
+                    pendiente_flat = pendiente_grid.flatten()
+                    pendiente_flat = pendiente_flat[~np.isnan(pendiente_flat)]
                     
-                    if porcentaje_fuerte < 10:
-                        riesgo_texto.add_run('✅ RIESGO BAJO DE EROSIÓN\n\n').bold = True
-                        riesgo_texto.add_run(f'• Pendientes suaves (0-5%): {porcentaje_suave:.1f}%\n')
-                        riesgo_texto.add_run(f'• Pendientes moderadas (5-10%): {porcentaje_moderada:.1f}%\n')
-                        riesgo_texto.add_run(f'• Pendientes fuertes (>10%): {porcentaje_fuerte:.1f}%\n\n')
-                        riesgo_texto.add_run('El terreno es adecuado para la mayoría de las prácticas agrícolas.')
-                    elif porcentaje_fuerte < 30:
-                        riesgo_texto.add_run('⚠️ RIESGO MODERADO DE EROSIÓN\n\n').bold = True
-                        riesgo_texto.add_run(f'• Pendientes suaves (0-5%): {porcentaje_suave:.1f}%\n')
-                        riesgo_texto.add_run(f'• Pendientes moderadas (5-10%): {porcentaje_moderada:.1f}%\n')
-                        riesgo_texto.add_run(f'• Pendientes fuertes (>10%): {porcentaje_fuerte:.1f}%\n\n')
-                        riesgo_texto.add_run('Se recomiendan prácticas de conservación de suelo como terrazas, cultivos en contorno y coberturas vegetales.')
-                    else:
-                        riesgo_texto.add_run('🚨 RIESGO ALTO DE EROSIÓN\n\n').bold = True
-                        riesgo_texto.add_run(f'• Pendientes suaves (0-5%): {porcentaje_suave:.1f}%\n')
-                        riesgo_texto.add_run(f'• Pendientes moderadas (5-10%): {porcentaje_moderada:.1f}%\n')
-                        riesgo_texto.add_run(f'• Pendientes fuertes (>10%): {porcentaje_fuerte:.1f}%\n\n')
-                        riesgo_texto.add_run('Se requieren medidas urgentes de conservación: terrazas, cultivos en franjas, reforestación y evitar labranza intensiva.')
+                    if len(pendiente_flat) > 0:
+                        porcentaje_suave = np.sum((pendiente_flat >= 0) & (pendiente_flat < 5)) / len(pendiente_flat) * 100
+                        porcentaje_moderada = np.sum((pendiente_flat >= 5) & (pendiente_flat < 10)) / len(pendiente_flat) * 100
+                        porcentaje_fuerte = np.sum(pendiente_flat >= 10) / len(pendiente_flat) * 100
+                        
+                        riesgo_texto = doc.add_paragraph()
+                        
+                        if porcentaje_fuerte < 10:
+                            riesgo_texto.add_run('✅ RIESGO BAJO DE EROSIÓN\n\n').bold = True
+                            riesgo_texto.add_run(f'• Pendientes suaves (0-5%): {porcentaje_suave:.1f}%\n')
+                            riesgo_texto.add_run(f'• Pendientes moderadas (5-10%): {porcentaje_moderada:.1f}%\n')
+                            riesgo_texto.add_run(f'• Pendientes fuertes (>10%): {porcentaje_fuerte:.1f}%\n\n')
+                            riesgo_texto.add_run('El terreno es adecuado para la mayoría de las prácticas agrícolas.')
+                        elif porcentaje_fuerte < 30:
+                            riesgo_texto.add_run('⚠️ RIESGO MODERADO DE EROSIÓN\n\n').bold = True
+                            riesgo_texto.add_run(f'• Pendientes suaves (0-5%): {porcentaje_suave:.1f}%\n')
+                            riesgo_texto.add_run(f'• Pendientes moderadas (5-10%): {porcentaje_moderada:.1f}%\n')
+                            riesgo_texto.add_run(f'• Pendientes fuertes (>10%): {porcentaje_fuerte:.1f}%\n\n')
+                            riesgo_texto.add_run('Se recomiendan prácticas de conservación de suelo como terrazas, cultivos en contorno y coberturas vegetales.')
+                        else:
+                            riesgo_texto.add_run('🚨 RIESGO ALTO DE EROSIÓN\n\n').bold = True
+                            riesgo_texto.add_run(f'• Pendientes suaves (0-5%): {porcentaje_suave:.1f}%\n')
+                            riesgo_texto.add_run(f'• Pendientes moderadas (5-10%): {porcentaje_moderada:.1f}%\n')
+                            riesgo_texto.add_run(f'• Pendientes fuertes (>10%): {porcentaje_fuerte:.1f}%\n\n')
+                            riesgo_texto.add_run('Se requieren medidas urgentes de conservación: terrazas, cultivos en franjas, reforestación y evitar labranza intensiva.')
+            except Exception as e:
+                st.warning(f"Error procesando datos topográficos en el reporte: {str(e)}")
         
         # ===== 7. CONCLUSIONES Y RECOMENDACIONES =====
         doc.add_heading('7. CONCLUSIONES Y RECOMENDACIONES', 1)
@@ -3935,9 +3791,9 @@ def generar_reporte_completo_docx(gdf_analizado, cultivo, area_total, analisis_t
             conclusiones.add_run('• Para olivo: Poda de formación para facilitar cosecha mecánica.\n')
             conclusiones.add_run('• Control de riego para evitar rajado de fruta.\n')
             conclusiones.add_run('• Fertilización fosfatada para mejorar desarrollo radicular.\n')
-        elif cultivo == "HORTALIZAS DE HOJAS":
-            conclusiones.add_run('• Para hortalizas de hojas: Fertirriego con nitrógeno frecuente.\n')
-            conclusiones.add.run('• Control de plagas con manejo integrado.\n')
+        elif cultivo == "HORTALIZAS DE HOJA":  # ✅ CORRECCIÓN: Nombre correcto del cultivo
+            conclusiones.add_run('• Para hortalizas de hoja: Fertirriego con nitrógeno frecuente.\n')
+            conclusiones.add_run('• Control de plagas con manejo integrado.\n')
             conclusiones.add_run('• Cosecha escalonada para mantener producción constante.\n')
         
         # ===== 8. METADATOS TÉCNICOS =====
@@ -4062,6 +3918,8 @@ def crear_mapa_npk_con_esri(gdf_analizado, nutriente, cultivo, satelite, mostrar
 
     except Exception as e:
         st.error(f"Error creando mapa NPK: {str(e)}")
+        import traceback
+        st.error(f"Detalle mapa NPK: {traceback.format_exc()}")
         return None
 
 def crear_mapa_fertilidad_integrada(gdf_analizado, cultivo, satelite, mostrar_capa_inta=False):
@@ -4122,6 +3980,8 @@ def crear_mapa_fertilidad_integrada(gdf_analizado, cultivo, satelite, mostrar_ca
 
     except Exception as e:
         st.error(f"Error creando mapa de fertilidad: {str(e)}")
+        import traceback
+        st.error(f"Detalle mapa fertilidad: {traceback.format_exc()}")
         return None
 
 def crear_mapa_texturas_con_esri(gdf_analizado, cultivo, mostrar_capa_inta=False):
@@ -4202,6 +4062,8 @@ def crear_mapa_texturas_con_esri(gdf_analizado, cultivo, mostrar_capa_inta=False
 
     except Exception as e:
         st.error(f"Error creando mapa de texturas: {str(e)}")
+        import traceback
+        st.error(f"Detalle mapa texturas: {traceback.format_exc()}")
         return None
 # ===== FUNCIONES DE GRÁFICOS NASA POWER CON ESTILO OSCURO =====
 def crear_grafico_personalizado(series, titulo, ylabel, color_linea, fondo_grafico='#0f172a', color_texto='#ffffff'):
