@@ -2652,7 +2652,7 @@ def crear_mapa_comparativo_calor_fallback(gdf_analizado, cultivo):
     except Exception as e:
         st.error(f"Error en fallback: {str(e)}")
         return None
-        ===== INTERFAZ PRINCIPAL (continuación) =====
+
 if 'uploaded_file' in locals() and uploaded_file:
     with st.spinner("Cargando parcela..."):
         try:
