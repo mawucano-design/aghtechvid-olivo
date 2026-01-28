@@ -4503,21 +4503,21 @@ def main():
                     - Sistema 100% compatible con QGIS, ArcGIS y Google Earth Pro
                     """)
     
-    # Footer
-    st.markdown("---")
-    st.markdown("""
-    <div style='text-align: center; color: #cbd5e1; padding: 20px;'>
-        <h3 style='color: #3b82f6; margin-bottom: 10px;'>🔬 Analizador Multi-Cultivo Satellital v2.0</h3>
-        <p>Desarrollado por Martin Ernesto Cano • Enero 2026</p>
-        <p>Integra datos de NASA POWER, Google Earth Engine, INTA y metodologías científicas para vid, olivo y hortalizas</p>
-        <p style='background: rgba(59, 130, 246, 0.2); padding: 10px; border-radius: 10px; margin-top: 15px;'>
-            ✅ TODAS LAS EXPORTACIONES GEOJSON GARANTIZAN CRS EPSG:4326 (WGS84) • ❌ SIN EXPORTACIONES PDF
-        </p>
-        <p style='font-style: italic; margin-top: 10px;'>
-            ⚠️ Este es un sistema de apoyo a decisiones. Los resultados deben validarse con análisis de laboratorio.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+  # Footer
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: #cbd5e1; padding: 20px;'>
+    <h3 style='color: #3b82f6; margin-bottom: 10px;'>🔬 Analizador Multi-Cultivo Satellital v2.0</h3>
+    <p>Desarrollado por Martin Ernesto Cano • Enero 2026</p>
+    <p>Integra datos de NASA POWER, Google Earth Engine, INTA y metodologías científicas para vid, olivo y hortalizas</p>
+    <p style='background: rgba(59, 130, 246, 0.2); padding: 10px; border-radius: 10px; margin-top: 15px;'>
+        ✅ TODAS LAS EXPORTACIONES GEOJSON GARANTIZAN CRS EPSG:4326 (WGS84) • ❌ SIN EXPORTACIONES PDF
+    </p>
+    <p style='font-style: italic; margin-top: 10px;'>
+        ⚠️ Este es un sistema de apoyo a decisiones. Los resultados deben validarse con análisis de laboratorio.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
