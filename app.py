@@ -3487,354 +3487,453 @@ def limpiar_texto_para_pdf(texto):
     texto = texto.encode('latin-1', errors='replace').decode('latin-1')
     return texto
 
-def generar_reporte_pdf(gdf_analizado, cultivo, analisis_tipo, area_total,
-                       nutriente=None, satelite=None, indice=None,
-                       mapa_buffer=None, estadisticas=None, recomendaciones=None):
-    try:
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.set_font('Arial', '', 12)
-
-        pdf.set_font('Arial', 'B', 16)
-        pdf.cell(0, 10, limpiar_texto_para_pdf(f'REPORTE DE ANÁLISIS AGRÍCOLA - {cultivo}'), 0, 1, 'C')
-        pdf.set_font('Arial', '', 12)
-        pdf.cell(0, 10, limpiar_texto_para_pdf(f'Tipo de Análisis: {analisis_tipo}'), 0, 1, 'C')
-
-        # Información de variedad
-        if 'variedad' in st.session_state:
-            pdf.cell(0, 10, limpiar_texto_para_pdf(f'Variedad: {st.session_state["variedad"]}'), 0, 1, 'C')
-
-        pdf.cell(0, 10, limpiar_texto_para_pdf(f'Fecha: {datetime.now().strftime("%d/%m/%Y %H:%M")}'), 0, 1, 'C')
-        pdf.ln(10)
-
-        pdf.set_font('Arial', 'B', 14)
-        pdf.cell(0, 10, '1. INFORMACIÓN GENERAL', 0, 1)
-        pdf.set_font('Arial', '', 12)
-        info_general = f"""Cultivo: {cultivo}
-Área Total: {area_total:.2f} ha
-Zonas Analizadas: {len(gdf_analizado)}
-Tipo de Análisis: {analisis_tipo}"""
-
-        if satelite:
-            info_general += f"\nSatélite: {satelite}"
-        if indice:
-            info_general += f"\nÍndice: {indice}"
-        if nutriente:
-            info_general += f"\nNutriente Analizado: {nutriente}"
-
-        for linea in info_general.strip().split('\n'):
-            pdf.cell(0, 8, limpiar_texto_para_pdf(linea), 0, 1)
-        pdf.ln(5)
-
-        if estadisticas:
-            pdf.set_font('Arial', 'B', 14)
-            pdf.cell(0, 10, '2. ESTADÍSTICAS PRINCIPALES', 0, 1)
-            pdf.set_font('Arial', '', 12)
-            for key, value in estadisticas.items():
-                linea = f"- {key}: {value}"
-                pdf.cell(0, 8, limpiar_texto_para_pdf(linea), 0, 1)
-            pdf.ln(5)
-
-        # === ANÁLISIS DE RENDIMIENTO ===
-        if analisis_tipo == "RECOMENDACIONES NPK" and 'rendimiento_actual' in gdf_analizado.columns:
-            pdf.set_font('Arial', 'B', 14)
-            pdf.cell(0, 10, 'ANÁLISIS DE POTENCIAL DE COSECHA', 0, 1)
-            pdf.set_font('Arial', '', 12)
-            rend_actual = gdf_analizado['rendimiento_actual'].mean()
-            rend_proy = gdf_analizado['rendimiento_proyectado'].mean()
-            incremento = gdf_analizado['incremento_rendimiento'].mean()
-            porcentaje = (incremento / rend_actual * 100) if rend_actual > 0 else 0
-
-            info_rendimiento = f"""Rendimiento Actual Promedio: {rend_actual:.1f} ton/ha
-Rendimiento Proyectado Promedio: {rend_proy:.1f} ton/ha
-Incremento Esperado: {incremento:.1f} ton/ha
-Porcentaje de Aumento: {porcentaje:.1f}%
-"""
-            for linea in info_rendimiento.strip().split('\n'):
-                pdf.cell(0, 8, limpiar_texto_para_pdf(linea), 0, 1)
-            pdf.ln(5)
-
-        if mapa_buffer:
-            try:
-                pdf.set_font('Arial', 'B', 14)
-                pdf.cell(0, 10, '3. MAPA DE RESULTADOS', 0, 1)
-                temp_img_path = "temp_map.png"
-                with open(temp_img_path, "wb") as f:
-                    f.write(mapa_buffer.getvalue())
-                pdf.image(temp_img_path, x=10, w=190)
-                pdf.ln(5)
-                if os.path.exists(temp_img_path):
-                    os.remove(temp_img_path)
-            except Exception as e:
-                pdf.cell(0, 8, limpiar_texto_para_pdf(f"Error al incluir mapa: {str(e)[:50]}..."), 0, 1)
-
-        pdf.set_font('Arial', 'B', 14)
-        pdf.cell(0, 10, '4. RESUMEN DE ZONAS', 0, 1)
-        pdf.set_font('Arial', '', 10)
-
-        if gdf_analizado is not None and not gdf_analizado.empty:
-            columnas_mostrar = ['id_zona', 'area_ha']
-            if 'npk_integrado' in gdf_analizado.columns:
-                columnas_mostrar.append('npk_integrado')
-            if 'nitrogeno_actual' in gdf_analizado.columns:
-                columnas_mostrar.append('nitrogeno_actual')
-            if 'fosforo_actual' in gdf_analizado.columns:
-                columnas_mostrar.append('fosforo_actual')
-            if 'potasio_actual' in gdf_analizado.columns:
-                columnas_mostrar.append('potasio_actual')
-            if 'valor_recomendado' in gdf_analizado.columns:
-                columnas_mostrar.append('valor_recomendado')
-            if 'textura_suelo' in gdf_analizado.columns:
-                columnas_mostrar.append('textura_suelo')
-            if 'ndwi' in gdf_analizado.columns:
-                columnas_mostrar.append('ndwi')
-            if 'rendimiento_actual' in gdf_analizado.columns:
-                columnas_mostrar.extend(['rendimiento_actual', 'rendimiento_proyectado'])
-
-            columnas_mostrar = [col for col in columnas_mostrar if col in gdf_analizado.columns]
-
-            if columnas_mostrar:
-                datos_tabla = [columnas_mostrar]
-                for _, row in gdf_analizado.head(15).iterrows():
-                    fila = []
-                    for col in columnas_mostrar:
-                        if col in gdf_analizado.columns:
-                            valor = row[col]
-                            if isinstance(valor, float):
-                                if col in ['npk_integrado', 'ndwi']:
-                                    fila.append(f"{valor:.3f}")
-                                elif col in ['nitrogeno_actual', 'fosforo_actual', 'potasio_actual', 'valor_recomendado']:
-                                    fila.append(f"{valor:.1f}")
-                                elif col in ['rendimiento_actual', 'rendimiento_proyectado']:
-                                    fila.append(f"{valor:.1f}")
-                                else:
-                                    fila.append(f"{valor:.2f}")
-                            else:
-                                fila.append(str(valor))
-                        else:
-                            fila.append("N/A")
-                    datos_tabla.append(fila)
-
-                col_widths = [190 // len(columnas_mostrar)] * len(columnas_mostrar)
-                for fila in datos_tabla:
-                    for i, item in enumerate(fila):
-                        if i < len(col_widths):
-                            pdf.cell(col_widths[i], 8, limpiar_texto_para_pdf(str(item)), border=1)
-                    pdf.ln()
-                pdf.ln(5)
-
-        if recomendaciones:
-            pdf.set_font('Arial', 'B', 14)
-            pdf.cell(0, 10, '5. RECOMENDACIONES', 0, 1)
-            pdf.set_font('Arial', '', 12)
-            for rec in recomendaciones:
-                linea = f"- {limpiar_texto_para_pdf(rec)}"
-                pdf.multi_cell(0, 8, linea)
-
-        pdf.set_font('Arial', 'B', 14)
-        pdf.cell(0, 10, '6. METADATOS TÉCNICOS', 0, 1)
-        pdf.set_font('Arial', '', 10)
-        metadatos = f"""Generado por: Analizador Multi-Cultivo Satellital
-Versión: 2.0 (Especializado en Vid, Olivo y Hortalizas)
-Fecha de generación: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-Sistema de coordenadas: EPSG:4326 (WGS84)
-Número de zonas: {len(gdf_analizado)}"""
-
-        for linea in metadatos.strip().split('\n'):
-            pdf.cell(0, 6, limpiar_texto_para_pdf(linea), 0, 1)
-
-        pdf_output = BytesIO()
-        pdf_output.write(pdf.output(dest='S').encode('latin-1'))
-        pdf_output.seek(0)
-        return pdf_output
-
-    except Exception as e:
-        st.error(f"❌ Error generando PDF: {str(e)}")
-        import traceback
-        st.error(f"Detalle: {traceback.format_exc()}")
-        return None
-
-def generar_reporte_docx(gdf_analizado, cultivo, analisis_tipo, area_total,
-                        nutriente=None, satelite=None, indice=None,
-                        mapa_buffer=None, estadisticas=None, recomendaciones=None):
+# ===== FUNCIÓN ÚNICA PARA GENERAR REPORTE COMPLETO EN DOCX =====
+def generar_reporte_completo_docx(gdf_analizado, cultivo, area_total, analisis_tipo, 
+                                 nutriente=None, satelite=None, indice=None,
+                                 resultados_economicos=None, gdf_textura=None,
+                                 dem_data=None, pendiente_data=None):
+    """
+    Genera un reporte DOCX completo que incluye todos los análisis:
+    1. Fertilidad actual con mapas y tablas
+    2. Recomendaciones NPK con mapas y tablas
+    3. Análisis económico con mapas de potencial de cosecha
+    4. Análisis de textura con mapas y tablas
+    5. Análisis de curvas de nivel con mapas y tablas
+    """
     try:
         doc = Document()
-        title = doc.add_heading(f'REPORTE DE ANÁLISIS AGRÍCOLA - {cultivo}', 0)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        subtitle = doc.add_paragraph(f'Tipo de Análisis: {analisis_tipo}')
-        subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        # Información de variedad
+        
+        # ===== ESTILOS DEL DOCUMENTO =====
+        style = doc.styles['Normal']
+        style.font.name = 'Arial'
+        style.font.size = Pt(11)
+        
+        # ===== PORTADA =====
+        doc.add_heading('INFORME COMPLETO DE ANÁLISIS AGRÍCOLA', 0)
+        
+        portada = doc.add_paragraph()
+        portada.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        runner = portada.add_run(f'🍇🫒🥬 ANALIZADOR MULTI-CULTIVO SATELITAL\n')
+        runner.bold = True
+        runner.font.size = Pt(14)
+        
+        portada.add_run(f'\nCULTIVO: {cultivo}\n')
         if 'variedad' in st.session_state:
-            variedad_par = doc.add_paragraph(f'Variedad: {st.session_state["variedad"]}')
-            variedad_par.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        fecha = doc.add_paragraph(f'Fecha: {datetime.now().strftime("%d/%m/%Y %H:%M")}')
-        fecha.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        doc.add_paragraph()
-
-        doc.add_heading('1. INFORMACIÓN GENERAL', level=1)
-        info_table = doc.add_table(rows=4, cols=2)
-        info_table.style = 'Table Grid'
-        info_table.cell(0, 0).text = 'Cultivo'
-        info_table.cell(0, 1).text = cultivo
-        info_table.cell(1, 0).text = 'Área Total'
-        info_table.cell(1, 1).text = f'{area_total:.2f} ha'
-        info_table.cell(2, 0).text = 'Zonas Analizadas'
-        info_table.cell(2, 1).text = str(len(gdf_analizado))
-        info_table.cell(3, 0).text = 'Tipo de Análisis'
-        info_table.cell(3, 1).text = analisis_tipo
-
-        row_count = 4
+            portada.add_run(f'VARIEDAD: {st.session_state["variedad"]}\n')
+        portada.add_run(f'ÁREA TOTAL: {area_total:.2f} ha\n')
+        portada.add_run(f'FECHA DE ANÁLISIS: {datetime.now().strftime("%d/%m/%Y %H:%M")}\n')
+        portada.add_run(f'TIPO DE ANÁLISIS: {analisis_tipo}\n')
+        
         if satelite:
-            if row_count >= len(info_table.rows):
-                info_table.add_row()
-            info_table.cell(row_count, 0).text = 'Satélite'
-            info_table.cell(row_count, 1).text = satelite
-            row_count += 1
-
+            portada.add_run(f'SATÉLITE: {satelite}\n')
         if indice:
-            if row_count >= len(info_table.rows):
-                info_table.add_row()
-            info_table.cell(row_count, 0).text = 'Índice'
-            info_table.cell(row_count, 1).text = indice
-            row_count += 1
-
-        if nutriente:
-            if row_count >= len(info_table.rows):
-                info_table.add_row()
-            info_table.cell(row_count, 0).text = 'Nutriente Analizado'
-            info_table.cell(row_count, 1).text = nutriente
-
-        doc.add_paragraph()
-
-        if estadisticas:
-            doc.add_heading('2. ESTADÍSTICAS PRINCIPALES', level=1)
-            for key, value in estadisticas.items():
-                p = doc.add_paragraph(style='List Bullet')
-                run = p.add_run(f'{key}: ')
-                run.bold = True
-                p.add_run(str(value))
-            doc.add_paragraph()
-
-        # === ANÁLISIS DE RENDIMIENTO ===
-        if analisis_tipo == "RECOMENDACIONES NPK" and 'rendimiento_actual' in gdf_analizado.columns:
-            doc.add_heading('ANÁLISIS DE POTENCIAL DE COSECHA', level=1)
+            portada.add_run(f'ÍNDICE: {indice}\n')
+        
+        doc.add_page_break()
+        
+        # ===== TABLA DE CONTENIDOS =====
+        doc.add_heading('ÍNDICE DE CONTENIDOS', 1)
+        contenido = doc.add_paragraph()
+        contenido.add_run('1. RESUMEN EJECUTIVO\n').bold = True
+        contenido.add_run('2. ANÁLISIS DE FERTILIDAD DEL SUELO\n').bold = True
+        contenido.add_run('   2.1. Mapas de Fertilidad\n')
+        contenido.add_run('   2.2. Tablas de Resultados\n')
+        
+        if analisis_tipo == "RECOMENDACIONES NPK":
+            contenido.add_run('3. RECOMENDACIONES DE FERTILIZACIÓN\n').bold = True
+            contenido.add_run('   3.1. Recomendaciones por Zona\n')
+            contenido.add_run('   3.2. Mapas de Recomendaciones\n')
+            
+            if resultados_economicos:
+                contenido.add_run('4. ANÁLISIS ECONÓMICO\n').bold = True
+                contenido.add_run('   4.1. Potencial de Cosecha Actual\n')
+                contenido.add_run('   4.2. Potencial con Recomendaciones\n')
+                contenido.add_run('   4.3. Análisis Financiero\n')
+        
+        if gdf_textura is not None:
+            contenido.add_run('5. ANÁLISIS DE TEXTURA DEL SUELO\n').bold = True
+            contenido.add_run('   5.1. Mapa de Texturas USDA\n')
+            contenido.add_run('   5.2. Composición Granulométrica\n')
+        
+        if dem_data is not None:
+            contenido.add_run('6. ANÁLISIS TOPOGRÁFICO\n').bold = True
+            contenido.add_run('   6.1. Curvas de Nivel\n')
+            contenido.add_run('   6.2. Mapa de Pendientes\n')
+            contenido.add_run('   6.3. Análisis de Riesgo de Erosión\n')
+        
+        contenido.add_run('7. CONCLUSIONES Y RECOMENDACIONES\n').bold = True
+        contenido.add_run('8. METADATOS TÉCNICOS\n').bold = True
+        
+        doc.add_page_break()
+        
+        # ===== 1. RESUMEN EJECUTIVO =====
+        doc.add_heading('1. RESUMEN EJECUTIVO', 1)
+        resumen = doc.add_paragraph()
+        resumen.add_run('Este informe presenta un análisis completo del estado actual del cultivo ')
+        resumen.add_run(f'{cultivo} ').bold = True
+        resumen.add_run(f'para una parcela de {area_total:.2f} hectáreas.\n\n')
+        
+        # Estadísticas resumen
+        if 'npk_integrado' in gdf_analizado.columns:
+            npk_prom = gdf_analizado['npk_integrado'].mean()
+            clasificacion = "BAJA" if npk_prom < 0.5 else "MEDIA" if npk_prom < 0.7 else "ALTA"
+            resumen.add_run(f'• Fertilidad del suelo: {clasificacion} (Índice NPK: {npk_prom:.3f})\n')
+        
+        if 'rendimiento_actual' in gdf_analizado.columns:
             rend_actual = gdf_analizado['rendimiento_actual'].mean()
-            rend_proy = gdf_analizado['rendimiento_proyectado'].mean()
-            incremento = gdf_analizado['incremento_rendimiento'].mean()
-            porcentaje = (incremento / rend_actual * 100) if rend_actual > 0 else 0
-
-            rendimiento_table = doc.add_table(rows=4, cols=2)
-            rendimiento_table.style = 'Table Grid'
-            rendimiento_table.cell(0, 0).text = 'Rendimiento Actual Promedio'
-            rendimiento_table.cell(0, 1).text = f'{rend_actual:.1f} ton/ha'
-            rendimiento_table.cell(1, 0).text = 'Rendimiento Proyectado Promedio'
-            rendimiento_table.cell(1, 1).text = f'{rend_proy:.1f} ton/ha'
-            rendimiento_table.cell(2, 0).text = 'Incremento Esperado'
-            rendimiento_table.cell(2, 1).text = f'{incremento:.1f} ton/ha'
-            rendimiento_table.cell(3, 0).text = 'Porcentaje de Aumento'
-            rendimiento_table.cell(3, 1).text = f'{porcentaje:.1f}%'
-
-            doc.add_paragraph()
-
-        if mapa_buffer:
-            try:
-                doc.add_heading('3. MAPA DE RESULTADOS', level=1)
-                temp_img_path = "temp_map_docx.png"
-                with open(temp_img_path, "wb") as f:
-                    f.write(mapa_buffer.getvalue())
-                doc.add_picture(temp_img_path, width=Inches(6.0))
-                if os.path.exists(temp_img_path):
-                    os.remove(temp_img_path)
-                doc.add_paragraph()
-            except Exception as e:
-                doc.add_paragraph(f'Error al incluir mapa: {str(e)[:50]}...')
-
-        doc.add_heading('4. RESUMEN DE ZONAS', level=1)
-        if gdf_analizado is not None and not gdf_analizado.empty:
-            columnas_mostrar = ['id_zona', 'area_ha']
-            if 'npk_integrado' in gdf_analizado.columns:
-                columnas_mostrar.append('npk_integrado')
-            if 'nitrogeno_actual' in gdf_analizado.columns:
-                columnas_mostrar.append('nitrogeno_actual')
-            if 'fosforo_actual' in gdf_analizado.columns:
-                columnas_mostrar.append('fosforo_actual')
-            if 'potasio_actual' in gdf_analizado.columns:
-                columnas_mostrar.append('potasio_actual')
-            if 'valor_recomendado' in gdf_analizado.columns:
-                columnas_mostrar.append('valor_recomendado')
-            if 'textura_suelo' in gdf_analizado.columns:
-                columnas_mostrar.append('textura_suelo')
-            if 'ndwi' in gdf_analizado.columns:
-                columnas_mostrar.append('ndwi')
-            if 'rendimiento_actual' in gdf_analizado.columns:
-                columnas_mostrar.extend(['rendimiento_actual', 'rendimiento_proyectado'])
-
-            columnas_mostrar = [col for col in columnas_mostrar if col in gdf_analizado.columns]
-
-            if columnas_mostrar:
-                tabla = doc.add_table(rows=1, cols=len(columnas_mostrar))
-                tabla.style = 'Table Grid'
-                for i, col in enumerate(columnas_mostrar):
-                    tabla.cell(0, i).text = col.replace('_', ' ').upper()
-
-                for idx, row in gdf_analizado.head(10).iterrows():
-                    row_cells = tabla.add_row().cells
-                    for i, col in enumerate(columnas_mostrar):
-                        if col in gdf_analizado.columns:
-                            valor = row[col]
-                            if isinstance(valor, float):
-                                if col in ['npk_integrado', 'ndwi']:
-                                    row_cells[i].text = f"{valor:.3f}"
-                                elif col in ['nitrogeno_actual', 'fosforo_actual', 'potasio_actual', 'valor_recomendado']:
-                                    row_cells[i].text = f"{valor:.1f}"
-                                elif col in ['rendimiento_actual', 'rendimiento_proyectado']:
-                                    row_cells[i].text = f"{valor:.1f}"
-                                else:
-                                    row_cells[i].text = f"{valor:.2f}"
-                            else:
-                                row_cells[i].text = str(valor)
-                        else:
-                            row_cells[i].text = "N/A"
-
+            resumen.add_run(f'• Potencial de cosecha actual: {rend_actual:.1f} ton/ha\n')
+        
+        if resultados_economicos:
+            incremento = resultados_economicos.get('incremento_margen_ha', 0)
+            roi = resultados_economicos.get('roi_fertilizacion_%', 0)
+            resumen.add_run(f'• Incremento económico esperado: USD {incremento:.0f} por ha\n')
+            resumen.add_run(f'• Retorno sobre inversión (ROI): {roi:.0f}%\n')
+        
         doc.add_paragraph()
-
-        if recomendaciones:
-            doc.add_heading('5. RECOMENDACIONES', level=1)
-            for rec in recomendaciones:
-                p = doc.add_paragraph(style='List Bullet')
-                p.add_run(rec)
-
-        doc.add_heading('6. METADATOS TÉCNICOS', level=1)
-        metadatos = [
-            ('Generado por', 'Analizador Multi-Cultivo Satellital'),
-            ('Versión', '2.0 (Especializado en Vid, Olivo y Hortalizas)'),
-            ('Fecha de generación', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-            ('Sistema de coordenadas', 'EPSG:4326 (WGS84)'),
-            ('Número de zonas', str(len(gdf_analizado)))
+        
+        # ===== 2. ANÁLISIS DE FERTILIDAD DEL SUELO =====
+        doc.add_heading('2. ANÁLISIS DE FERTILIDAD DEL SUELO', 1)
+        
+        # 2.1. Mapas de Fertilidad
+        doc.add_heading('2.1. Mapas de Fertilidad', 2)
+        
+        if 'npk_integrado' in gdf_analizado.columns:
+            # Mapa de fertilidad integrada
+            doc.add_paragraph('Mapa de Fertilidad Integrada (NPK):')
+            mapa_fertilidad = crear_mapa_fertilidad_integrada(gdf_analizado, cultivo, satelite or "SENTINEL-2")
+            if mapa_fertilidad:
+                temp_path = "temp_fertilidad.png"
+                with open(temp_path, "wb") as f:
+                    f.write(mapa_fertilidad.getvalue())
+                doc.add_picture(temp_path, width=Inches(6))
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            
+            # Mapas individuales de NPK
+            doc.add_paragraph('Mapas Individuales por Nutriente:')
+            for nutriente_map in ['NITRÓGENO', 'FÓSFORO', 'POTASIO']:
+                columna = f'{nutriente_map.lower()}_actual'
+                if columna in gdf_analizado.columns:
+                    mapa_npk = crear_mapa_npk_con_esri(gdf_analizado, nutriente_map, cultivo, satelite or "SENTINEL-2")
+                    if mapa_npk:
+                        temp_path = f"temp_{nutriente_map}.png"
+                        with open(temp_path, "wb") as f:
+                            f.write(mapa_npk.getvalue())
+                        doc.add_picture(temp_path, width=Inches(6))
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+        
+        # 2.2. Tablas de Resultados
+        doc.add_heading('2.2. Tablas de Resultados', 2)
+        
+        # Crear tabla de fertilidad
+        if 'npk_integrado' in gdf_analizado.columns:
+            columnas_fertilidad = ['id_zona', 'area_ha', 'npk_integrado']
+            for nutriente_col in ['nitrogeno_actual', 'fosforo_actual', 'potasio_actual']:
+                if nutriente_col in gdf_analizado.columns:
+                    columnas_fertilidad.append(nutriente_col)
+            
+            columnas_fertilidad = [col for col in columnas_fertilidad if col in gdf_analizado.columns]
+            
+            if columnas_fertilidad:
+                df_fertilidad = gdf_analizado[columnas_fertilidad].copy()
+                if len(columnas_fertilidad) >= 3:
+                    df_fertilidad.columns = ['Zona', 'Área (ha)', 'Índice NPK', 'N (kg/ha)', 'P (kg/ha)', 'K (kg/ha)'][:len(columnas_fertilidad)]
+                
+                # Agregar tabla al documento
+                tabla = doc.add_table(rows=min(len(df_fertilidad), 10)+1, cols=len(df_fertilidad.columns))
+                tabla.style = 'Table Grid'
+                
+                # Encabezados
+                for j, col_name in enumerate(df_fertilidad.columns):
+                    tabla.cell(0, j).text = col_name
+                    tabla.cell(0, j).paragraphs[0].runs[0].bold = True
+                
+                # Datos
+                for i, (_, row) in enumerate(df_fertilidad.head(10).iterrows(), 1):
+                    for j, value in enumerate(row):
+                        if isinstance(value, float):
+                            if columna in ['npk_integrado']:
+                                tabla.cell(i, j).text = f"{value:.3f}"
+                            else:
+                                tabla.cell(i, j).text = f"{value:.1f}"
+                        else:
+                            tabla.cell(i, j).text = str(value)
+        
+        # ===== 3. RECOMENDACIONES DE FERTILIZACIÓN =====
+        if analisis_tipo == "RECOMENDACIONES NPK" and nutriente:
+            doc.add_heading('3. RECOMENDACIONES DE FERTILIZACIÓN', 1)
+            
+            # 3.1. Recomendaciones por Zona
+            doc.add_heading('3.1. Recomendaciones por Zona', 2)
+            if 'valor_recomendado' in gdf_analizado.columns:
+                df_recomendaciones = gdf_analizado[['id_zona', 'area_ha', f'{nutriente.lower()}_actual', 'valor_recomendado']].copy()
+                df_recomendaciones.columns = ['Zona', 'Área (ha)', f'{nutriente} Actual (kg/ha)', f'{nutriente} Recomendado (kg/ha)']
+                
+                tabla_rec = doc.add_table(rows=min(len(df_recomendaciones), 10)+1, cols=4)
+                tabla_rec.style = 'Table Grid'
+                
+                # Encabezados
+                for j, col_name in enumerate(df_recomendaciones.columns):
+                    tabla_rec.cell(0, j).text = col_name
+                    tabla_rec.cell(0, j).paragraphs[0].runs[0].bold = True
+                
+                # Datos
+                for i, (_, row) in enumerate(df_recomendaciones.head(10).iterrows(), 1):
+                    for j, value in enumerate(row):
+                        if isinstance(value, float):
+                            tabla_rec.cell(i, j).text = f"{value:.1f}"
+                        else:
+                            tabla_rec.cell(i, j).text = str(value)
+            
+            # 3.2. Mapas de Recomendaciones
+            doc.add_heading('3.2. Mapas de Recomendaciones', 2)
+            doc.add_paragraph(f'Mapa de Recomendaciones para {nutriente}:')
+            mapa_recomendaciones = crear_mapa_npk_con_esri(gdf_analizado, nutriente, cultivo, satelite or "SENTINEL-2")
+            if mapa_recomendaciones:
+                temp_path = "temp_recomendaciones.png"
+                with open(temp_path, "wb") as f:
+                    f.write(mapa_recomendaciones.getvalue())
+                doc.add_picture(temp_path, width=Inches(6))
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+        
+        # ===== 4. ANÁLISIS ECONÓMICO =====
+        if resultados_economicos:
+            doc.add_heading('4. ANÁLISIS ECONÓMICO', 1)
+            
+            # 4.1. Potencial de Cosecha Actual
+            doc.add_heading('4.1. Potencial de Cosecha Actual', 2)
+            if 'rendimiento_actual' in gdf_analizado.columns:
+                doc.add_paragraph('Mapa de Potencial de Cosecha Actual:')
+                mapa_actual = crear_mapa_calor_rendimiento_actual(gdf_analizado, cultivo)
+                if mapa_actual:
+                    temp_path = "temp_rend_actual.png"
+                    with open(temp_path, "wb") as f:
+                        f.write(mapa_actual.getvalue())
+                    doc.add_picture(temp_path, width=Inches(6))
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+            
+            # 4.2. Potencial con Recomendaciones
+            doc.add_heading('4.2. Potencial con Recomendaciones', 2)
+            if 'rendimiento_proyectado' in gdf_analizado.columns:
+                doc.add_paragraph('Mapa de Potencial de Cosecha con Fertilización:')
+                mapa_proyectado = crear_mapa_calor_rendimiento_proyectado(gdf_analizado, cultivo)
+                if mapa_proyectado:
+                    temp_path = "temp_rend_proyectado.png"
+                    with open(temp_path, "wb") as f:
+                        f.write(mapa_proyectado.getvalue())
+                    doc.add_picture(temp_path, width=Inches(6))
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                
+                # Mapa comparativo
+                doc.add_paragraph('Mapa Comparativo Actual vs. Proyectado:')
+                mapa_comparativo = crear_mapa_comparativo_calor(gdf_analizado, cultivo)
+                if mapa_comparativo:
+                    temp_path = "temp_comparativo.png"
+                    with open(temp_path, "wb") as f:
+                        f.write(mapa_comparativo.getvalue())
+                    doc.add_picture(temp_path, width=Inches(6))
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+            
+            # 4.3. Análisis Financiero
+            doc.add_heading('4.3. Análisis Financiero', 2)
+            
+            # Tabla de resultados económicos
+            tabla_economica = doc.add_table(rows=10, cols=2)
+            tabla_economica.style = 'Table Grid'
+            
+            datos_economicos = [
+                ("Cultivo", resultados_economicos['cultivo']),
+                ("Área total (ha)", f"{resultados_economicos['area_total_ha']:.2f}"),
+                ("Rendimiento actual (ton/ha)", f"{resultados_economicos['rendimiento_actual_ton_ha']:.1f}"),
+                ("Rendimiento proyectado (ton/ha)", f"{resultados_economicos['rendimiento_proy_ton_ha']:.1f}"),
+                ("Incremento de rendimiento (ton/ha)", f"{resultados_economicos['incremento_rendimiento_ton_ha']:.1f}"),
+                ("Costo fertilización (USD/ha)", f"{resultados_economicos['costo_fertilizacion_ha']:.0f}"),
+                ("Incremento margen (USD/ha)", f"{resultados_economicos['incremento_margen_ha']:.0f}"),
+                ("ROI fertilización (%)", f"{resultados_economicos['roi_fertilizacion_%']:.0f}"),
+                ("VAN total (USD)", f"{resultados_economicos['van_usd']:.0f}"),
+                ("TIR (%)", f"{resultados_economicos['tir_%']:.1f}")
+            ]
+            
+            for i, (concepto, valor) in enumerate(datos_economicos):
+                tabla_economica.cell(i, 0).text = concepto
+                tabla_economica.cell(i, 0).paragraphs[0].runs[0].bold = True
+                tabla_economica.cell(i, 1).text = valor
+        
+        # ===== 5. ANÁLISIS DE TEXTURA DEL SUELO =====
+        if gdf_textura is not None:
+            doc.add_heading('5. ANÁLISIS DE TEXTURA DEL SUELO', 1)
+            
+            # 5.1. Mapa de Texturas USDA
+            doc.add_heading('5.1. Mapa de Texturas USDA', 2)
+            mapa_texturas = crear_mapa_texturas_con_esri(gdf_textura, cultivo)
+            if mapa_texturas:
+                temp_path = "temp_texturas.png"
+                with open(temp_path, "wb") as f:
+                    f.write(mapa_texturas.getvalue())
+                doc.add_picture(temp_path, width=Inches(6))
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            
+            # 5.2. Composición Granulométrica
+            doc.add_heading('5.2. Composición Granulométrica', 2)
+            
+            if 'arena' in gdf_textura.columns:
+                # Tabla de texturas
+                columnas_textura = ['id_zona', 'area_ha', 'textura_suelo', 'arena', 'limo', 'arcilla']
+                columnas_textura = [col for col in columnas_textura if col in gdf_textura.columns]
+                
+                if columnas_textura:
+                    df_textura = gdf_textura[columnas_textura].copy()
+                    df_textura.columns = ['Zona', 'Área (ha)', 'Textura USDA', 'Arena (%)', 'Limo (%)', 'Arcilla (%)']
+                    
+                    tabla_textura = doc.add_table(rows=min(len(df_textura), 10)+1, cols=len(df_textura.columns))
+                    tabla_textura.style = 'Table Grid'
+                    
+                    # Encabezados
+                    for j, col_name in enumerate(df_textura.columns):
+                        tabla_textura.cell(0, j).text = col_name
+                        tabla_textura.cell(0, j).paragraphs[0].runs[0].bold = True
+                    
+                    # Datos
+                    for i, (_, row) in enumerate(df_textura.head(10).iterrows(), 1):
+                        for j, value in enumerate(row):
+                            if isinstance(value, float):
+                                tabla_textura.cell(i, j).text = f"{value:.1f}"
+                            else:
+                                tabla_textura.cell(i, j).text = str(value)
+        
+        # ===== 6. ANÁLISIS TOPOGRÁFICO =====
+        if dem_data is not None:
+            doc.add_heading('6. ANÁLISIS TOPOGRÁFICO', 1)
+            
+            X, Y, Z, pendiente_grid, gdf_original = dem_data
+            
+            # 6.1. Curvas de Nivel
+            doc.add_heading('6.1. Curvas de Nivel', 2)
+            doc.add_paragraph('Mapa de Pendientes y Curvas de Nivel:')
+            mapa_pendientes, stats_pendiente = crear_mapa_pendientes_simple(X, Y, pendiente_grid, gdf_original)
+            if mapa_pendientes:
+                temp_path = "temp_pendientes.png"
+                with open(temp_path, "wb") as f:
+                    f.write(mapa_pendientes.getvalue())
+                doc.add_picture(temp_path, width=Inches(6))
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            
+            # 6.2. Estadísticas de Pendientes
+            doc.add_heading('6.2. Estadísticas de Pendientes', 2)
+            if stats_pendiente:
+                tabla_pendientes = doc.add_table(rows=5, cols=2)
+                tabla_pendientes.style = 'Table Grid'
+                
+                datos_pendientes = [
+                    ("Pendiente mínima (%)", f"{stats_pendiente['min']:.1f}"),
+                    ("Pendiente máxima (%)", f"{stats_pendiente['max']:.1f}"),
+                    ("Pendiente promedio (%)", f"{stats_pendiente['promedio']:.1f}"),
+                    ("Desviación estándar (%)", f"{stats_pendiente['std']:.1f}"),
+                    ("Área con pendiente >10%", f"{sum(data.get('porcentaje', 0) for cat, data in stats_pendiente.get('distribucion', {}).items() if cat in ['FUERTE (10-15%)', 'MUY FUERTE (15-25%)', 'EXTREMA (>25%)']):.1f}%")
+                ]
+                
+                for i, (concepto, valor) in enumerate(datos_pendientes):
+                    tabla_pendientes.cell(i, 0).text = concepto
+                    tabla_pendientes.cell(i, 0).paragraphs[0].runs[0].bold = True
+                    tabla_pendientes.cell(i, 1).text = valor
+            
+            # 6.3. Análisis de Riesgo de Erosión
+            doc.add_heading('6.3. Análisis de Riesgo de Erosión', 2)
+            if stats_pendiente and 'distribucion' in stats_pendiente:
+                riesgo_total = 0
+                for categoria, data in stats_pendiente['distribucion'].items():
+                    if categoria in CLASIFICACION_PENDIENTES:
+                        riesgo_total += data['porcentaje'] * CLASIFICACION_PENDIENTES[categoria]['factor_erosivo']
+                riesgo_promedio = riesgo_total / 100 if riesgo_total > 0 else 0
+                
+                riesgo_texto = doc.add_paragraph()
+                if riesgo_promedio < 0.3:
+                    riesgo_texto.add_run('RIESGO BAJO DE EROSIÓN').bold = True
+                    riesgo_texto.add_run(f' (Factor: {riesgo_promedio:.2f})\n')
+                    riesgo_texto.add_run('El terreno presenta pendientes suaves que minimizan el riesgo de erosión.')
+                elif riesgo_promedio < 0.6:
+                    riesgo_texto.add_run('RIESGO MODERADO DE EROSIÓN').bold = True
+                    riesgo_texto.add_run(f' (Factor: {riesgo_promedio:.2f})\n')
+                    riesgo_texto.add_run('Se recomiendan prácticas de conservación de suelo.')
+                else:
+                    riesgo_texto.add_run('RIESGO ALTO DE EROSIÓN').bold = True
+                    riesgo_texto.add_run(f' (Factor: {riesgo_promedio:.2f})\n')
+                    riesgo_texto.add_run('Se requieren medidas urgentes de conservación de suelo.')
+        
+        # ===== 7. CONCLUSIONES Y RECOMENDACIONES =====
+        doc.add_heading('7. CONCLUSIONES Y RECOMENDACIONES', 1)
+        
+        conclusiones = doc.add_paragraph()
+        conclusiones.add_run('CONCLUSIONES PRINCIPALES:\n').bold = True
+        
+        if 'npk_integrado' in gdf_analizado.columns:
+            npk_prom = gdf_analizado['npk_integrado'].mean()
+            if npk_prom < 0.5:
+                conclusiones.add_run('• La fertilidad del suelo es BAJA, requiere intervención inmediata.\n')
+            elif npk_prom < 0.7:
+                conclusiones.add_run('• La fertilidad del suelo es MODERADA, puede optimizarse.\n')
+            else:
+                conclusiones.add_run('• La fertilidad del suelo es ÓPTIMA, mantener prácticas actuales.\n')
+        
+        if resultados_economicos:
+            if resultados_economicos['roi_fertilizacion_%'] > 100:
+                conclusiones.add_run('• La inversión en fertilización es ALTAMENTE RENTABLE.\n')
+            elif resultados_economicos['roi_fertilizacion_%'] > 50:
+                conclusiones.add_run('• La inversión en fertilización es RENTABLE.\n')
+        
+        conclusiones.add_run('\nRECOMENDACIONES GENERALES:\n').bold = True
+        conclusiones.add_run('1. Realizar análisis de suelo de laboratorio para validar resultados satelitales.\n')
+        conclusiones.add_run('2. Implementar agricultura de precisión para aplicación variable de insumos.\n')
+        conclusiones.add_run('3. Monitorear periódicamente el estado del cultivo con imágenes satelitales.\n')
+        
+        if cultivo == "VID":
+            conclusiones.add_run('4. Para vid: Fraccionar fertilización nitrogenada y potásica.\n')
+        elif cultivo == "OLIVO":
+            conclusiones.add_run('4. Para olivo: Priorizar potasio para calidad de aceituna.\n')
+        elif cultivo == "HORTALIZAS DE HOJAS":
+            conclusiones.add_run('4. Para hortalizas: Aplicar nitrógeno en dosis frecuentes.\n')
+        
+        # ===== 8. METADATOS TÉCNICOS =====
+        doc.add_heading('8. METADATOS TÉCNICOS', 1)
+        
+        metadatos = doc.add_table(rows=6, cols=2)
+        metadatos.style = 'Table Grid'
+        
+        datos_tecnicos = [
+            ("Sistema generador", "Analizador Multi-Cultivo Satelital v2.0"),
+            ("Fecha de generación", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            ("Sistema de coordenadas", "EPSG:4326 (WGS84)"),
+            ("Satélite utilizado", satelite or "Datos simulados"),
+            ("Número de zonas analizadas", str(len(gdf_analizado))),
+            ("Resolución espacial", "10-30m según fuente de datos")
         ]
-        for key, value in metadatos:
-            p = doc.add_paragraph()
-            run_key = p.add_run(f'{key}: ')
-            run_key.bold = True
-            p.add_run(value)
-
+        
+        for i, (campo, valor) in enumerate(datos_tecnicos):
+            metadatos.cell(i, 0).text = campo
+            metadatos.cell(i, 0).paragraphs[0].runs[0].bold = True
+            metadatos.cell(i, 1).text = valor
+        
+        # Guardar documento
         docx_output = BytesIO()
         doc.save(docx_output)
         docx_output.seek(0)
+        
         return docx_output
-
+        
     except Exception as e:
-        st.error(f"❌ Error generando DOCX: {str(e)}")
+        st.error(f"❌ Error generando reporte completo DOCX: {str(e)}")
         import traceback
         st.error(f"Detalle: {traceback.format_exc()}")
         return None
 
-# ===== FUNCIÓN CORREGIDA crear_mapa_npk_con_esri =====
+# ===== FUNCIONES DE MAPAS (MANTENIDAS SIN CAMBIOS) =====
 def crear_mapa_npk_con_esri(gdf_analizado, nutriente, cultivo, satelite, mostrar_capa_inta=False):
     """Crea mapa de NPK con fondo ESRI Satellite + capa opcional del INTA - DEVUELVE BytesIO"""
     try:
@@ -3924,6 +4023,7 @@ def crear_mapa_npk_con_esri(gdf_analizado, nutriente, cultivo, satelite, mostrar
     except Exception as e:
         st.error(f"Error creando mapa NPK: {str(e)}")
         return None
+
 def crear_mapa_fertilidad_integrada(gdf_analizado, cultivo, satelite, mostrar_capa_inta=False):
     """Crea mapa de fertilidad integrada (NPK combinado) - DEVUELVE BytesIO"""
     try:
@@ -3984,7 +4084,6 @@ def crear_mapa_fertilidad_integrada(gdf_analizado, cultivo, satelite, mostrar_ca
         st.error(f"Error creando mapa de fertilidad: {str(e)}")
         return None
 
-
 def crear_mapa_texturas_con_esri(gdf_analizado, cultivo, mostrar_capa_inta=False):
     """Crea mapa de texturas con fondo ESRI Satellite - DEVUELVE BytesIO"""
     try:
@@ -4044,7 +4143,6 @@ def crear_mapa_texturas_con_esri(gdf_analizado, cultivo, mostrar_capa_inta=False
         # Leyenda - CORREGIDO: usar mpatches.Patch
         texturas_presentes = [t for t in gdf_analizado['textura_suelo'].unique() if t in colores_textura]
         if texturas_presentes:
-            # Cambia Patch por mpatches.Patch
             legend_elements = [mpatches.Patch(facecolor=colores_textura[t], edgecolor='white', label=t) 
                               for t in texturas_presentes]
             legend = ax.legend(handles=legend_elements, title='Texturas USDA',
@@ -4065,7 +4163,6 @@ def crear_mapa_texturas_con_esri(gdf_analizado, cultivo, mostrar_capa_inta=False
     except Exception as e:
         st.error(f"Error creando mapa de texturas: {str(e)}")
         return None
-
 # ===== FUNCIONES DE GRÁFICOS NASA POWER CON ESTILO OSCURO =====
 def crear_grafico_personalizado(series, titulo, ylabel, color_linea, fondo_grafico='#0f172a', color_texto='#ffffff'):
     """Crea gráfico de línea con estilo oscuro"""
