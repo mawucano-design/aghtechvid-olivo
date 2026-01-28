@@ -4630,25 +4630,127 @@ def mostrar_resultados_fertilidad(gdf_analizado, cultivo, area_total, satelite, 
         )
 
 def mostrar_resultados_recomendaciones(gdf_analizado, cultivo, nutriente, area_total, satelite, mostrar_capa_inta=False):
-    """Muestra resultados de recomendaciones NPK"""
-    
+    """Muestra resultados completos de recomendaciones NPK con mapas de rendimiento"""
     st.subheader(f"💡 RECOMENDACIONES DE {nutriente} - {cultivo}")
     
-    # Estadísticas
-    col1, col2, col3 = st.columns(3)
+    # === MÉTRICAS PRINCIPALES ===
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         if 'valor_recomendado' in gdf_analizado.columns:
             rec_prom = gdf_analizado['valor_recomendado'].mean()
             st.metric("🧴 Recomendación Promedio", f"{rec_prom:.1f} kg/ha")
     with col2:
         col_nutriente = f"{nutriente.lower()}_actual"
-        if col_nutriente in gdf_analizado.columns:
+        if col_nututriente in gdf_analizado.columns:
             actual_prom = gdf_analizado[col_nutriente].mean()
             st.metric("📊 Nivel Actual", f"{actual_prom:.1f} kg/ha")
     with col3:
         if 'area_ha' in gdf_analizado.columns and 'valor_recomendado' in gdf_analizado.columns:
             total_kg = (gdf_analizado['valor_recomendado'] * gdf_analizado['area_ha']).sum()
             st.metric("⚖️ Total Requerido", f"{total_kg:.0f} kg")
+    with col4:
+        if 'rendimiento_actual' in gdf_analizado.columns and 'rendimiento_proyectado' in gdf_analizado.columns:
+            incremento_prom = gdf_analizado['incremento_rendimiento'].mean()
+            st.metric("📈 Incremento Esperado", f"+{incremento_prom:.1f} t/ha")
+    
+    # === MAPA DE RECOMENDACIONES NPK ===
+    st.markdown("---")
+    st.subheader(f"🗺️ MAPA DE RECOMENDACIONES DE {nutriente}")
+    mapa_npk = crear_mapa_npk_con_esri(
+        gdf_analizado, 
+        nutriente, 
+        cultivo, 
+        satelite, 
+        mostrar_capa_inta
+    )
+    if mapa_npk:
+        st.image(mapa_npk, use_container_width=True)
+        st.download_button(
+            label=f"📥 Descargar Mapa de Recomendaciones {nutriente}",
+            data=mapa_npk.getvalue(),
+            file_name=f"recomendacion_{nutriente}_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+            mime="image/png",
+            key=f"download_npk_{nutriente}"
+        )
+    else:
+        st.warning(f"No se pudo generar el mapa de recomendaciones de {nutriente}.")
+    
+    # === MAPAS DE RENDIMIENTO (solo si existen los datos) ===
+    if 'rendimiento_actual' in gdf_analizado.columns:
+        st.markdown("---")
+        st.subheader("🌾 MAPA DE CALOR - RENDIMIENTO ACTUAL (sin fertilización)")
+        mapa_actual = crear_mapa_calor_rendimiento_actual(gdf_analizado, cultivo)
+        if mapa_actual:
+            st.image(mapa_actual, use_container_width=True)
+            st.download_button(
+                label="📥 Descargar Mapa Rendimiento Actual",
+                data=mapa_actual.getvalue(),
+                file_name=f"rendimiento_actual_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                mime="image/png",
+                key="download_rend_actual"
+            )
+    
+    if 'rendimiento_proyectado' in gdf_analizado.columns:
+        st.markdown("---")
+        st.subheader("🚀 MAPA DE CALOR - RENDIMIENTO PROYECTADO (con fertilización óptima)")
+        mapa_proyectado = crear_mapa_calor_rendimiento_proyectado(gdf_analizado, cultivo)
+        if mapa_proyectado:
+            st.image(mapa_proyectado, use_container_width=True)
+            st.download_button(
+                label="📥 Descargar Mapa Rendimiento Proyectado",
+                data=mapa_proyectado.getvalue(),
+                file_name=f"rendimiento_proyectado_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                mime="image/png",
+                key="download_rend_proy"
+            )
+    
+    if 'rendimiento_actual' in gdf_analizado.columns and 'rendimiento_proyectado' in gdf_analizado.columns:
+        st.markdown("---")
+        st.subheader("📊 MAPA COMPARATIVO: ACTUAL vs PROYECTADO")
+        mapa_comparativo = crear_mapa_comparativo_calor(gdf_analizado, cultivo)
+        if mapa_comparativo:
+            st.image(mapa_comparativo, use_container_width=True)
+            st.download_button(
+                label="📥 Descargar Mapa Comparativo",
+                data=mapa_comparativo.getvalue(),
+                file_name=f"comparativo_rendimiento_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                mime="image/png",
+                key="download_rend_comparativo"
+            )
+    
+    # === TABLA DETALLADA ===
+    st.markdown("---")
+    st.subheader("📋 RESULTADOS DETALLADOS POR ZONA")
+    columnas_mostrar = ['id_zona', 'area_ha', 'nitrogeno_actual', 'fosforo_actual', 'potasio_actual', 
+                       'valor_recomendado', 'rendimiento_actual', 'rendimiento_proyectado', 'incremento_rendimiento']
+    columnas_mostrar = [col for col in columnas_mostrar if col in gdf_analizado.columns]
+    
+    if columnas_mostrar:
+        df_mostrar = gdf_analizado[columnas_mostrar].copy()
+        # Renombrar columnas para mejor visualización
+        rename_dict = {
+            'id_zona': 'Zona',
+            'area_ha': 'Área (ha)',
+            'nitrogeno_actual': 'N Actual (kg/ha)',
+            'fosforo_actual': 'P Actual (kg/ha)',
+            'potasio_actual': 'K Actual (kg/ha)',
+            'valor_recomendado': f'{nutriente} Rec. (kg/ha)',
+            'rendimiento_actual': 'Rend. Actual (t/ha)',
+            'rendimiento_proyectado': 'Rend. Proy. (t/ha)',
+            'incremento_rendimiento': 'Incremento (t/ha)'
+        }
+        df_mostrar.rename(columns=rename_dict, inplace=True)
+        st.dataframe(df_mostrar, use_container_width=True)
+        
+        # Descargar CSV
+        csv = df_mostrar.to_csv(index=False)
+        st.download_button(
+            label="📥 Descargar CSV Completo",
+            data=csv,
+            file_name=f"recomendaciones_{cultivo}_{nutriente}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+            key="download_csv_recomendaciones"
+        )
     
 
 # ===== INTERFAZ PRINCIPAL =====
