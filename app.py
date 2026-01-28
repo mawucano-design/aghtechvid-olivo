@@ -2389,60 +2389,251 @@ def crear_mapa_calor_rendimiento_actual(gdf_analizado, cultivo):
         except:
             pass
 
-     # Configurar título y etiquetas
-ax.set_title(f'🚀 MAPA DE CALOR - RENDIMIENTO PROYECTADO\n{cultivo} (con fertilización óptima)',
-             fontsize=16, fontweight='bold', pad=20, color='white')
-ax.set_xlabel('Longitud', color='white')
-ax.set_ylabel('Latitud', color='white')
-ax.tick_params(colors='white')
-ax.grid(True, alpha=0.1, color='#475569', linestyle='--')
+        # Configurar título y etiquetas
+        ax.set_title(f'🌾 MAPA DE CALOR - RENDIMIENTO ACTUAL\n{cultivo}',
+                     fontsize=16, fontweight='bold', pad=20, color='white')
+        ax.set_xlabel('Longitud', color='white')
+        ax.set_ylabel('Latitud', color='white')
+        ax.tick_params(colors='white')
+        ax.grid(True, alpha=0.1, color='#475569', linestyle='--')
 
-# Barra de colores principal
-cbar1 = plt.colorbar(im_proyectado, ax=ax, shrink=0.8, pad=0.02)
-cbar1.set_label('Rendimiento Proyectado (ton/ha)', fontsize=12, fontweight='bold', color='white')
-cbar1.ax.yaxis.set_tick_params(color='white')
-
-# Barra de colores para incrementos (más pequeña)
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-divider = make_axes_locatable(ax)
-cax2 = divider.append_axes("right", size="3%", pad=0.15)
-cbar2 = plt.colorbar(im_incremento, cax=cax2)
-cbar2.set_label('Incremento (ton/ha)', fontsize=9, color='white')
-cbar2.ax.yaxis.set_tick_params(color='white')
-
-# Configurar colores de barras
-for cbar in [cbar1, cbar2]:
-    if cbar:  # ✅ CORRECCIÓN: Verificar que la barra de colores existe
+        # Barra de colores
+        cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+        cbar.set_label('Rendimiento Actual (ton/ha)', fontsize=12, fontweight='bold', color='white')
+        cbar.ax.yaxis.set_tick_params(color='white')
         cbar.outline.set_edgecolor('white')
         plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
 
-# Estadísticas
-stats_text = f"""
-📈 ESTADÍSTICAS DE POTENCIAL:
-• Actual: {z_actual.mean():.1f} ton/ha
-• Proyectado: {z_proyectado.mean():.1f} ton/ha
-• Incremento: +{incrementos.mean():.1f} ton/ha
-• Aumento: +{(incrementos.mean()/z_actual.mean()*100 if z_actual.mean()>0 else 0):.1f}%
-"""
-ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=9,
-        verticalalignment='top', color='white',
-        bbox=dict(boxstyle="round,pad=0.3",
-                  facecolor=(30/255, 41/255, 59/255, 0.9),
-                  alpha=0.9, edgecolor='white'))
+        # Estadísticas
+        stats_text = f"""
+        📊 ESTADÍSTICAS ACTUALES:
+        • Mínimo: {z.min():.1f} ton/ha
+        • Máximo: {z.max():.1f} ton/ha
+        • Promedio: {z.mean():.1f} ton/ha
+        • Desviación: {z.std():.1f} ton/ha
+        """
+        ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=9,
+                verticalalignment='top', color='white',
+                bbox=dict(boxstyle="round,pad=0.3",
+                          facecolor=(30/255, 41/255, 59/255, 0.9),
+                          alpha=0.9, edgecolor='white'))
 
-plt.tight_layout()
-buf = io.BytesIO()
-plt.savefig(buf, format='png', dpi=200, bbox_inches='tight',
-            facecolor='#0f172a', transparent=False)
-buf.seek(0)
-plt.close()
-return buf
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight',
+                    facecolor='#0f172a', transparent=False)
+        buf.seek(0)
+        plt.close()
+        return buf
 
-except Exception as e:
-    st.error(f"Error creando mapa de calor proyectado: {str(e)}")
-    import traceback
-    st.error(f"Detalle: {traceback.format_exc()}")
-    return crear_mapa_calor_rendimiento_proyectado_fallback(gdf_analizado, cultivo)
+    except Exception as e:
+        st.error(f"Error creando mapa de calor actual: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
+        
+        # Versión simplificada si falla la interpolación
+        try:
+            gdf_plot = gdf_analizado.to_crs(epsg=3857)
+            fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+            fig.patch.set_facecolor('#0f172a')
+            ax.set_facecolor('#0f172a')
+
+            valores = gdf_plot['rendimiento_actual']
+            vmin = valores.min() * 0.9
+            vmax = valores.max() * 1.1
+
+            # Crear colormap
+            colors = ['#FF6B6B', '#FFD166', '#06D6A0', '#118AB2']
+            cmap = LinearSegmentedColormap.from_list('rendimiento_actual', colors)
+
+            # Plotear cada zona
+            for idx, row in gdf_plot.iterrows():
+                valor = row['rendimiento_actual']
+                valor_norm = (valor - vmin) / (vmax - vmin) if vmax != vmin else 0.5
+                valor_norm = max(0, min(1, valor_norm))
+                color = cmap(valor_norm)
+
+                # Dibujar polígono con borde
+                gdf_plot.iloc[[idx]].plot(ax=ax, color=color, edgecolor='white',
+                                          linewidth=1, alpha=0.85)
+
+                # Etiqueta simple
+                centroid = row.geometry.centroid
+                ax.annotate(f"{valor:.1f}t",
+                            (centroid.x, centroid.y),
+                            xytext=(0, 0), textcoords="offset points",
+                            fontsize=7, color='white', weight='bold',
+                            ha='center', va='center',
+                            bbox=dict(boxstyle="round,pad=0.2",
+                                      facecolor=(0, 0, 0, 0.6),
+                                      alpha=0.8, edgecolor='white'))
+
+            # Agregar mapa base
+            try:
+                ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, alpha=0.3)
+            except:
+                pass
+
+            ax.set_title(f'🌾 MAPA DE CALOR - RENDIMIENTO ACTUAL\n{cultivo}',
+                         fontsize=16, fontweight='bold', pad=20, color='white')
+            ax.set_xlabel('Longitud', color='white')
+            ax.set_ylabel('Latitud', color='white')
+            ax.tick_params(colors='white')
+            ax.grid(True, alpha=0.2, color='#475569')
+
+            # Barra de colores
+            sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
+            sm.set_array([])
+            cbar = plt.colorbar(sm, ax=ax, shrink=0.8)
+            cbar.set_label('Rendimiento Actual (ton/ha)', fontsize=12, fontweight='bold', color='white')
+            cbar.ax.yaxis.set_tick_params(color='white')
+            cbar.outline.set_edgecolor('white')
+            plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
+
+            plt.tight_layout()
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='#0f172a')
+            buf.seek(0)
+            plt.close()
+            return buf
+
+        except Exception as e2:
+            st.error(f"Error en fallback de mapa actual: {str(e2)}")
+            return None
+
+
+def crear_mapa_calor_rendimiento_proyectado(gdf_analizado, cultivo):
+    """Crea mapa de calor para rendimiento proyectado con visualización suave y profesional"""
+    try:
+        if 'rendimiento_proyectado' not in gdf_analizado.columns or 'rendimiento_actual' not in gdf_analizado.columns:
+            return None
+
+        gdf_plot = gdf_analizado.to_crs(epsg=3857)
+
+        # Crear figura con estilo moderno
+        fig, ax = plt.subplots(1, 1, figsize=(14, 9))
+        fig.patch.set_facecolor('#0f172a')
+        ax.set_facecolor('#0f172a')
+
+        # Obtener los centroides para interpolación
+        centroids = gdf_plot.geometry.centroid
+        x = np.array([c.x for c in centroids])
+        y = np.array([c.y for c in centroids])
+        z_proyectado = gdf_plot['rendimiento_proyectado'].values
+        z_actual = gdf_plot['rendimiento_actual'].values
+        incrementos = z_proyectado - z_actual
+
+        # Crear malla para interpolación
+        x_min, y_min, x_max, y_max = gdf_plot.total_bounds
+        xi = np.linspace(x_min, x_max, 200)
+        yi = np.linspace(y_min, y_max, 200)
+        xi, yi = np.meshgrid(xi, yi)
+
+        # Interpolación para rendimiento proyectado
+        try:
+            from scipy.interpolate import griddata
+            zi_proyectado = griddata((x, y), z_proyectado, (xi, yi), method='cubic', fill_value=np.nan)
+            zi_incremento = griddata((x, y), incrementos, (xi, yi), method='linear', fill_value=np.nan)
+        except:
+            # Fallback a interpolación lineal
+            zi_proyectado = griddata((x, y), z_proyectado, (xi, yi), method='linear', fill_value=np.nan)
+            zi_incremento = griddata((x, y), incrementos, (xi, yi), method='nearest', fill_value=np.nan)
+
+        # Crear mapa de calor para rendimiento proyectado
+        im_proyectado = ax.contourf(xi, yi, zi_proyectado, levels=40, cmap='RdYlGn', alpha=0.8,
+                                    vmin=z_proyectado.min()*0.9, vmax=z_proyectado.max()*1.1)
+        
+        # Superponer capa de incrementos
+        if np.nanmax(zi_incremento) > 0:
+            im_incremento = ax.contourf(xi, yi, zi_incremento, levels=15, cmap='Blues', alpha=0.3)
+        
+        # Agregar contornos
+        contour = ax.contour(xi, yi, zi_proyectado, levels=6, colors='white', linewidths=1, alpha=0.5)
+        ax.clabel(contour, inline=True, fontsize=9, colors='white', fmt='%1.1f t')
+
+        # Agregar puntos de datos
+        for centroid, valor, inc in zip(centroids, z_proyectado, incrementos):
+            marker_size = 8 + (inc/np.max(incrementos)*3 if np.max(incrementos) > 0 else 0)
+            ax.plot(centroid.x, centroid.y, 'o', markersize=marker_size,
+                    markeredgecolor='white', 
+                    markerfacecolor=plt.cm.RdYlGn((valor - z_proyectado.min())/(z_proyectado.max() - z_proyectado.min())))
+            
+            # Etiqueta simple
+            if inc > 0:  # Mostrar etiqueta solo si hay incremento positivo
+                ax.annotate(f"{valor:.1f}t\n(+{inc:.1f})",
+                           (centroid.x, centroid.y),
+                           xytext=(0, 5), textcoords="offset points",
+                           fontsize=7, color='white', weight='bold',
+                           ha='center', va='center',
+                           bbox=dict(boxstyle="round,pad=0.2",
+                                     facecolor=(0, 0, 0, 0.7),
+                                     alpha=0.8))
+
+        # Agregar mapa base
+        try:
+            ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, alpha=0.25)
+        except:
+            pass
+
+        # Configurar título y etiquetas
+        ax.set_title(f'🚀 MAPA DE CALOR - RENDIMIENTO PROYECTADO\n{cultivo} (con fertilización óptima)',
+                     fontsize=16, fontweight='bold', pad=20, color='white')
+        ax.set_xlabel('Longitud', color='white')
+        ax.set_ylabel('Latitud', color='white')
+        ax.tick_params(colors='white')
+        ax.grid(True, alpha=0.1, color='#475569', linestyle='--')
+
+        # Barra de colores principal
+        cbar1 = plt.colorbar(im_proyectado, ax=ax, shrink=0.8, pad=0.02)
+        cbar1.set_label('Rendimiento Proyectado (ton/ha)', fontsize=12, fontweight='bold', color='white')
+        cbar1.ax.yaxis.set_tick_params(color='white')
+
+        # Barra de colores para incrementos (más pequeña) si existe
+        if 'im_incremento' in locals() and im_incremento:
+            from mpl_toolkits.axes_grid1 import make_axes_locatable
+            divider = make_axes_locatable(ax)
+            cax2 = divider.append_axes("right", size="3%", pad=0.15)
+            cbar2 = plt.colorbar(im_incremento, cax=cax2)
+            cbar2.set_label('Incremento (ton/ha)', fontsize=9, color='white')
+            cbar2.ax.yaxis.set_tick_params(color='white')
+            
+            # Configurar colores de barras
+            for cbar in [cbar1, cbar2]:
+                cbar.outline.set_edgecolor('white')
+                plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
+        else:
+            # Solo configurar la barra principal si no hay barra de incrementos
+            cbar1.outline.set_edgecolor('white')
+            plt.setp(plt.getp(cbar1.ax.axes, 'yticklabels'), color='white')
+
+        # Estadísticas
+        stats_text = f"""
+        📈 ESTADÍSTICAS DE POTENCIAL:
+        • Actual: {z_actual.mean():.1f} ton/ha
+        • Proyectado: {z_proyectado.mean():.1f} ton/ha
+        • Incremento: +{incrementos.mean():.1f} ton/ha
+        • Aumento: +{(incrementos.mean()/z_actual.mean()*100 if z_actual.mean()>0 else 0):.1f}%
+        """
+        ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=9,
+                verticalalignment='top', color='white',
+                bbox=dict(boxstyle="round,pad=0.3",
+                          facecolor=(30/255, 41/255, 59/255, 0.9),
+                          alpha=0.9, edgecolor='white'))
+
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight',
+                    facecolor='#0f172a', transparent=False)
+        buf.seek(0)
+        plt.close()
+        return buf
+
+    except Exception as e:
+        st.error(f"Error creando mapa de calor proyectado: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
+        return crear_mapa_calor_rendimiento_proyectado_fallback(gdf_analizado, cultivo)
+
 
 def crear_mapa_calor_rendimiento_proyectado_fallback(gdf_analizado, cultivo):
     """Versión fallback sin interpolación"""
@@ -2519,6 +2710,7 @@ def crear_mapa_calor_rendimiento_proyectado_fallback(gdf_analizado, cultivo):
         import traceback
         st.error(f"Detalle fallback: {traceback.format_exc()}")
         return None
+
 
 def crear_mapa_comparativo_calor(gdf_analizado, cultivo):
     """Crea mapa comparativo side-by-side de rendimiento actual vs proyectado con estilo profesional"""
@@ -2649,6 +2841,7 @@ def crear_mapa_comparativo_calor(gdf_analizado, cultivo):
         import traceback
         st.error(f"Detalle comparativo: {traceback.format_exc()}")
         return crear_mapa_comparativo_calor_fallback(gdf_analizado, cultivo)
+
 
 def crear_mapa_comparativo_calor_fallback(gdf_analizado, cultivo):
     """Versión fallback sin interpolación"""
