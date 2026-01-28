@@ -4961,297 +4961,149 @@ def mostrar_resultados_recomendaciones(gdf_analizado, cultivo, nutriente, area_t
             else:
                 st.warning("No se pudieron obtener datos de NASA POWER para este período/locación")
 
-# ===== PROGRAMA PRINCIPAL =====
-st.markdown("---")
-
-# Botón para ejecutar análisis
-if uploaded_file:
-    gdf_original = cargar_archivo_parcela(uploaded_file)
+# ===== INTERFAZ PRINCIPAL - VERSIÓN CORREGIDA =====
+def main():
+    st.title("🍇🫒🥬 ANALIZADOR MULTI-CULTIVO SATELITAL")
+    st.markdown("### **VID | OLIVO | HORTALIZAS DE HOJAS**")
     
-    if gdf_original is not None and not gdf_original.empty:
-        # Información básica de la parcela
-        area_total = calcular_superficie(gdf_original)
-        centroid = gdf_original.geometry.unary_union.centroid
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("📍 Coordenadas Centroide", f"{centroid.y:.4f}°, {centroid.x:.4f}°")
-        with col2:
-            st.metric("📏 Área Total", f"{area_total:.2f} ha")
-        with col3:
-            st.metric("🗺️ Número de Polígonos", len(gdf_original))
-        with col4:
-            st.metric("🎯 Número de Zonas", n_divisiones)
-        
-        # Vista previa del mapa
-        st.subheader("🗺️ VISTA PREVIA DE LA PARCELA")
-        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-        fig.patch.set_facecolor('#0f172a')
-        ax.set_facecolor('#0f172a')
-        
-        gdf_original.plot(ax=ax, color=COLORES_CULTIVOS[cultivo], alpha=0.7, edgecolor='white', linewidth=2)
-        
-        # Agregar mapa base
-        try:
-            ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, alpha=0.3)
-        except:
-            pass
-        
-        ax.set_title(f'{ICONOS_CULTIVOS[cultivo]} Parcela - {cultivo}', fontsize=14, fontweight='bold', color='white')
-        ax.set_xlabel('Longitud', color='white')
-        ax.set_ylabel('Latitud', color='white')
-        ax.tick_params(colors='white')
-        ax.grid(True, alpha=0.3, color='#475569')
-        
-        st.pyplot(fig)
-        
-        # Botón para ejecutar análisis
-        if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary"):
-            with st.spinner(f"Ejecutando análisis {analisis_tipo} para {cultivo}..."):
-                # Ejecutar análisis
-                resultados = ejecutar_analisis(
-                    gdf_original,
-                    nutriente,
-                    analisis_tipo,
-                    n_divisiones,
-                    cultivo,
-                    satelite_seleccionado,
-                    indice_seleccionado,
-                    fecha_inicio,
-                    fecha_fin,
-                    intervalo_curvas,
-                    resolucion_dem,
-                    st.session_state['usar_inta'],
-                    st.session_state['mostrar_mapa_inta']
-                )
+    # Variables para almacenar resultados
+    resultados_generales = None
+    resultados_economicos = None
+    gdf_textura_analizado = None
+    dem_data_analizado = None
+    
+    # Verificar si hay archivo cargado
+    if uploaded_file is not None:
+        with st.spinner("📂 Cargando archivo de parcela..."):
+            gdf = cargar_archivo_parcela(uploaded_file)
+            
+        if gdf is not None:
+            st.success(f"✅ Parcela cargada correctamente ({len(gdf)} polígonos)")
+            
+            # Mostrar información básica
+            area_total = calcular_superficie(gdf)
+            st.info(f"📏 **Área total:** {area_total:.2f} hectáreas")
+            
+            # Botón para ejecutar análisis
+            if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_width=True):
+                with st.spinner("🔬 Ejecutando análisis..."):
+                    resultados = ejecutar_analisis(
+                        gdf=gdf,
+                        nutriente=nutriente if analisis_tipo == "RECOMENDACIONES NPK" else None,
+                        analisis_tipo=analisis_tipo,
+                        n_divisiones=n_divisiones,
+                        cultivo=cultivo,
+                        satelite=satelite_seleccionado,
+                        indice=indice_seleccionado if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"] else None,
+                        fecha_inicio=fecha_inicio if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"] else None,
+                        fecha_fin=fecha_fin if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"] else None,
+                        intervalo_curvas=intervalo_curvas if analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL" else 5.0,
+                        resolucion_dem=resolucion_dem if analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL" else 10.0,
+                        usar_inta=st.session_state.get('usar_inta', True),
+                        mostrar_capa_inta=st.session_state.get('mostrar_mapa_inta', False)
+                    )
                 
                 if resultados['exitoso']:
-                    st.success(f"✅ Análisis completado exitosamente!")
+                    st.success("✅ Análisis completado exitosamente!")
+                    resultados_generales = resultados['gdf_analizado']
                     
                     # Mostrar resultados según tipo de análisis
                     if analisis_tipo == "ANÁLISIS DE TEXTURA":
                         mostrar_resultados_textura(
-                            resultados['gdf_analizado'],
+                            resultados_generales,
                             cultivo,
-                            resultados['area_total'],
-                            st.session_state['mostrar_mapa_inta']
+                            area_total,
+                            st.session_state.get('mostrar_mapa_inta', False)
                         )
-                    
+                        gdf_textura_analizado = resultados_generales
+                        
                     elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL":
                         # Generar DEM sintético
-                        X, Y, Z, bounds = generar_dem_sintetico(gdf_original, resolucion_dem)
+                        X, Y, Z, bounds = generar_dem_sintetico(gdf, resolucion_dem)
                         pendiente_grid = calcular_pendiente_simple(X, Y, Z, resolucion_dem)
-                        curvas, elevaciones = generar_curvas_nivel_simple(X, Y, Z, intervalo_curvas, gdf_original)
+                        curvas, elevaciones = generar_curvas_nivel_simple(X, Y, Z, intervalo_curvas, gdf)
                         
                         mostrar_resultados_curvas_nivel(
                             X, Y, Z, pendiente_grid, curvas, elevaciones,
-                            gdf_original, cultivo, resultados['area_total']
+                            gdf, cultivo, area_total
                         )
-                    
+                        dem_data_analizado = (X, Y, Z, pendiente_grid, gdf)
+                        
                     elif analisis_tipo == "FERTILIDAD ACTUAL":
                         mostrar_resultados_fertilidad(
-                            resultados['gdf_analizado'],
+                            resultados_generales,
                             cultivo,
-                            resultados['area_total'],
+                            area_total,
                             satelite_seleccionado,
-                            st.session_state['mostrar_mapa_inta']
+                            st.session_state.get('mostrar_mapa_inta', False)
                         )
-                    
+                        
                     elif analisis_tipo == "RECOMENDACIONES NPK":
                         mostrar_resultados_recomendaciones(
-                            resultados['gdf_analizado'],
+                            resultados_generales,
                             cultivo,
                             nutriente,
-                            resultados['area_total'],
+                            area_total,
                             satelite_seleccionado,
-                            st.session_state['mostrar_mapa_inta']
+                            st.session_state.get('mostrar_mapa_inta', False)
                         )
+                        
+                        # Mostrar análisis económico si hay datos de variedad
+                        if 'variedad_params' in st.session_state:
+                            resultados_economicos = realizar_analisis_economico(
+                                resultados_generales,
+                                cultivo,
+                                st.session_state['variedad_params'],
+                                area_total
+                            )
+                            mostrar_analisis_economico(resultados_economicos)
                     
-                    # Generar reportes
+                    # ===== SECCIÓN DE DESCARGA DE REPORTE UNIFICADO =====
                     st.markdown("---")
-                    st.subheader("📄 GENERAR REPORTES COMPLETOS")
+                    st.subheader("📥 DESCARGAR REPORTE COMPLETO")
                     
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        if st.button("📊 Generar Reporte PDF"):
-                            with st.spinner("Generando reporte PDF..."):
-                                # Generar estadísticas
-                                estadisticas = generar_resumen_estadisticas(
-                                    resultados['gdf_analizado'],
-                                    analisis_tipo,
-                                    cultivo,
-                                    resultados.get('df_power')
+                    if st.button("📄 Generar Reporte Completo (DOCX)", type="primary", use_container_width=True):
+                        with st.spinner("📋 Compilando reporte completo..."):
+                            reporte_docx = generar_reporte_completo_docx(
+                                gdf_analizado=resultados_generales,
+                                cultivo=cultivo,
+                                area_total=area_total,
+                                analisis_tipo=analisis_tipo,
+                                nutriente=nutriente if analisis_tipo == "RECOMENDACIONES NPK" else None,
+                                satelite=satelite_seleccionado,
+                                indice=indice_seleccionado if analisis_tipo in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"] else None,
+                                resultados_economicos=resultados_economicos,
+                                gdf_textura=gdf_textura_analizado,
+                                dem_data=dem_data_analizado
+                            )
+                            
+                            if reporte_docx:
+                                st.success("✅ Reporte completo generado exitosamente!")
+                                
+                                # Botón de descarga
+                                st.download_button(
+                                    label="📥 Descargar Reporte Completo (DOCX)",
+                                    data=reporte_docx,
+                                    file_name=f"reporte_completo_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                 )
-                                
-                                # Generar recomendaciones
-                                recomendaciones = generar_recomendaciones_generales(
-                                    resultados['gdf_analizado'],
-                                    analisis_tipo,
-                                    cultivo
-                                )
-                                
-                                # Crear mapa según tipo de análisis
-                                mapa_buffer = None
-                                if analisis_tipo == "FERTILIDAD ACTUAL":
-                                    mapa_buffer = crear_mapa_fertilidad_integrada(
-                                        resultados['gdf_analizado'],
-                                        cultivo,
-                                        satelite_seleccionado,
-                                        st.session_state['mostrar_mapa_inta']
-                                    )
-                                elif analisis_tipo == "RECOMENDACIONES NPK":
-                                    mapa_buffer = crear_mapa_npk_con_esri(
-                                        resultados['gdf_analizado'],
-                                        nutriente,
-                                        cultivo,
-                                        satelite_seleccionado,
-                                        st.session_state['mostrar_mapa_inta']
-                                    )
-                                elif analisis_tipo == "ANÁLISIS DE TEXTURA":
-                                    mapa_buffer = crear_mapa_texturas_con_esri(
-                                        resultados['gdf_analizado'],
-                                        cultivo,
-                                        st.session_state['mostrar_mapa_inta']
-                                    )
-                                
-                                # Generar PDF
-                                pdf_buffer = generar_reporte_pdf(
-                                    resultados['gdf_analizado'],
-                                    cultivo,
-                                    analisis_tipo,
-                                    resultados['area_total'],
-                                    nutriente,
-                                    satelite_seleccionado,
-                                    indice_seleccionado,
-                                    mapa_buffer,
-                                    estadisticas,
-                                    recomendaciones
-                                )
-                                
-                                if pdf_buffer:
-                                    st.download_button(
-                                        label="📥 Descargar Reporte PDF",
-                                        data=pdf_buffer,
-                                        file_name=f"reporte_{cultivo}_{analisis_tipo}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                                        mime="application/pdf"
-                                    )
-                    
-                    with col2:
-                        if st.button("📝 Generar Reporte Word"):
-                            with st.spinner("Generando reporte Word..."):
-                                # Generar estadísticas
-                                estadisticas = generar_resumen_estadisticas(
-                                    resultados['gdf_analizado'],
-                                    analisis_tipo,
-                                    cultivo,
-                                    resultados.get('df_power')
-                                )
-                                
-                                # Generar recomendaciones
-                                recomendaciones = generar_recomendaciones_generales(
-                                    resultados['gdf_analizado'],
-                                    analisis_tipo,
-                                    cultivo
-                                )
-                                
-                                # Crear mapa según tipo de análisis
-                                mapa_buffer = None
-                                if analisis_tipo == "FERTILIDAD ACTUAL":
-                                    mapa_buffer = crear_mapa_fertilidad_integrada(
-                                        resultados['gdf_analizado'],
-                                        cultivo,
-                                        satelite_seleccionado,
-                                        st.session_state['mostrar_mapa_inta']
-                                    )
-                                elif analisis_tipo == "RECOMENDACIONES NPK":
-                                    mapa_buffer = crear_mapa_npk_con_esri(
-                                        resultados['gdf_analizado'],
-                                        nutriente,
-                                        cultivo,
-                                        satelite_seleccionado,
-                                        st.session_state['mostrar_mapa_inta']
-                                    )
-                                elif analisis_tipo == "ANÁLISIS DE TEXTURA":
-                                    mapa_buffer = crear_mapa_texturas_con_esri(
-                                        resultados['gdf_analizado'],
-                                        cultivo,
-                                        st.session_state['mostrar_mapa_inta']
-                                    )
-                                
-                                # Generar DOCX
-                                docx_buffer = generar_reporte_docx(
-                                    resultados['gdf_analizado'],
-                                    cultivo,
-                                    analisis_tipo,
-                                    resultados['area_total'],
-                                    nutriente,
-                                    satelite_seleccionado,
-                                    indice_seleccionado,
-                                    mapa_buffer,
-                                    estadisticas,
-                                    recomendaciones
-                                )
-                                
-                                if docx_buffer:
-                                    st.download_button(
-                                        label="📥 Descargar Reporte Word",
-                                        data=docx_buffer,
-                                        file_name=f"reporte_{cultivo}_{analisis_tipo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
-                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                    )
-                    
-                    # Exportar datos GeoJSON
-                    st.markdown("---")
-                    st.subheader("🗺️ EXPORTAR DATOS GEOGRÁFICOS")
-                    
-                    geojson_data, nombre_archivo = exportar_a_geojson(resultados['gdf_analizado'], "analisis")
-                    
-                    if geojson_data:
-                        st.download_button(
-                            label="📤 Descargar GeoJSON",
-                            data=geojson_data,
-                            file_name=nombre_archivo,
-                            mime="application/json"
-                        )
                 else:
-                    st.error("❌ Error en el análisis. Por favor, verifica los datos e intenta nuevamente.")
+                    st.error("❌ Error en el análisis. Por favor, revisa los datos e inténtalo de nuevo.")
     else:
-        st.info("👈 Por favor, sube un archivo de parcela para comenzar el análisis")
+        st.info("📁 Por favor, sube un archivo de parcela para comenzar el análisis.")
+        st.markdown("""
+        ### 📋 Formatos aceptados:
+        - **Shapefile** (.zip que contenga .shp, .shx, .dbf, .prj)
+        - **KML** (.kml) - Google Earth
+        - **KMZ** (.kmz) - Google Earth comprimido
         
-        # Mostrar información sobre los cultivos disponibles
-        st.markdown("---")
-        st.subheader("🌱 CULTIVOS DISPONIBLES")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown("### 🍇 **VID**")
-            st.markdown("""
-            - **Malbec, Cabernet, Chardonnay, Torrontés**
-            - **Uso:** Vino premium
-            - **Regiones:** Mendoza, San Juan, Río Negro
-            - **Requerimientos:** Suelos franco arenosos
-            """)
-            
-        with col2:
-            st.markdown("### 🫒 **OLIVO**")
-            st.markdown("""
-            - **Arbequina, Manzanilla, Picual, Empeltre**
-            - **Uso:** Aceite y aceituna de mesa
-            - **Regiones:** La Rioja, Catamarca, San Juan
-            - **Requerimientos:** Suelos francos
-            """)
-            
-        with col3:
-            st.markdown("### 🥬 **HORTALIZAS DE HOJAS**")
-            st.markdown("""
-            - **Lechuga, Espinaca, Acelga, Rúcula**
-            - **Uso:** Consumo fresco
-            - **Regiones:** Cinturón verde Buenos Aires
-            - **Requerimientos:** Suelos franco limosos
-            """)
+        ### 📝 Instrucciones:
+        1. Selecciona el cultivo en la barra lateral
+        2. Configura los parámetros del análisis
+        3. Sube tu archivo de parcela
+        4. Haz clic en **EJECUTAR ANÁLISIS COMPLETO**
+        """)
 
-# Ejecutar la aplicación
+# ===== EJECUTAR LA APLICACIÓN =====
 if __name__ == "__main__":
     main()
