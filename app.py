@@ -4393,7 +4393,7 @@ def main():
                                 'area_total_ha': st.session_state['resultados_guardados']['area_total']
                             }
                         )
-                        if geojson_
+                        if geojson_data:
                             st.download_button(
                                 label=f"📥 Descargar GeoJSON {nutriente_exp}",
                                 data=geojson_data.encode('utf-8'),
@@ -4421,7 +4421,7 @@ def main():
                                 'area_total_ha': st.session_state['resultados_guardados']['area_total']
                             }
                         )
-                        if geojson_
+                        if geojson_data:
                             st.download_button(
                                 label="📥 Descargar GeoJSON Textura",
                                 data=geojson_data.encode('utf-8'),
