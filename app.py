@@ -36,10 +36,12 @@ if 'geojson_data' not in st.session_state:
     st.session_state.geojson_data = None
 if 'nombre_geojson' not in st.session_state:
     st.session_state.nombre_geojson = ""
-if 'ultimo_analisis' not in st.session_state:
-    st.session_state.ultimo_analisis = None
+if 'nombre_reporte' not in st.session_state:
+    st.session_state.nombre_reporte = ""
 if 'resultados_todos' not in st.session_state:
     st.session_state.resultados_todos = {}
+if 'analisis_completado' not in st.session_state:
+    st.session_state.analisis_completado = False
 
 # === ESTILOS PERSONALIZADOS - VERSIÓN PREMIUM MODERNA ===
 st.markdown("""
@@ -862,7 +864,6 @@ def cargar_archivo_parcela(uploaded_file):
 # ===== FUNCIONES PARA DATOS SATELITALES =====
 def descargar_datos_landsat8(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
     try:
-        st.info(f"🔍 Buscando escenas Landsat 8...")
         datos_simulados = {
             'indice': indice,
             'valor_promedio': 0.65 + np.random.normal(0, 0.1),
@@ -872,8 +873,6 @@ def descargar_datos_landsat8(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
             'cobertura_nubes': f"{np.random.randint(0, 15)}%",
             'resolucion': '30m'
         }
-        st.success(f"✅ Escena Landsat 8 encontrada: {datos_simulados['id_escena']}")
-        st.info(f"☁️ Cobertura de nubes: {datos_simulados['cobertura_nubes']}")
         return datos_simulados
     except Exception as e:
         st.error(f"❌ Error procesando Landsat 8: {str(e)}")
@@ -881,7 +880,6 @@ def descargar_datos_landsat8(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
 
 def descargar_datos_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
     try:
-        st.info(f"🔍 Buscando escenas Sentinel-2...")
         datos_simulados = {
             'indice': indice,
             'valor_promedio': 0.72 + np.random.normal(0, 0.08),
@@ -891,15 +889,12 @@ def descargar_datos_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
             'cobertura_nubes': f"{np.random.randint(0, 10)}%",
             'resolucion': '10m'
         }
-        st.success(f"✅ Escena Sentinel-2 encontrada: {datos_simulados['id_escena']}")
-        st.info(f"☁️ Cobertura de nubes: {datos_simulados['cobertura_nubes']}")
         return datos_simulados
     except Exception as e:
         st.error(f"❌ Error procesando Sentinel-2: {str(e)}")
         return None
 
 def generar_datos_simulados(gdf, cultivo, indice='NDVI'):
-    st.info("🔬 Generando datos simulados...")
     datos_simulados = {
         'indice': indice,
         'valor_promedio': PARAMETROS_CULTIVOS[cultivo]['NDVI_OPTIMO'] * 0.8 + np.random.normal(0, 0.1),
@@ -907,7 +902,6 @@ def generar_datos_simulados(gdf, cultivo, indice='NDVI'):
         'fecha': datetime.now().strftime('%Y-%m-%d'),
         'resolucion': '10m'
     }
-    st.success("✅ Datos simulados generados")
     return datos_simulados
 
 # ===== FUNCIÓN PARA OBTENER DATOS DE NASA POWER =====
@@ -934,7 +928,6 @@ def obtener_datos_nasa_power(gdf, fecha_inicio, fecha_fin):
         response = requests.get(url, params=params, timeout=15)
         data = response.json()
         if 'properties' not in data or 'parameter' not in data['properties']:
-            st.warning("⚠️ No se obtuvieron datos de NASA POWER (fuera de rango o sin conexión).")
             return None
         series = data['properties']['parameter']
         df_power = pd.DataFrame({
@@ -946,12 +939,9 @@ def obtener_datos_nasa_power(gdf, fecha_inicio, fecha_fin):
         })
         df_power = df_power.replace(-999, np.nan).dropna()
         if df_power.empty:
-            st.warning("⚠️ Datos de NASA POWER no disponibles para el período seleccionado.")
             return None
-        st.success("✅ Datos meteorológicos de NASA POWER cargados.")
         return df_power
     except Exception as e:
-        st.error(f"❌ Error al obtener datos de NASA POWER: {str(e)}")
         return None
 
 # ===== FUNCIONES DE ANÁLISIS COMPLETOS =====
@@ -1238,12 +1228,10 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
         gdf_dividido['area_ha'] = areas_ha_list
         
         # 1. Análisis de fertilidad actual
-        st.info("📊 Ejecutando análisis de fertilidad actual...")
         fertilidad_actual = analizar_fertilidad_actual(gdf_dividido, cultivo, datos_satelitales)
         resultados['fertilidad_actual'] = fertilidad_actual
         
         # 2. Análisis de recomendaciones NPK
-        st.info("🧪 Ejecutando análisis de recomendaciones NPK...")
         rec_n, rec_p, rec_k = analizar_recomendaciones_npk(fertilidad_actual, cultivo)
         resultados['recomendaciones_npk'] = {
             'N': rec_n,
@@ -1252,22 +1240,19 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
         }
         
         # 3. Análisis de costos
-        st.info("💰 Ejecutando análisis de costos...")
         costos = analizar_costos(gdf_dividido, cultivo, rec_n, rec_p, rec_k)
         resultados['costos'] = costos
         
         # 4. Análisis de proyecciones
-        st.info("📈 Ejecutando proyecciones de cosecha...")
         proyecciones = analizar_proyecciones_cosecha(gdf_dividido, cultivo, fertilidad_actual)
         resultados['proyecciones'] = proyecciones
         
         # 5. Análisis de textura
-        st.info("🏗️ Ejecutando análisis de textura del suelo...")
         textura = analizar_textura_suelo(gdf_dividido, cultivo)
         resultados['textura'] = textura
         
         # Combinar todos los resultados en un solo GeoDataFrame
-        gdf_completo = gdf_dividido.copy()
+        gdf_completo = textura.copy()
         
         # Añadir fertilidad
         for i, fert in enumerate(fertilidad_actual):
@@ -1297,7 +1282,7 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
     except Exception as e:
         st.error(f"❌ Error en análisis completo: {str(e)}")
         import traceback
-        st.error(f"Detalle: {traceback.format_exc()}")
+        traceback.print_exc()
         return resultados
 
 # ===== FUNCIONES DE VISUALIZACIÓN =====
@@ -1327,7 +1312,7 @@ def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
         try:
             ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, alpha=0.7)
         except:
-            st.warning("⚠️ No se pudo cargar el mapa base ESRI.")
+            pass
         
         info_satelite = SATELITES_DISPONIBLES.get(satelite, SATELITES_DISPONIBLES['DATOS_SIMULADOS'])
         ax.set_title(f'{ICONOS_CULTIVOS[cultivo]} FERTILIDAD ACTUAL - {cultivo}\n'
@@ -1394,7 +1379,7 @@ def crear_mapa_npk(gdf_completo, cultivo, nutriente='N'):
         try:
             ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, alpha=0.7)
         except:
-            st.warning("⚠️ No se pudo cargar el mapa base ESRI.")
+            pass
         
         ax.set_title(f'{ICONOS_CULTIVOS[cultivo]} RECOMENDACIONES {titulo_nut} - {cultivo}',
                      fontsize=16, fontweight='bold', pad=20)
@@ -1445,7 +1430,7 @@ def crear_mapa_texturas(gdf_completo, cultivo):
         try:
             ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, alpha=0.6)
         except:
-            st.warning("⚠️ No se pudo cargar el mapa base ESRI.")
+            pass
         
         ax.set_title(f'{ICONOS_CULTIVOS[cultivo]} MAPA DE TEXTURAS - {cultivo}',
                      fontsize=16, fontweight='bold', pad=20)
@@ -1480,7 +1465,7 @@ def exportar_a_geojson(gdf, nombre_base="parcela"):
         st.error(f"❌ Error exportando a GeoJSON: {str(e)}")
         return None, None
 
-def generar_reporte_completo(resultados, cultivo, satelite):
+def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_fin):
     """Generar reporte DOCX con todos los análisis"""
     try:
         doc = Document()
@@ -1508,7 +1493,7 @@ def generar_reporte_completo(resultados, cultivo, satelite):
         info_table.cell(3, 0).text = 'Satélite'
         info_table.cell(3, 1).text = satelite
         info_table.cell(4, 0).text = 'Período de Análisis'
-        info_table.cell(4, 1).text = f'{fecha_inicio} a {fecha_fin}'
+        info_table.cell(4, 1).text = f'{fecha_inicio.strftime("%d/%m/%Y")} a {fecha_fin.strftime("%d/%m/%Y")}'
         
         doc.add_paragraph()
         
@@ -1679,10 +1664,12 @@ def generar_reporte_completo(resultados, cultivo, satelite):
     except Exception as e:
         st.error(f"❌ Error generando reporte DOCX: {str(e)}")
         import traceback
-        st.error(f"Detalle: {traceback.format_exc()}")
+        traceback.print_exc()
         return None
 
 # ===== INTERFAZ PRINCIPAL =====
+st.title("ANALIZADOR MULTI-CULTIVO SATELITAL")
+
 if uploaded_file:
     with st.spinner("Cargando parcela..."):
         try:
@@ -1715,331 +1702,20 @@ if uploaded_file:
                     st.write(f"- Satélite: {SATELITES_DISPONIBLES[satelite_seleccionado]['nombre']}")
                     st.write(f"- Período: {fecha_inicio} a {fecha_fin}")
                 
-                if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary"):
-                    resultados = ejecutar_analisis_completo(
-                        gdf, cultivo, n_divisiones, 
-                        satelite_seleccionado, fecha_inicio, fecha_fin
-                    )
-                    
-                    if resultados['exitoso']:
-                        st.session_state.resultados_todos = resultados
+                if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_width=True):
+                    with st.spinner("Ejecutando análisis completo..."):
+                        resultados = ejecutar_analisis_completo(
+                            gdf, cultivo, n_divisiones, 
+                            satelite_seleccionado, fecha_inicio, fecha_fin
+                        )
                         
-                        # Mostrar resultados en pestañas
-                        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-                            "📊 Fertilidad Actual",
-                            "🧪 Recomendaciones NPK",
-                            "💰 Análisis de Costos",
-                            "🏗️ Textura del Suelo",
-                            "📈 Proyecciones"
-                        ])
-                        
-                        with tab1:
-                            st.subheader("FERTILIDAD ACTUAL")
-                            col1, col2, col3, col4 = st.columns(4)
-                            with col1:
-                                npk_prom = resultados['gdf_completo']['fert_npk_actual'].mean()
-                                st.metric("Índice NPK Promedio", f"{npk_prom:.3f}")
-                            with col2:
-                                ndvi_prom = resultados['gdf_completo']['fert_ndvi'].mean()
-                                st.metric("NDVI Promedio", f"{ndvi_prom:.3f}")
-                            with col3:
-                                mo_prom = resultados['gdf_completo']['fert_materia_organica'].mean()
-                                st.metric("Materia Orgánica", f"{mo_prom:.1f}%")
-                            with col4:
-                                hum_prom = resultados['gdf_completo']['fert_humedad_suelo'].mean()
-                                st.metric("Humedad Suelo", f"{hum_prom:.3f}")
-                            
-                            # Mapa de fertilidad
-                            st.subheader("🗺️ MAPA DE FERTILIDAD")
-                            mapa_fert = crear_mapa_fertilidad(resultados['gdf_completo'], cultivo, satelite_seleccionado)
-                            if mapa_fert:
-                                st.image(mapa_fert, use_container_width=True)
-                            
-                            # Tabla de resultados
-                            st.subheader("📋 TABLA DE RESULTADOS")
-                            columnas_fert = ['id_zona', 'area_ha', 'fert_npk_actual', 'fert_ndvi', 
-                                           'fert_ndre', 'fert_materia_organica', 'fert_humedad_suelo']
-                            tabla_fert = resultados['gdf_completo'][columnas_fert].copy()
-                            tabla_fert.columns = ['Zona', 'Área (ha)', 'Índice NPK', 'NDVI', 
-                                                'NDRE', 'Materia Org (%)', 'Humedad']
-                            st.dataframe(tabla_fert)
-                        
-                        with tab2:
-                            st.subheader("RECOMENDACIONES NPK")
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                n_prom = resultados['gdf_completo']['rec_N'].mean()
-                                st.metric("Nitrógeno Promedio", f"{n_prom:.1f} kg/ha")
-                            with col2:
-                                p_prom = resultados['gdf_completo']['rec_P'].mean()
-                                st.metric("Fósforo Promedio", f"{p_prom:.1f} kg/ha")
-                            with col3:
-                                k_prom = resultados['gdf_completo']['rec_K'].mean()
-                                st.metric("Potasio Promedio", f"{k_prom:.1f} kg/ha")
-                            
-                            # Mapas NPK
-                            st.subheader("🗺️ MAPAS DE RECOMENDACIONES")
-                            col_n, col_p, col_k = st.columns(3)
-                            with col_n:
-                                mapa_n = crear_mapa_npk(resultados['gdf_completo'], cultivo, 'N')
-                                if mapa_n:
-                                    st.image(mapa_n, use_container_width=True)
-                                    st.caption("Nitrógeno (N)")
-                            with col_p:
-                                mapa_p = crear_mapa_npk(resultados['gdf_completo'], cultivo, 'P')
-                                if mapa_p:
-                                    st.image(mapa_p, use_container_width=True)
-                                    st.caption("Fósforo (P)")
-                            with col_k:
-                                mapa_k = crear_mapa_npk(resultados['gdf_completo'], cultivo, 'K')
-                                if mapa_k:
-                                    st.image(mapa_k, use_container_width=True)
-                                    st.caption("Potasio (K)")
-                            
-                            # Tabla de recomendaciones
-                            st.subheader("📋 TABLA DE RECOMENDACIONES")
-                            columnas_npk = ['id_zona', 'area_ha', 'rec_N', 'rec_P', 'rec_K']
-                            tabla_npk = resultados['gdf_completo'][columnas_npk].copy()
-                            tabla_npk.columns = ['Zona', 'Área (ha)', 'Nitrógeno (kg/ha)', 
-                                               'Fósforo (kg/ha)', 'Potasio (kg/ha)']
-                            st.dataframe(tabla_npk)
-                        
-                        with tab3:
-                            st.subheader("ANÁLISIS DE COSTOS")
-                            costo_total = resultados['gdf_completo']['costo_costo_total'].sum()
-                            costo_prom = resultados['gdf_completo']['costo_costo_total'].mean()
-                            
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("Costo Total Estimado", f"${costo_total:.2f} USD")
-                            with col2:
-                                st.metric("Costo Promedio por ha", f"${costo_prom:.2f} USD/ha")
-                            with col3:
-                                inversion_ha = costo_total / resultados['area_total'] if resultados['area_total'] > 0 else 0
-                                st.metric("Inversión por ha", f"${inversion_ha:.2f} USD/ha")
-                            
-                            # Gráfico de costos
-                            st.subheader("📊 DISTRIBUCIÓN DE COSTOS")
-                            costos_n = resultados['gdf_completo']['costo_costo_nitrogeno'].sum()
-                            costos_p = resultados['gdf_completo']['costo_costo_fosforo'].sum()
-                            costos_k = resultados['gdf_completo']['costo_costo_potasio'].sum()
-                            otros = costo_total - (costos_n + costos_p + costos_k)
-                            
-                            fig, ax = plt.subplots(figsize=(10, 6))
-                            categorias = ['Nitrógeno', 'Fósforo', 'Potasio', 'Otros']
-                            valores = [costos_n, costos_p, costos_k, otros]
-                            colores = ['#00ff00', '#0000ff', '#4B0082', '#cccccc']
-                            
-                            bars = ax.bar(categorias, valores, color=colores, edgecolor='black')
-                            ax.set_title('Distribución de Costos de Fertilización', fontsize=14, fontweight='bold')
-                            ax.set_ylabel('USD', fontsize=12)
-                            ax.set_xlabel('Componente', fontsize=12)
-                            
-                            for bar in bars:
-                                height = bar.get_height()
-                                ax.text(bar.get_x() + bar.get_width()/2., height + 10,
-                                       f'${height:.0f}', ha='center', va='bottom', fontweight='bold')
-                            
-                            st.pyplot(fig)
-                            
-                            # Tabla de costos
-                            st.subheader("📋 TABLA DE COSTOS POR ZONA")
-                            columnas_costos = ['id_zona', 'area_ha', 'costo_costo_nitrogeno', 
-                                             'costo_costo_fosforo', 'costo_costo_potasio', 'costo_costo_total']
-                            tabla_costos = resultados['gdf_completo'][columnas_costos].copy()
-                            tabla_costos.columns = ['Zona', 'Área (ha)', 'Costo N (USD)', 
-                                                  'Costo P (USD)', 'Costo K (USD)', 'Total (USD)']
-                            st.dataframe(tabla_costos)
-                        
-                        with tab4:
-                            st.subheader("TEXTURA DEL SUELO")
-                            textura_pred = resultados['gdf_completo']['textura_suelo'].mode()[0] if len(resultados['gdf_completo']) > 0 else "N/D"
-                            
-                            col1, col2, col3, col4 = st.columns(4)
-                            with col1:
-                                st.metric("Textura Predominante", textura_pred)
-                            with col2:
-                                arena_prom = resultados['gdf_completo']['arena'].mean()
-                                st.metric("Arena Promedio", f"{arena_prom:.1f}%")
-                            with col3:
-                                limo_prom = resultados['gdf_completo']['limo'].mean()
-                                st.metric("Limo Promedio", f"{limo_prom:.1f}%")
-                            with col4:
-                                arcilla_prom = resultados['gdf_completo']['arcilla'].mean()
-                                st.metric("Arcilla Promedio", f"{arcilla_prom:.1f}%")
-                            
-                            # Mapa de texturas
-                            st.subheader("🗺️ MAPA DE TEXTURAS")
-                            mapa_text = crear_mapa_texturas(resultados['gdf_completo'], cultivo)
-                            if mapa_text:
-                                st.image(mapa_text, use_container_width=True)
-                            
-                            # Gráfico de composición
-                            st.subheader("📊 COMPOSICIÓN GRANULOMÉTRICA")
-                            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-                            
-                            composicion = [arena_prom, limo_prom, arcilla_prom]
-                            labels = ['Arena', 'Limo', 'Arcilla']
-                            colors_pie = ['#d8b365', '#f6e8c3', '#01665e']
-                            ax1.pie(composicion, labels=labels, colors=colors_pie, autopct='%1.1f%%', startangle=90)
-                            ax1.set_title('Composición Promedio del Suelo')
-                            
-                            textura_dist = resultados['gdf_completo']['textura_suelo'].value_counts()
-                            ax2.bar(textura_dist.index, textura_dist.values, 
-                                   color=[PALETAS_GEE['TEXTURA'][i % len(PALETAS_GEE['TEXTURA'])] for i in range(len(textura_dist))])
-                            ax2.set_title('Distribución de Texturas')
-                            ax2.set_xlabel('Textura')
-                            ax2.set_ylabel('Número de Zonas')
-                            ax2.tick_params(axis='x', rotation=45)
-                            
-                            plt.tight_layout()
-                            st.pyplot(fig)
-                            
-                            # Tabla de texturas
-                            st.subheader("📋 TABLA DE TEXTURAS POR ZONA")
-                            columnas_text = ['id_zona', 'area_ha', 'textura_suelo', 'arena', 'limo', 'arcilla']
-                            tabla_text = resultados['gdf_completo'][columnas_text].copy()
-                            tabla_text.columns = ['Zona', 'Área (ha)', 'Textura', 'Arena (%)', 'Limo (%)', 'Arcilla (%)']
-                            st.dataframe(tabla_text)
-                        
-                        with tab5:
-                            st.subheader("PROYECCIONES DE COSECHA")
-                            rend_sin = resultados['gdf_completo']['proy_rendimiento_sin_fert'].sum()
-                            rend_con = resultados['gdf_completo']['proy_rendimiento_con_fert'].sum()
-                            incremento = ((rend_con - rend_sin) / rend_sin * 100) if rend_sin > 0 else 0
-                            
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("Rendimiento sin Fertilización", f"{rend_sin:.0f} kg")
-                            with col2:
-                                st.metric("Rendimiento con Fertilización", f"{rend_con:.0f} kg")
-                            with col3:
-                                st.metric("Incremento Esperado", f"{incremento:.1f}%")
-                            
-                            # Gráfico de proyecciones
-                            st.subheader("📊 COMPARATIVA DE RENDIMIENTOS")
-                            fig, ax = plt.subplots(figsize=(12, 6))
-                            
-                            zonas = resultados['gdf_completo']['id_zona'].head(10).astype(str)
-                            sin_fert = resultados['gdf_completo']['proy_rendimiento_sin_fert'].head(10)
-                            con_fert = resultados['gdf_completo']['proy_rendimiento_con_fert'].head(10)
-                            
-                            x = np.arange(len(zonas))
-                            width = 0.35
-                            
-                            bars1 = ax.bar(x - width/2, sin_fert, width, label='Sin Fertilización', color='#ff9999')
-                            bars2 = ax.bar(x + width/2, con_fert, width, label='Con Fertilización', color='#66b3ff')
-                            
-                            ax.set_xlabel('Zona')
-                            ax.set_ylabel('Rendimiento (kg)')
-                            ax.set_title('Proyecciones de Rendimiento por Zona')
-                            ax.set_xticks(x)
-                            ax.set_xticklabels(zonas)
-                            ax.legend()
-                            
-                            def autolabel(bars):
-                                for bar in bars:
-                                    height = bar.get_height()
-                                    ax.text(bar.get_x() + bar.get_width()/2., height + 50,
-                                           f'{height:.0f}', ha='center', va='bottom', fontsize=8)
-                            
-                            autolabel(bars1)
-                            autolabel(bars2)
-                            
-                            plt.tight_layout()
-                            st.pyplot(fig)
-                            
-                            # Análisis económico
-                            st.subheader("💰 ANÁLISIS ECONÓMICO")
-                            precio = PARAMETROS_CULTIVOS[cultivo]['PRECIO_VENTA']
-                            ingreso_sin = rend_sin * precio
-                            ingreso_con = rend_con * precio
-                            costo_fert = costo_total
-                            beneficio_neto = (ingreso_con - ingreso_sin) - costo_fert
-                            roi = (beneficio_neto / costo_fert * 100) if costo_fert > 0 else 0
-                            
-                            col_e1, col_e2, col_e3 = st.columns(3)
-                            with col_e1:
-                                st.metric("Ingreso Adicional", f"${ingreso_con - ingreso_sin:.2f} USD")
-                            with col_e2:
-                                st.metric("Beneficio Neto", f"${beneficio_neto:.2f} USD")
-                            with col_e3:
-                                st.metric("ROI Estimado", f"{roi:.1f}%")
-                            
-                            # Tabla de proyecciones
-                            st.subheader("📋 TABLA DE PROYECCIONES POR ZONA")
-                            columnas_proy = ['id_zona', 'area_ha', 'proy_rendimiento_sin_fert', 
-                                           'proy_rendimiento_con_fert', 'proy_incremento_esperado']
-                            tabla_proy = resultados['gdf_completo'][columnas_proy].copy()
-                            tabla_proy.columns = ['Zona', 'Área (ha)', 'Sin Fertilización (kg)', 
-                                                'Con Fertilización (kg)', 'Incremento (%)']
-                            st.dataframe(tabla_proy)
-                        
-                        # Sección de exportación
-                        st.markdown("---")
-                        st.subheader("💾 EXPORTAR RESULTADOS")
-                        
-                        col_exp1, col_exp2 = st.columns(2)
-                        
-                        with col_exp1:
-                            st.markdown("**GeoJSON**")
-                            if st.button("📤 Generar GeoJSON", key="generate_geojson"):
-                                with st.spinner("Generando GeoJSON..."):
-                                    geojson_data, nombre_geojson = exportar_a_geojson(
-                                        resultados['gdf_completo'], 
-                                        f"analisis_{cultivo}"
-                                    )
-                                    if geojson_data:
-                                        st.session_state.geojson_data = geojson_data
-                                        st.session_state.nombre_geojson = nombre_geojson
-                                        st.success("✅ GeoJSON generado correctamente")
-                            
-                            if st.session_state.geojson_data:
-                                st.download_button(
-                                    label="📥 Descargar GeoJSON",
-                                    data=st.session_state.geojson_data,
-                                    file_name=st.session_state.nombre_geojson,
-                                    mime="application/json",
-                                    key="geojson_download"
-                                )
-                        
-                        with col_exp2:
-                            st.markdown("**Reporte Completo**")
-                            if st.button("📄 Generar Reporte DOCX", key="generate_docx"):
-                                with st.spinner("Generando reporte completo..."):
-                                    reporte = generar_reporte_completo(
-                                        resultados, 
-                                        cultivo, 
-                                        satelite_seleccionado
-                                    )
-                                    if reporte:
-                                        st.session_state.reporte_completo = reporte
-                                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                                        nombre_reporte = f"reporte_completo_{cultivo}_{timestamp}.docx"
-                                        st.session_state.nombre_reporte = nombre_reporte
-                                        st.success("✅ Reporte generado correctamente")
-                            
-                            if st.session_state.reporte_completo is not None:
-                                st.download_button(
-                                    label="📥 Descargar Reporte DOCX",
-                                    data=st.session_state.reporte_completo,
-                                    file_name=st.session_state.nombre_reporte,
-                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                    key="docx_download"
-                                )
-                        
-                        # Limpiar reportes
-                        if st.session_state.reporte_completo or st.session_state.geojson_data:
-                            st.markdown("---")
-                            if st.button("🗑️ Limpiar Reportes Generados", key="clear_reports"):
-                                st.session_state.reporte_completo = None
-                                st.session_state.geojson_data = None
-                                st.session_state.nombre_geojson = ""
-                                st.success("Reportes limpiados correctamente")
-                                st.rerun()
-                    
-                    else:
-                        st.error("❌ Error en el análisis completo")
+                        if resultados['exitoso']:
+                            st.session_state.resultados_todos = resultados
+                            st.session_state.analisis_completado = True
+                            st.success("✅ Análisis completado exitosamente!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Error en el análisis completo")
             
             else:
                 st.error("❌ Error al cargar la parcela. Verifica el formato del archivo.")
@@ -2047,7 +1723,330 @@ if uploaded_file:
         except Exception as e:
             st.error(f"❌ Error en el análisis: {str(e)}")
             import traceback
-            st.error(f"Detalle: {traceback.format_exc()}")
+            traceback.print_exc()
+
+# Mostrar resultados si el análisis está completado
+if st.session_state.analisis_completado and 'resultados_todos' in st.session_state:
+    resultados = st.session_state.resultados_todos
+    
+    # Mostrar resultados en pestañas
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📊 Fertilidad Actual",
+        "🧪 Recomendaciones NPK",
+        "💰 Análisis de Costos",
+        "🏗️ Textura del Suelo",
+        "📈 Proyecciones"
+    ])
+    
+    with tab1:
+        st.subheader("FERTILIDAD ACTUAL")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            npk_prom = resultados['gdf_completo']['fert_npk_actual'].mean()
+            st.metric("Índice NPK Promedio", f"{npk_prom:.3f}")
+        with col2:
+            ndvi_prom = resultados['gdf_completo']['fert_ndvi'].mean()
+            st.metric("NDVI Promedio", f"{ndvi_prom:.3f}")
+        with col3:
+            mo_prom = resultados['gdf_completo']['fert_materia_organica'].mean()
+            st.metric("Materia Orgánica", f"{mo_prom:.1f}%")
+        with col4:
+            hum_prom = resultados['gdf_completo']['fert_humedad_suelo'].mean()
+            st.metric("Humedad Suelo", f"{hum_prom:.3f}")
+        
+        # Mapa de fertilidad
+        st.subheader("🗺️ MAPA DE FERTILIDAD")
+        mapa_fert = crear_mapa_fertilidad(resultados['gdf_completo'], cultivo, satelite_seleccionado)
+        if mapa_fert:
+            st.image(mapa_fert, use_container_width=True)
+        
+        # Tabla de resultados
+        st.subheader("📋 TABLA DE RESULTADOS")
+        columnas_fert = ['id_zona', 'area_ha', 'fert_npk_actual', 'fert_ndvi', 
+                       'fert_ndre', 'fert_materia_organica', 'fert_humedad_suelo']
+        tabla_fert = resultados['gdf_completo'][columnas_fert].copy()
+        tabla_fert.columns = ['Zona', 'Área (ha)', 'Índice NPK', 'NDVI', 
+                            'NDRE', 'Materia Org (%)', 'Humedad']
+        st.dataframe(tabla_fert)
+    
+    with tab2:
+        st.subheader("RECOMENDACIONES NPK")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            n_prom = resultados['gdf_completo']['rec_N'].mean()
+            st.metric("Nitrógeno Promedio", f"{n_prom:.1f} kg/ha")
+        with col2:
+            p_prom = resultados['gdf_completo']['rec_P'].mean()
+            st.metric("Fósforo Promedio", f"{p_prom:.1f} kg/ha")
+        with col3:
+            k_prom = resultados['gdf_completo']['rec_K'].mean()
+            st.metric("Potasio Promedio", f"{k_prom:.1f} kg/ha")
+        
+        # Mapas NPK
+        st.subheader("🗺️ MAPAS DE RECOMENDACIONES")
+        col_n, col_p, col_k = st.columns(3)
+        with col_n:
+            mapa_n = crear_mapa_npk(resultados['gdf_completo'], cultivo, 'N')
+            if mapa_n:
+                st.image(mapa_n, use_container_width=True)
+                st.caption("Nitrógeno (N)")
+        with col_p:
+            mapa_p = crear_mapa_npk(resultados['gdf_completo'], cultivo, 'P')
+            if mapa_p:
+                st.image(mapa_p, use_container_width=True)
+                st.caption("Fósforo (P)")
+        with col_k:
+            mapa_k = crear_mapa_npk(resultados['gdf_completo'], cultivo, 'K')
+            if mapa_k:
+                st.image(mapa_k, use_container_width=True)
+                st.caption("Potasio (K)")
+        
+        # Tabla de recomendaciones
+        st.subheader("📋 TABLA DE RECOMENDACIONES")
+        columnas_npk = ['id_zona', 'area_ha', 'rec_N', 'rec_P', 'rec_K']
+        tabla_npk = resultados['gdf_completo'][columnas_npk].copy()
+        tabla_npk.columns = ['Zona', 'Área (ha)', 'Nitrógeno (kg/ha)', 
+                           'Fósforo (kg/ha)', 'Potasio (kg/ha)']
+        st.dataframe(tabla_npk)
+    
+    with tab3:
+        st.subheader("ANÁLISIS DE COSTOS")
+        costo_total = resultados['gdf_completo']['costo_costo_total'].sum()
+        costo_prom = resultados['gdf_completo']['costo_costo_total'].mean()
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Costo Total Estimado", f"${costo_total:.2f} USD")
+        with col2:
+            st.metric("Costo Promedio por ha", f"${costo_prom:.2f} USD/ha")
+        with col3:
+            inversion_ha = costo_total / resultados['area_total'] if resultados['area_total'] > 0 else 0
+            st.metric("Inversión por ha", f"${inversion_ha:.2f} USD/ha")
+        
+        # Gráfico de costos
+        st.subheader("📊 DISTRIBUCIÓN DE COSTOS")
+        costos_n = resultados['gdf_completo']['costo_costo_nitrogeno'].sum()
+        costos_p = resultados['gdf_completo']['costo_costo_fosforo'].sum()
+        costos_k = resultados['gdf_completo']['costo_costo_potasio'].sum()
+        otros = costo_total - (costos_n + costos_p + costos_k)
+        
+        fig, ax = plt.subplots(figsize=(10, 6))
+        categorias = ['Nitrógeno', 'Fósforo', 'Potasio', 'Otros']
+        valores = [costos_n, costos_p, costos_k, otros]
+        colores = ['#00ff00', '#0000ff', '#4B0082', '#cccccc']
+        
+        bars = ax.bar(categorias, valores, color=colores, edgecolor='black')
+        ax.set_title('Distribución de Costos de Fertilización', fontsize=14, fontweight='bold')
+        ax.set_ylabel('USD', fontsize=12)
+        ax.set_xlabel('Componente', fontsize=12)
+        
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + 10,
+                   f'${height:.0f}', ha='center', va='bottom', fontweight='bold')
+        
+        st.pyplot(fig)
+        
+        # Tabla de costos
+        st.subheader("📋 TABLA DE COSTOS POR ZONA")
+        columnas_costos = ['id_zona', 'area_ha', 'costo_costo_nitrogeno', 
+                         'costo_costo_fosforo', 'costo_costo_potasio', 'costo_costo_total']
+        tabla_costos = resultados['gdf_completo'][columnas_costos].copy()
+        tabla_costos.columns = ['Zona', 'Área (ha)', 'Costo N (USD)', 
+                              'Costo P (USD)', 'Costo K (USD)', 'Total (USD)']
+        st.dataframe(tabla_costos)
+    
+    with tab4:
+        st.subheader("TEXTURA DEL SUELO")
+        textura_pred = resultados['gdf_completo']['textura_suelo'].mode()[0] if len(resultados['gdf_completo']) > 0 else "N/D"
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Textura Predominante", textura_pred)
+        with col2:
+            arena_prom = resultados['gdf_completo']['arena'].mean()
+            st.metric("Arena Promedio", f"{arena_prom:.1f}%")
+        with col3:
+            limo_prom = resultados['gdf_completo']['limo'].mean()
+            st.metric("Limo Promedio", f"{limo_prom:.1f}%")
+        with col4:
+            arcilla_prom = resultados['gdf_completo']['arcilla'].mean()
+            st.metric("Arcilla Promedio", f"{arcilla_prom:.1f}%")
+        
+        # Mapa de texturas
+        st.subheader("🗺️ MAPA DE TEXTURAS")
+        mapa_text = crear_mapa_texturas(resultados['gdf_completo'], cultivo)
+        if mapa_text:
+            st.image(mapa_text, use_container_width=True)
+        
+        # Gráfico de composición
+        st.subheader("📊 COMPOSICIÓN GRANULOMÉTRICA")
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        
+        composicion = [arena_prom, limo_prom, arcilla_prom]
+        labels = ['Arena', 'Limo', 'Arcilla']
+        colors_pie = ['#d8b365', '#f6e8c3', '#01665e']
+        ax1.pie(composicion, labels=labels, colors=colors_pie, autopct='%1.1f%%', startangle=90)
+        ax1.set_title('Composición Promedio del Suelo')
+        
+        textura_dist = resultados['gdf_completo']['textura_suelo'].value_counts()
+        ax2.bar(textura_dist.index, textura_dist.values, 
+               color=[PALETAS_GEE['TEXTURA'][i % len(PALETAS_GEE['TEXTURA'])] for i in range(len(textura_dist))])
+        ax2.set_title('Distribución de Texturas')
+        ax2.set_xlabel('Textura')
+        ax2.set_ylabel('Número de Zonas')
+        ax2.tick_params(axis='x', rotation=45)
+        
+        plt.tight_layout()
+        st.pyplot(fig)
+        
+        # Tabla de texturas
+        st.subheader("📋 TABLA DE TEXTURAS POR ZONA")
+        columnas_text = ['id_zona', 'area_ha', 'textura_suelo', 'arena', 'limo', 'arcilla']
+        tabla_text = resultados['gdf_completo'][columnas_text].copy()
+        tabla_text.columns = ['Zona', 'Área (ha)', 'Textura', 'Arena (%)', 'Limo (%)', 'Arcilla (%)']
+        st.dataframe(tabla_text)
+    
+    with tab5:
+        st.subheader("PROYECCIONES DE COSECHA")
+        rend_sin = resultados['gdf_completo']['proy_rendimiento_sin_fert'].sum()
+        rend_con = resultados['gdf_completo']['proy_rendimiento_con_fert'].sum()
+        incremento = ((rend_con - rend_sin) / rend_sin * 100) if rend_sin > 0 else 0
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Rendimiento sin Fertilización", f"{rend_sin:.0f} kg")
+        with col2:
+            st.metric("Rendimiento con Fertilización", f"{rend_con:.0f} kg")
+        with col3:
+            st.metric("Incremento Esperado", f"{incremento:.1f}%")
+        
+        # Gráfico de proyecciones
+        st.subheader("📊 COMPARATIVA DE RENDIMIENTOS")
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        zonas = resultados['gdf_completo']['id_zona'].head(10).astype(str)
+        sin_fert = resultados['gdf_completo']['proy_rendimiento_sin_fert'].head(10)
+        con_fert = resultados['gdf_completo']['proy_rendimiento_con_fert'].head(10)
+        
+        x = np.arange(len(zonas))
+        width = 0.35
+        
+        bars1 = ax.bar(x - width/2, sin_fert, width, label='Sin Fertilización', color='#ff9999')
+        bars2 = ax.bar(x + width/2, con_fert, width, label='Con Fertilización', color='#66b3ff')
+        
+        ax.set_xlabel('Zona')
+        ax.set_ylabel('Rendimiento (kg)')
+        ax.set_title('Proyecciones de Rendimiento por Zona')
+        ax.set_xticks(x)
+        ax.set_xticklabels(zonas)
+        ax.legend()
+        
+        def autolabel(bars):
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height + 50,
+                       f'{height:.0f}', ha='center', va='bottom', fontsize=8)
+        
+        autolabel(bars1)
+        autolabel(bars2)
+        
+        plt.tight_layout()
+        st.pyplot(fig)
+        
+        # Análisis económico
+        st.subheader("💰 ANÁLISIS ECONÓMICO")
+        precio = PARAMETROS_CULTIVOS[cultivo]['PRECIO_VENTA']
+        ingreso_sin = rend_sin * precio
+        ingreso_con = rend_con * precio
+        costo_fert = costo_total
+        beneficio_neto = (ingreso_con - ingreso_sin) - costo_fert
+        roi = (beneficio_neto / costo_fert * 100) if costo_fert > 0 else 0
+        
+        col_e1, col_e2, col_e3 = st.columns(3)
+        with col_e1:
+            st.metric("Ingreso Adicional", f"${ingreso_con - ingreso_sin:.2f} USD")
+        with col_e2:
+            st.metric("Beneficio Neto", f"${beneficio_neto:.2f} USD")
+        with col_e3:
+            st.metric("ROI Estimado", f"{roi:.1f}%")
+        
+        # Tabla de proyecciones
+        st.subheader("📋 TABLA DE PROYECCIONES POR ZONA")
+        columnas_proy = ['id_zona', 'area_ha', 'proy_rendimiento_sin_fert', 
+                       'proy_rendimiento_con_fert', 'proy_incremento_esperado']
+        tabla_proy = resultados['gdf_completo'][columnas_proy].copy()
+        tabla_proy.columns = ['Zona', 'Área (ha)', 'Sin Fertilización (kg)', 
+                            'Con Fertilización (kg)', 'Incremento (%)']
+        st.dataframe(tabla_proy)
+    
+    # Sección de exportación
+    st.markdown("---")
+    st.subheader("💾 EXPORTAR RESULTADOS")
+    
+    col_exp1, col_exp2 = st.columns(2)
+    
+    with col_exp1:
+        st.markdown("**GeoJSON**")
+        if st.button("📤 Generar GeoJSON", key="generate_geojson"):
+            with st.spinner("Generando GeoJSON..."):
+                geojson_data, nombre_geojson = exportar_a_geojson(
+                    resultados['gdf_completo'], 
+                    f"analisis_{cultivo}"
+                )
+                if geojson_data:
+                    st.session_state.geojson_data = geojson_data
+                    st.session_state.nombre_geojson = nombre_geojson
+                    st.success("✅ GeoJSON generado correctamente")
+                    st.rerun()
+        
+        if st.session_state.geojson_data:
+            st.download_button(
+                label="📥 Descargar GeoJSON",
+                data=st.session_state.geojson_data,
+                file_name=st.session_state.nombre_geojson,
+                mime="application/json",
+                key="geojson_download"
+            )
+    
+    with col_exp2:
+        st.markdown("**Reporte Completo**")
+        if st.button("📄 Generar Reporte DOCX", key="generate_docx"):
+            with st.spinner("Generando reporte completo..."):
+                reporte = generar_reporte_completo(
+                    resultados, 
+                    cultivo, 
+                    satelite_seleccionado,
+                    fecha_inicio,
+                    fecha_fin
+                )
+                if reporte:
+                    st.session_state.reporte_completo = reporte
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    nombre_reporte = f"reporte_completo_{cultivo}_{timestamp}.docx"
+                    st.session_state.nombre_reporte = nombre_reporte
+                    st.success("✅ Reporte generado correctamente")
+                    st.rerun()
+        
+        if st.session_state.reporte_completo is not None:
+            st.download_button(
+                label="📥 Descargar Reporte DOCX",
+                data=st.session_state.reporte_completo,
+                file_name=st.session_state.nombre_reporte,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="docx_download"
+            )
+    
+    # Limpiar reportes
+    if st.session_state.reporte_completo or st.session_state.geojson_data:
+        st.markdown("---")
+        if st.button("🗑️ Limpiar Reportes Generados", key="clear_reports"):
+            st.session_state.reporte_completo = None
+            st.session_state.geojson_data = None
+            st.session_state.nombre_geojson = ""
+            st.session_state.nombre_reporte = ""
+            st.success("Reportes limpiados correctamente")
+            st.rerun()
 
 else:
     st.info("👈 Por favor, sube un archivo de parcela y ejecuta el análisis para comenzar.")
