@@ -27,13 +27,6 @@ import geojson
 import requests
 import contextily as ctx
 
-# === CONFIGURACIÓN DE PÁGINA UN POCO MÁS ANCHA ===
-st.set_page_config(
-    layout="wide", 
-    page_title="Analizador Multi-Cultivo Satelital",
-    page_icon="🌱"
-)
-
 # === NO HAY INICIALIZACIÓN DE GEE NI ELEVATION ===
 warnings.filterwarnings('ignore')
 
@@ -55,108 +48,381 @@ if 'mapas_generados' not in st.session_state:
 if 'dem_data' not in st.session_state:
     st.session_state.dem_data = {}
 
-# === ESTILOS PERSONALIZADOS - AJUSTES MODERADOS ===
+# === ESTILOS PERSONALIZADOS - VERSIÓN PREMIUM MODERNA ===
 st.markdown("""
 <style>
-/* === ANCHO MEJORADO === */
+/* === FONDO GENERAL OSCURO ELEGANTE === */
 .stApp {
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
-    color: #ffffff !important;
+background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+color: #ffffff !important;
+font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
-
-.main .block-container {
-    padding-top: 2rem;
-    padding-left: 3rem;
-    padding-right: 3rem;
-}
-
-/* === GRÁFICOS UN POCO MÁS GRANDES === */
-.stPlotlyChart, .stPyplot {
-    width: 100% !important;
-    height: 500px !important;
-}
-
-.stImage img {
-    max-height: 600px !important;
-}
-
-/* === DATA FRAMES CON MEJOR VISIBILIDAD === */
-.dataframe {
-    font-size: 1.05em !important;
-}
-
-.dataframe th {
-    font-size: 1.1em !important;
-    padding: 16px !important;
-}
-
-.dataframe td {
-    font-size: 1.05em !important;
-    padding: 14px !important;
-}
-
-/* === TEXTO UN POCO MÁS GRANDE === */
-p, div, span, label, li {
-    font-size: 1.05em !important;
-    line-height: 1.6 !important;
-}
-
-h1 {
-    font-size: 2.8em !important;
-}
-
-h2 {
-    font-size: 2.2em !important;
-}
-
-h3 {
-    font-size: 1.8em !important;
-}
-
-/* === MÉTRICAS MÁS VISIBLES === */
-div[data-testid="metric-container"] {
-    padding: 20px !important;
-}
-
-div[data-testid="metric-container"] [data-testid="stMetricValue"] {
-    font-size: 2.8em !important;
-}
-
-/* === BOTONES MÁS VISIBLES === */
-.stButton > button {
-    padding: 0.9em 1.8em !important;
-    font-size: 1.05em !important;
-}
-
-/* === SIDEBAR UN POCO MÁS ANCHO === */
+/* === SIDEBAR: FONDO BLANCO CON TEXTO NEGRO === */
 [data-testid="stSidebar"] {
-    min-width: 300px !important;
+background: #ffffff !important;
+border-right: 1px solid #e5e7eb !important;
+box-shadow: 5px 0 25px rgba(0, 0, 0, 0.1) !important;
 }
-
-/* === HERO BANNER MEJORADO === */
+/* Texto general del sidebar en NEGRO */
+[data-testid="stSidebar"] *,
+[data-testid="stSidebar"] .stMarkdown,
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stText,
+[data-testid="stSidebar"] .stTitle,
+[data-testid="stSidebar"] .stSubheader {
+color: #000000 !important;
+text-shadow: none !important;
+}
+/* Título del sidebar elegante */
+.sidebar-title {
+font-size: 1.4em;
+font-weight: 800;
+margin: 1.5em 0 1em 0;
+text-align: center;
+padding: 14px;
+background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+border-radius: 16px;
+color: #ffffff !important;
+box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3);
+border: 1px solid rgba(255, 255, 255, 0.2);
+letter-spacing: 0.5px;
+}
+/* Widgets del sidebar con estilo glassmorphism */
+[data-testid="stSidebar"] .stSelectbox,
+[data-testid="stSidebar"] .stDateInput,
+[data-testid="stSidebar"] .stSlider {
+background: rgba(255, 255, 255, 0.9) !important;
+backdrop-filter: blur(10px);
+border-radius: 12px;
+padding: 12px;
+margin: 8px 0;
+border: 1px solid #d1d5db !important;
+}
+/* Labels de los widgets en negro */
+[data-testid="stSidebar"] .stSelectbox div,
+[data-testid="stSidebar"] .stDateInput div,
+[data-testid="stSidebar"] .stSlider label {
+color: #000000 !important;
+font-weight: 600;
+font-size: 0.95em;
+}
+/* Inputs y selects - fondo blanco con texto negro */
+[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] {
+background-color: #ffffff !important;
+border: 1px solid #d1d5db !important;
+color: #000000 !important;
+border-radius: 8px;
+}
+/* Slider - colores negro */
+[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] {
+color: #000000 !important;
+}
+/* Date Input - fondo blanco con texto negro */
+[data-testid="stSidebar"] .stDateInput [data-baseweb="input"] {
+background-color: #ffffff !important;
+border: 1px solid #d1d5db !important;
+color: #000000 !important;
+border-radius: 8px;
+}
+/* Placeholder en gris */
+[data-testid="stSidebar"] .stDateInput [data-baseweb="input"]::placeholder {
+color: #6b7280 !important;
+}
+/* Botones premium */
+.stButton > button {
+background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+color: white !important;
+border: none !important;
+padding: 0.8em 1.5em !important;
+border-radius: 12px !important;
+font-weight: 700 !important;
+font-size: 1em !important;
+box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4) !important;
+transition: all 0.3s ease !important;
+text-transform: uppercase !important;
+letter-spacing: 0.5px !important;
+}
+.stButton > button:hover {
+transform: translateY(-3px) !important;
+box-shadow: 0 8px 25px rgba(59, 130, 246, 0.6) !important;
+background: linear-gradient(135deg, #4f8df8 0%, #2d5fe8 100%) !important;
+}
+/* === HERO BANNER PRINCIPAL CON IMAGEN === */
+.hero-banner {
+background: linear-gradient(rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.95)),
+url('https://images.unsplash.com/photo-1597981309443-6e2d2a4d9c3f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80') !important;
+background-size: cover !important;
+background-position: center 40% !important;
+padding: 3.5em 2em !important;
+border-radius: 24px !important;
+margin-bottom: 2.5em !important;
+box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
+border: 1px solid rgba(59, 130, 246, 0.2) !important;
+position: relative !important;
+overflow: hidden !important;
+}
+.hero-banner::before {
+content: '' !important;
+position: absolute !important;
+top: 0 !important;
+left: 0 !important;
+right: 0 !important;
+bottom: 0 !important;
+background: linear-gradient(45deg, rgba(59, 130, 246, 0.1), rgba(29, 78, 216, 0.05)) !important;
+z-index: 1 !important;
+}
+.hero-content {
+position: relative !important;
+z-index: 2 !important;
+text-align: center !important;
+}
 .hero-title {
-    font-size: 3.5em !important;
+color: #ffffff !important;
+font-size: 3.2em !important;
+font-weight: 900 !important;
+margin-bottom: 0.3em !important;
+text-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+letter-spacing: -0.5px !important;
+background: linear-gradient(135deg, #ffffff 0%, #93c5fd 100%) !important;
+-webkit-background-clip: text !important;
+-webkit-text-fill-color: transparent !important;
+background-clip: text !important;
 }
-
 .hero-subtitle {
-    font-size: 1.5em !important;
+color: #cbd5e1 !important;
+font-size: 1.3em !important;
+font-weight: 400 !important;
+max-width: 800px !important;
+margin: 0 auto !important;
+line-height: 1.6 !important;
 }
-
-/* === TABS MÁS VISIBLES === */
+/* === PESTAÑAS PRINCIPALES (fuera del sidebar) - SIN CAMBIOS === */
+.stTabs [data-baseweb="tab-list"] {
+background: rgba(255, 255, 255, 0.05) !important;
+backdrop-filter: blur(10px) !important;
+padding: 8px 16px !important;
+border-radius: 16px !important;
+border: 1px solid rgba(255, 255, 255, 0.1) !important;
+margin-top: 1em !important;
+gap: 8px !important;
+}
 .stTabs [data-baseweb="tab"] {
-    padding: 12px 20px !important;
-    font-size: 1.1em !important;
+color: #94a3b8 !important;
+font-weight: 600 !important;
+padding: 12px 24px !important;
+border-radius: 12px !important;
+background: transparent !important;
+transition: all 0.3s ease !important;
+border: 1px solid transparent !important;
 }
-
-/* === MEJOR ESPACIADO ENTRE ELEMENTOS === */
-.stColumn {
-    padding: 15px !important;
+.stTabs [data-baseweb="tab"]:hover {
+color: #ffffff !important;
+background: rgba(59, 130, 246, 0.2) !important;
+border-color: rgba(59, 130, 246, 0.3) !important;
+transform: translateY(-2px) !important;
 }
-
-/* === EXPANDERS MEJORADOS === */
+.stTabs [aria-selected="true"] {
+background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+color: #ffffff !important;
+font-weight: 700 !important;
+border: none !important;
+box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4) !important;
+}
+/* === PESTAÑAS DEL SIDEBAR: FONDO BLANCO + TEXTO NEGRO === */
+[data-testid="stSidebar"] .stTabs [data-baseweb="tab-list"] {
+background: #ffffff !important;
+border: 1px solid #e2e8f0 !important;
+padding: 8px !important;
+border-radius: 12px !important;
+gap: 6px !important;
+}
+[data-testid="stSidebar"] .stTabs [data-baseweb="tab"] {
+color: #000000 !important;
+background: transparent !important;
+border-radius: 8px !important;
+padding: 8px 16px !important;
+font-weight: 600 !important;
+border: 1px solid transparent !important;
+}
+[data-testid="stSidebar"] .stTabs [data-baseweb="tab"]:hover {
+background: #f1f5f9 !important;
+color: #000000 !important;
+border-color: #cbd5e1 !important;
+}
+/* Pestaña activa en el sidebar: blanco con texto negro */
+[data-testid="stSidebar"] .stTabs [aria-selected="true"] {
+background: #ffffff !important;
+color: #000000 !important;
+font-weight: 700 !important;
+border: 1px solid #3b82f6 !important;
+}
+/* === MÉTRICAS PREMIUM === */
+div[data-testid="metric-container"] {
+background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9)) !important;
+backdrop-filter: blur(10px) !important;
+border-radius: 20px !important;
+padding: 24px !important;
+box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+border: 1px solid rgba(59, 130, 246, 0.2) !important;
+transition: all 0.3s ease !important;
+}
+div[data-testid="metric-container"]:hover {
+transform: translateY(-5px) !important;
+box-shadow: 0 15px 40px rgba(59, 130, 246, 0.2) !important;
+border-color: rgba(59, 130, 246, 0.4) !important;
+}
+div[data-testid="metric-container"] label,
+div[data-testid="metric-container"] div,
+div[data-testid="metric-container"] [data-testid="stMetricValue"],
+div[data-testid="metric-container"] [data-testid="stMetricLabel"] {
+color: #ffffff !important;
+font-weight: 600 !important;
+}
+div[data-testid="metric-container"] [data-testid="stMetricValue"] {
+font-size: 2.5em !important;
+font-weight: 800 !important;
+background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+-webkit-background-clip: text !important;
+-webkit-text-fill-color: transparent !important;
+background-clip: text !important;
+}
+/* === GRÁFICOS CON ESTILO OSCURO === */
+.stPlotlyChart, .stPyplot {
+background: rgba(15, 23, 42, 0.8) !important;
+backdrop-filter: blur(10px) !important;
+border-radius: 20px !important;
+padding: 20px !important;
+box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+border: 1px solid rgba(59, 130, 246, 0.2) !important;
+}
+/* === EXPANDERS ELEGANTES === */
 .streamlit-expanderHeader {
-    font-size: 1.2em !important;
-    padding: 18px 20px !important;
+color: #ffffff !important;
+background: rgba(30, 41, 59, 0.8) !important;
+backdrop-filter: blur(10px) !important;
+border-radius: 16px !important;
+font-weight: 700 !important;
+border: 1px solid rgba(255, 255, 255, 0.1) !important;
+padding: 16px 20px !important;
+margin-bottom: 10px !important;
+}
+.streamlit-expanderContent {
+background: rgba(15, 23, 42, 0.6) !important;
+border-radius: 0 0 16px 16px !important;
+padding: 20px !important;
+border: 1px solid rgba(255, 255, 255, 0.1) !important;
+border-top: none !important;
+}
+/* === TEXTOS GENERALES === */
+h1, h2, h3, h4, h5, h6 {
+color: #ffffff !important;
+font-weight: 800 !important;
+margin-top: 1.5em !important;
+}
+p, div, span, label, li {
+color: #cbd5e1 !important;
+line-height: 1.7 !important;
+}
+/* === DATA FRAMES TABLAS ELEGANTES === */
+.dataframe {
+background: rgba(15, 23, 42, 0.8) !important;
+backdrop-filter: blur(10px) !important;
+border-radius: 16px !important;
+border: 1px solid rgba(255, 255, 255, 0.1) !important;
+color: #ffffff !important;
+}
+.dataframe th {
+background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+color: #ffffff !important;
+font-weight: 700 !important;
+padding: 16px !important;
+}
+.dataframe td {
+color: #cbd5e1 !important;
+padding: 14px 16px !important;
+border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+/* === ALERTS Y MENSAJES === */
+.stAlert {
+border-radius: 16px !important;
+border: 1px solid rgba(255, 255, 255, 0.1) !important;
+backdrop-filter: blur(10px) !important;
+}
+/* === SCROLLBAR PERSONALIZADA === */
+::-webkit-scrollbar {
+width: 10px !important;
+height: 10px !important;
+}
+::-webkit-scrollbar-track {
+background: rgba(15, 23, 42, 0.8) !important;
+border-radius: 10px !important;
+}
+::-webkit-scrollbar-thumb {
+background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+border-radius: 10px !important;
+}
+::-webkit-scrollbar-thumb:hover {
+background: linear-gradient(135deg, #4f8df8 0%, #2d5fe8 100%) !important;
+}
+/* === TARJETAS DE CULTIVOS === */
+.cultivo-card {
+background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)) !important;
+border-radius: 20px !important;
+padding: 25px !important;
+border: 1px solid rgba(59, 130, 246, 0.2) !important;
+box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+transition: all 0.3s ease !important;
+height: 100% !important;
+}
+.cultivo-card:hover {
+transform: translateY(-8px) !important;
+box-shadow: 0 20px 40px rgba(59, 130, 246, 0.2) !important;
+border-color: rgba(59, 130, 246, 0.4) !important;
+}
+/* === TABLERO DE CONTROL === */
+.dashboard-grid {
+display: grid !important;
+grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+gap: 25px !important;
+margin: 30px 0 !important;
+}
+.dashboard-card {
+background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)) !important;
+border-radius: 20px !important;
+padding: 25px !important;
+border: 1px solid rgba(59, 130, 246, 0.2) !important;
+box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+transition: all 0.3s ease !important;
+}
+.dashboard-card:hover {
+transform: translateY(-5px) !important;
+box-shadow: 0 20px 40px rgba(59, 130, 246, 0.2) !important;
+}
+/* === STATS BADGES === */
+.stats-badge {
+display: inline-block !important;
+padding: 6px 14px !important;
+border-radius: 50px !important;
+font-size: 0.85em !important;
+font-weight: 700 !important;
+margin: 2px !important;
+}
+.badge-success {
+background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+color: white !important;
+}
+.badge-warning {
+background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+color: white !important;
+}
+.badge-danger {
+background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+color: white !important;
+}
+.badge-info {
+background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+color: white !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -1179,7 +1445,7 @@ def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
     """Crear mapa de fertilidad actual"""
     try:
         gdf_plot = gdf_completo.to_crs(epsg=3857)
-        fig, ax = plt.subplots(1, 1, figsize=(14, 10))  # Un poco más grande
+        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
         
         cmap = LinearSegmentedColormap.from_list('fertilidad_gee', PALETAS_GEE['FERTILIDAD'])
         vmin, vmax = 0, 1
@@ -1195,7 +1461,7 @@ def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
             centroid = row.geometry.centroid
             ax.annotate(f"Z{row['id_zona']}\n{valor:.2f}", (centroid.x, centroid.y),
                         xytext=(5, 5), textcoords="offset points",
-                        fontsize=9, color='black', weight='bold',
+                        fontsize=8, color='black', weight='bold',
                         bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9))
         
         try:
@@ -1230,7 +1496,7 @@ def crear_mapa_npk(gdf_completo, cultivo, nutriente='N'):
     """Crear mapa de recomendaciones NPK"""
     try:
         gdf_plot = gdf_completo.to_crs(epsg=3857)
-        fig, ax = plt.subplots(1, 1, figsize=(14, 10))  # Un poco más grande
+        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
         
         if nutriente == 'N':
             cmap = LinearSegmentedColormap.from_list('nitrogeno_gee', PALETAS_GEE['NITROGENO'])
@@ -1262,7 +1528,7 @@ def crear_mapa_npk(gdf_completo, cultivo, nutriente='N'):
             centroid = row.geometry.centroid
             ax.annotate(f"Z{row['id_zona']}\n{valor:.0f}", (centroid.x, centroid.y),
                         xytext=(5, 5), textcoords="offset points",
-                        fontsize=9, color='black', weight='bold',
+                        fontsize=8, color='black', weight='bold',
                         bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9))
         
         try:
@@ -1295,7 +1561,7 @@ def crear_mapa_texturas(gdf_completo, cultivo):
     """Crear mapa de texturas"""
     try:
         gdf_plot = gdf_completo.to_crs(epsg=3857)
-        fig, ax = plt.subplots(1, 1, figsize=(14, 10))  # Un poco más grande
+        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
         
         colores_textura = {
             'Franco': '#c7eae5',
@@ -1313,7 +1579,7 @@ def crear_mapa_texturas(gdf_completo, cultivo):
             centroid = row.geometry.centroid
             ax.annotate(f"Z{row['id_zona']}\n{textura[:10]}", (centroid.x, centroid.y),
                         xytext=(5, 5), textcoords="offset points",
-                        fontsize=9, color='black', weight='bold',
+                        fontsize=8, color='black', weight='bold',
                         bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9))
         
         try:
@@ -1345,16 +1611,16 @@ def crear_mapa_texturas(gdf_completo, cultivo):
 def crear_grafico_distribucion_costos(costos_n, costos_p, costos_k, otros, costo_total):
     """Crear gráfico de distribución de costos"""
     try:
-        fig, ax = plt.subplots(figsize=(12, 7))  # Un poco más grande
+        fig, ax = plt.subplots(figsize=(10, 6))
         
         categorias = ['Nitrógeno', 'Fósforo', 'Potasio', 'Otros']
         valores = [costos_n, costos_p, costos_k, otros]
         colores = ['#00ff00', '#0000ff', '#4B0082', '#cccccc']
         
         bars = ax.bar(categorias, valores, color=colores, edgecolor='black')
-        ax.set_title('Distribución de Costos de Fertilización', fontsize=15, fontweight='bold')
-        ax.set_ylabel('USD', fontsize=13)
-        ax.set_xlabel('Componente', fontsize=13)
+        ax.set_title('Distribución de Costos de Fertilización', fontsize=14, fontweight='bold')
+        ax.set_ylabel('USD', fontsize=12)
+        ax.set_xlabel('Componente', fontsize=12)
         
         for bar in bars:
             height = bar.get_height()
@@ -1374,17 +1640,17 @@ def crear_grafico_distribucion_costos(costos_n, costos_p, costos_k, otros, costo
 def crear_grafico_composicion_textura(arena_prom, limo_prom, arcilla_prom, textura_dist):
     """Crear gráfico de composición granulométrica"""
     try:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))  # Un poco más grande
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
         
         composicion = [arena_prom, limo_prom, arcilla_prom]
         labels = ['Arena', 'Limo', 'Arcilla']
         colors_pie = ['#d8b365', '#f6e8c3', '#01665e']
         ax1.pie(composicion, labels=labels, colors=colors_pie, autopct='%1.1f%%', startangle=90)
-        ax1.set_title('Composición Promedio del Suelo', fontsize=14)
+        ax1.set_title('Composición Promedio del Suelo')
         
         ax2.bar(textura_dist.index, textura_dist.values, 
                color=[PALETAS_GEE['TEXTURA'][i % len(PALETAS_GEE['TEXTURA'])] for i in range(len(textura_dist))])
-        ax2.set_title('Distribución de Texturas', fontsize=14)
+        ax2.set_title('Distribución de Texturas')
         ax2.set_xlabel('Textura')
         ax2.set_ylabel('Número de Zonas')
         ax2.tick_params(axis='x', rotation=45)
@@ -1402,7 +1668,7 @@ def crear_grafico_composicion_textura(arena_prom, limo_prom, arcilla_prom, textu
 def crear_grafico_proyecciones_rendimiento(zonas, sin_fert, con_fert):
     """Crear gráfico de proyecciones de rendimiento"""
     try:
-        fig, ax = plt.subplots(figsize=(14, 7))  # Un poco más grande
+        fig, ax = plt.subplots(figsize=(12, 6))
         
         x = np.arange(len(zonas))
         width = 0.35
@@ -1410,18 +1676,18 @@ def crear_grafico_proyecciones_rendimiento(zonas, sin_fert, con_fert):
         bars1 = ax.bar(x - width/2, sin_fert, width, label='Sin Fertilización', color='#ff9999')
         bars2 = ax.bar(x + width/2, con_fert, width, label='Con Fertilización', color='#66b3ff')
         
-        ax.set_xlabel('Zona', fontsize=12)
-        ax.set_ylabel('Rendimiento (kg)', fontsize=12)
-        ax.set_title('Proyecciones de Rendimiento por Zona', fontsize=15, fontweight='bold')
+        ax.set_xlabel('Zona')
+        ax.set_ylabel('Rendimiento (kg)')
+        ax.set_title('Proyecciones de Rendimiento por Zona')
         ax.set_xticks(x)
         ax.set_xticklabels(zonas)
-        ax.legend(fontsize=11)
+        ax.legend()
         
         def autolabel(bars):
             for bar in bars:
                 height = bar.get_height()
                 ax.text(bar.get_x() + bar.get_width()/2., height + 50,
-                       f'{height:.0f}', ha='center', va='bottom', fontsize=9)
+                       f'{height:.0f}', ha='center', va='bottom', fontsize=8)
         
         autolabel(bars1)
         autolabel(bars2)
@@ -1440,7 +1706,7 @@ def crear_grafico_proyecciones_rendimiento(zonas, sin_fert, con_fert):
 def crear_mapa_pendientes(X, Y, pendientes, gdf_original):
     """Crear mapa de pendientes"""
     try:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7))  # Un poco más grande
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
         
         # Mapa de calor de pendientes
         scatter = ax1.scatter(X.flatten(), Y.flatten(), c=pendientes.flatten(), 
@@ -1451,7 +1717,7 @@ def crear_mapa_pendientes(X, Y, pendientes, gdf_original):
         cbar = plt.colorbar(scatter, ax=ax1, shrink=0.8)
         cbar.set_label('Pendiente (%)')
         
-        ax1.set_title('Mapa de Calor de Pendientes', fontsize=14, fontweight='bold')
+        ax1.set_title('Mapa de Calor de Pendientes', fontsize=12, fontweight='bold')
         ax1.set_xlabel('Longitud')
         ax1.set_ylabel('Latitud')
         ax1.grid(True, alpha=0.3)
@@ -1482,7 +1748,7 @@ Estadísticas:
         
         ax2.set_xlabel('Pendiente (%)')
         ax2.set_ylabel('Frecuencia')
-        ax2.set_title('Distribución de Pendientes', fontsize=14, fontweight='bold')
+        ax2.set_title('Distribución de Pendientes', fontsize=12, fontweight='bold')
         ax2.grid(True, alpha=0.3)
         
         plt.tight_layout()
@@ -1506,7 +1772,7 @@ Estadísticas:
 def crear_mapa_curvas_nivel(X, Y, Z, curvas_nivel, elevaciones, gdf_original):
     """Crear mapa con curvas de nivel"""
     try:
-        fig, ax = plt.subplots(1, 1, figsize=(14, 10))  # Un poco más grande
+        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
         
         # Mapa de elevación
         contour = ax.contourf(X, Y, Z, levels=20, cmap='terrain', alpha=0.7)
@@ -1529,7 +1795,7 @@ def crear_mapa_curvas_nivel(X, Y, Z, curvas_nivel, elevaciones, gdf_original):
         cbar = plt.colorbar(contour, ax=ax, shrink=0.8)
         cbar.set_label('Elevación (m)')
         
-        ax.set_title('Mapa de Curvas de Nivel', fontsize=16, fontweight='bold')
+        ax.set_title('Mapa de Curvas de Nivel', fontsize=14, fontweight='bold')
         ax.set_xlabel('Longitud')
         ax.set_ylabel('Latitud')
         ax.grid(True, alpha=0.3)
@@ -1547,7 +1813,7 @@ def crear_mapa_curvas_nivel(X, Y, Z, curvas_nivel, elevaciones, gdf_original):
 def crear_visualizacion_3d(X, Y, Z):
     """Crear visualización 3D del terreno"""
     try:
-        fig = plt.figure(figsize=(16, 12))  # Un poco más grande
+        fig = plt.figure(figsize=(14, 10))
         ax = fig.add_subplot(111, projection='3d')
         
         # Plot superficie 3D
@@ -1555,10 +1821,10 @@ def crear_visualizacion_3d(X, Y, Z):
                               linewidth=0.5, antialiased=True)
         
         # Configuración de ejes
-        ax.set_xlabel('Longitud', fontsize=11)
-        ax.set_ylabel('Latitud', fontsize=11)
-        ax.set_zlabel('Elevación (m)', fontsize=11)
-        ax.set_title('Modelo 3D del Terreno', fontsize=16, fontweight='bold', pad=20)
+        ax.set_xlabel('Longitud', fontsize=10)
+        ax.set_ylabel('Latitud', fontsize=10)
+        ax.set_zlabel('Elevación (m)', fontsize=10)
+        ax.set_title('Modelo 3D del Terreno', fontsize=14, fontweight='bold', pad=20)
         
         # Colorbar
         fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5, label='Elevación (m)')
@@ -1844,9 +2110,9 @@ if uploaded_file:
                     st.write(f"- Formato: {uploaded_file.name.split('.')[-1].upper()}")
                     
                     # Vista previa
-                    fig, ax = plt.subplots(figsize=(10, 8))  # Un poco más grande
+                    fig, ax = plt.subplots(figsize=(8, 6))
                     gdf.plot(ax=ax, color='lightgreen', edgecolor='darkgreen', alpha=0.7)
-                    ax.set_title(f"Parcela: {uploaded_file.name}", fontsize=14)
+                    ax.set_title(f"Parcela: {uploaded_file.name}")
                     ax.set_xlabel("Longitud")
                     ax.set_ylabel("Latitud")
                     ax.grid(True, alpha=0.3)
