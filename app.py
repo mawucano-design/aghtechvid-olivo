@@ -27,6 +27,14 @@ import geojson
 import requests
 import contextily as ctx
 
+# === CONFIGURACIÓN DE PÁGINA ANCHA ===
+st.set_page_config(
+    layout="wide", 
+    page_title="Analizador Multi-Cultivo Satelital",
+    page_icon="🌱",
+    initial_sidebar_state="expanded"
+)
+
 # === NO HAY INICIALIZACIÓN DE GEE NI ELEVATION ===
 warnings.filterwarnings('ignore')
 
@@ -48,22 +56,317 @@ if 'mapas_generados' not in st.session_state:
 if 'dem_data' not in st.session_state:
     st.session_state.dem_data = {}
 
-# === ESTILOS PERSONALIZADOS - VERSIÓN PREMIUM MODERNA ===
+# === FUNCIÓN PARA BOTÓN DE PANTALLA COMPLETA ===
+def inject_maximize_button():
+    st.markdown("""
+    <style>
+    .maximize-button {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        z-index: 9999;
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 25px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 14px;
+        box-shadow: 0 4px 20px rgba(59, 130, 246, 0.5);
+        transition: all 0.3s ease;
+    }
+    .maximize-button:hover {
+        background: linear-gradient(135deg, #4f8df8 0%, #2d5fe8 100%);
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(59, 130, 246, 0.7);
+    }
+    </style>
+    <button class="maximize-button" onclick="toggleFullscreen()">🖥️ Pantalla Completa</button>
+    <script>
+    function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => {
+                console.log(`Error attempting to enable fullscreen: ${err.message}`);
+            });
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+    }
+    </script>
+    """, unsafe_allow_html=True)
+
+# === ESTILOS PERSONALIZADOS - VERSIÓN PANTALLA COMPLETA ===
 st.markdown("""
 <style>
-/* === FONDO GENERAL OSCURO ELEGANTE === */
+/* === CONFIGURACIÓN DE ANCHO COMPLETO === */
 .stApp {
-background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
-color: #ffffff !important;
-font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+    color: #ffffff !important;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    max-width: 100vw !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow-x: hidden !important;
 }
-/* === SIDEBAR: FONDO BLANCO CON TEXTO NEGRO === */
+
+/* === CONTENEDOR PRINCIPAL ANCHO MÁXIMO === */
+.main .block-container {
+    max-width: 100vw !important;
+    padding: 1rem 2.5rem !important;
+    margin: 0 auto !important;
+    padding-top: 2rem !important;
+}
+
+/* === SIDEBAR MÁS ANCHO === */
 [data-testid="stSidebar"] {
-background: #ffffff !important;
-border-right: 1px solid #e5e7eb !important;
-box-shadow: 5px 0 25px rgba(0, 0, 0, 0.1) !important;
+    min-width: 340px !important;
+    max-width: 380px !important;
+    width: 380px !important;
+    background: #ffffff !important;
+    border-right: 1px solid #e5e7eb !important;
+    box-shadow: 5px 0 25px rgba(0, 0, 0, 0.15) !important;
 }
-/* Texto general del sidebar en NEGRO */
+
+/* === CONTENIDO PRINCIPAL - TOMA TODO EL ESPACIO RESTANTE === */
+section.main {
+    flex: 1 1 auto !important;
+    max-width: calc(100vw - 380px) !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+}
+
+/* === GRÁFICOS Y MAPAS MÁS GRANDES === */
+.stPlotlyChart, .stPyplot {
+    width: 100% !important;
+    height: 650px !important;
+    margin-bottom: 2rem !important;
+}
+
+/* === IMÁGENES MÁS GRANDES === */
+.stImage {
+    width: 100% !important;
+    max-height: 750px !important;
+    margin-bottom: 2rem !important;
+}
+
+img {
+    max-height: 750px !important;
+    object-fit: contain !important;
+    width: 100% !important;
+    border-radius: 20px !important;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* === DATA FRAMES MÁS ANCHOS === */
+.dataframe {
+    width: 100% !important;
+    max-height: 600px !important;
+    overflow: auto !important;
+    font-size: 1.05em !important;
+    margin-bottom: 2rem !important;
+}
+
+/* === TABS MÁS GRANDES === */
+.stTabs {
+    width: 100% !important;
+    margin-top: 2rem !important;
+}
+
+.stTabs [data-baseweb="tab-list"] {
+    width: 100% !important;
+    justify-content: space-around !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    backdrop-filter: blur(10px) !important;
+    padding: 12px 20px !important;
+    border-radius: 20px !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    margin-bottom: 2rem !important;
+}
+
+/* === HERO BANNER ANCHO COMPLETO === */
+.hero-banner {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 0 3rem 0 !important;
+    border-radius: 25px !important;
+    padding: 5em 3em !important;
+    background: linear-gradient(rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.95)),
+                url('https://images.unsplash.com/photo-1597981309443-6e2d2a4d9c3f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80') !important;
+    background-size: cover !important;
+    background-position: center 40% !important;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5) !important;
+    border: 2px solid rgba(59, 130, 246, 0.3) !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+.hero-title {
+    font-size: 4.5em !important;
+    font-weight: 900 !important;
+    margin-bottom: 0.5em !important;
+    text-shadow: 0 6px 20px rgba(0, 0, 0, 0.8) !important;
+    letter-spacing: -0.5px !important;
+    background: linear-gradient(135deg, #ffffff 0%, #93c5fd 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+    line-height: 1.1 !important;
+}
+
+.hero-subtitle {
+    font-size: 1.8em !important;
+    font-weight: 400 !important;
+    max-width: 1000px !important;
+    margin: 0 auto !important;
+    line-height: 1.6 !important;
+    color: #cbd5e1 !important;
+}
+
+/* === MÉTRICAS EN LÍNEA COMPLETA === */
+div[data-testid="metric-container"] {
+    min-height: 150px !important;
+    margin-bottom: 1.5rem !important;
+    padding: 30px !important;
+}
+
+div[data-testid="metric-container"] [data-testid="stMetricValue"] {
+    font-size: 3em !important;
+}
+
+/* === COLUMNAS CON MEJOR DISTRIBUCIÓN === */
+.stColumn {
+    padding: 1.5rem !important;
+}
+
+/* === TABLERO DE CONTROL ANCHO COMPLETO === */
+.dashboard-grid {
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)) !important;
+    gap: 35px !important;
+    margin: 40px 0 !important;
+}
+
+/* === EXPANDERS ANCHOS === */
+.streamlit-expanderHeader {
+    font-size: 1.3em !important;
+    padding: 22px 28px !important;
+    margin-bottom: 15px !important;
+}
+
+.streamlit-expanderContent {
+    padding: 25px !important;
+}
+
+/* === BOTONES MÁS GRANDES === */
+.stButton > button {
+    padding: 1.2em 2.5em !important;
+    font-size: 1.2em !important;
+    width: 100% !important;
+    margin: 1rem 0 !important;
+    border-radius: 15px !important;
+}
+
+/* === MEJORAR ESPACIADO ENTRE SECCIONES === */
+h1 {
+    font-size: 3.5em !important;
+    margin-top: 2.5em !important;
+    margin-bottom: 1em !important;
+}
+
+h2 {
+    font-size: 2.5em !important;
+    margin-top: 2em !important;
+    margin-bottom: 1em !important;
+}
+
+h3 {
+    font-size: 2em !important;
+    margin-top: 1.8em !important;
+    margin-bottom: 0.8em !important;
+}
+
+/* === AJUSTES PARA PESTAÑAS === */
+.stTab {
+    padding: 18px 30px !important;
+    font-size: 1.2em !important;
+    font-weight: 600 !important;
+}
+
+/* === CONTENEDORES DE RESULTADOS MÁS GRANDES === */
+div[data-testid="column"] {
+    padding: 25px !important;
+}
+
+/* === SCROLLBAR VISIBLE EN TODO MOMENTO === */
+::-webkit-scrollbar {
+    width: 14px !important;
+    height: 14px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.8) !important;
+    border-radius: 12px !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+    border-radius: 12px !important;
+    border: 3px solid rgba(15, 23, 42, 0.8) !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #4f8df8 0%, #2d5fe8 100%) !important;
+}
+
+/* === FOOTER ANCHO COMPLETO === */
+footer {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 3em !important;
+    margin-top: 4rem !important;
+    background: rgba(15, 23, 42, 0.9) !important;
+    border-top: 2px solid rgba(59, 130, 246, 0.3) !important;
+}
+
+/* === ELIMINAR PADDING/MARGIN EXCESIVO === */
+.css-1v0mbdj, .css-1v3fvcr, .css-1wrcr25 {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* === AJUSTES ESPECÍFICOS PARA MAPAS === */
+.map-container {
+    width: 100% !important;
+    height: 750px !important;
+    margin-bottom: 2rem !important;
+}
+
+/* === TEXTO MÁS LEGIBLE EN PANTALLAS GRANDES === */
+p, div, span, label, li {
+    font-size: 1.15em !important;
+    line-height: 1.9 !important;
+}
+
+/* === TABLAS MÁS LEGIBLES === */
+.dataframe th {
+    font-size: 1.2em !important;
+    padding: 22px !important;
+}
+
+.dataframe td {
+    font-size: 1.15em !important;
+    padding: 20px 22px !important;
+}
+
+/* === MEJORAR VISUALIZACIÓN DE GRÁFICOS 3D === */
+figure {
+    max-height: 850px !important;
+    width: 100% !important;
+}
+
+/* === SIDEBAR STYLING PARA PANTALLA COMPLETA === */
 [data-testid="stSidebar"] *,
 [data-testid="stSidebar"] .stMarkdown,
 [data-testid="stSidebar"] p,
@@ -71,361 +374,189 @@ box-shadow: 5px 0 25px rgba(0, 0, 0, 0.1) !important;
 [data-testid="stSidebar"] .stText,
 [data-testid="stSidebar"] .stTitle,
 [data-testid="stSidebar"] .stSubheader {
-color: #000000 !important;
-text-shadow: none !important;
+    color: #000000 !important;
+    text-shadow: none !important;
 }
-/* Título del sidebar elegante */
+
 .sidebar-title {
-font-size: 1.4em;
-font-weight: 800;
-margin: 1.5em 0 1em 0;
-text-align: center;
-padding: 14px;
-background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-border-radius: 16px;
-color: #ffffff !important;
-box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3);
-border: 1px solid rgba(255, 255, 255, 0.2);
-letter-spacing: 0.5px;
+    font-size: 1.6em !important;
+    font-weight: 800 !important;
+    margin: 1.5em 0 1.2em 0 !important;
+    text-align: center !important;
+    padding: 18px !important;
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+    border-radius: 20px !important;
+    color: #ffffff !important;
+    box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4) !important;
+    border: 2px solid rgba(255, 255, 255, 0.2) !important;
+    letter-spacing: 0.8px !important;
 }
-/* Widgets del sidebar con estilo glassmorphism */
+
+/* === RESPONSIVE ADJUSTMENTS === */
+@media (max-width: 1400px) {
+    .hero-title {
+        font-size: 3.8em !important;
+    }
+    
+    .hero-subtitle {
+        font-size: 1.6em !important;
+    }
+    
+    h1 {
+        font-size: 3em !important;
+    }
+    
+    h2 {
+        font-size: 2.2em !important;
+    }
+    
+    .dashboard-grid {
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)) !important;
+    }
+}
+
+@media (max-width: 1200px) {
+    .main .block-container {
+        padding: 1rem 1.5rem !important;
+    }
+    
+    [data-testid="stSidebar"] {
+        min-width: 320px !important;
+        max-width: 350px !important;
+        width: 350px !important;
+    }
+    
+    section.main {
+        max-width: calc(100vw - 350px) !important;
+    }
+    
+    .hero-title {
+        font-size: 3.2em !important;
+    }
+    
+    .hero-subtitle {
+        font-size: 1.4em !important;
+    }
+}
+
+@media (max-width: 992px) {
+    .hero-title {
+        font-size: 2.8em !important;
+    }
+    
+    .hero-subtitle {
+        font-size: 1.3em !important;
+    }
+    
+    h1 {
+        font-size: 2.5em !important;
+    }
+    
+    h2 {
+        font-size: 2em !important;
+    }
+    
+    .dashboard-grid {
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+        gap: 25px !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .main .block-container {
+        padding: 1rem !important;
+    }
+    
+    [data-testid="stSidebar"] {
+        min-width: 280px !important;
+        max-width: 300px !important;
+        width: 300px !important;
+    }
+    
+    section.main {
+        max-width: calc(100vw - 300px) !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+    
+    .hero-banner {
+        padding: 3em 1.5em !important;
+    }
+    
+    .hero-title {
+        font-size: 2.3em !important;
+    }
+    
+    .hero-subtitle {
+        font-size: 1.1em !important;
+    }
+}
+
+/* === TARJETAS DE CULTIVOS MEJORADAS === */
+.cultivo-card {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98)) !important;
+    border-radius: 25px !important;
+    padding: 30px !important;
+    border: 2px solid rgba(59, 130, 246, 0.3) !important;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4) !important;
+    transition: all 0.4s ease !important;
+    height: 100% !important;
+    margin-bottom: 2rem !important;
+}
+
+.cultivo-card:hover {
+    transform: translateY(-10px) !important;
+    box-shadow: 0 25px 50px rgba(59, 130, 246, 0.3) !important;
+    border-color: rgba(59, 130, 246, 0.6) !important;
+}
+
+/* === ALERTS Y MENSAJES MÁS GRANDES === */
+.stAlert {
+    border-radius: 20px !important;
+    border: 2px solid rgba(255, 255, 255, 0.15) !important;
+    backdrop-filter: blur(12px) !important;
+    padding: 25px !important;
+    font-size: 1.1em !important;
+    margin-bottom: 1.5rem !important;
+}
+
+/* === BADGES MÁS GRANDES === */
+.stats-badge {
+    display: inline-block !important;
+    padding: 10px 20px !important;
+    border-radius: 50px !important;
+    font-size: 1em !important;
+    font-weight: 700 !important;
+    margin: 5px !important;
+    min-width: 120px !important;
+    text-align: center !important;
+}
+
+/* === MEJORAS EN SELECTBOX Y SLIDERS === */
 [data-testid="stSidebar"] .stSelectbox,
 [data-testid="stSidebar"] .stDateInput,
 [data-testid="stSidebar"] .stSlider {
-background: rgba(255, 255, 255, 0.9) !important;
-backdrop-filter: blur(10px);
-border-radius: 12px;
-padding: 12px;
-margin: 8px 0;
-border: 1px solid #d1d5db !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(12px) !important;
+    border-radius: 15px !important;
+    padding: 15px !important;
+    margin: 10px 0 !important;
+    border: 2px solid #d1d5db !important;
 }
-/* Labels de los widgets en negro */
+
 [data-testid="stSidebar"] .stSelectbox div,
 [data-testid="stSidebar"] .stDateInput div,
 [data-testid="stSidebar"] .stSlider label {
-color: #000000 !important;
-font-weight: 600;
-font-size: 0.95em;
+    color: #000000 !important;
+    font-weight: 600 !important;
+    font-size: 1.05em !important;
 }
-/* Inputs y selects - fondo blanco con texto negro */
-[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] {
-background-color: #ffffff !important;
-border: 1px solid #d1d5db !important;
-color: #000000 !important;
-border-radius: 8px;
-}
-/* Slider - colores negro */
-[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] {
-color: #000000 !important;
-}
-/* Date Input - fondo blanco con texto negro */
-[data-testid="stSidebar"] .stDateInput [data-baseweb="input"] {
-background-color: #ffffff !important;
-border: 1px solid #d1d5db !important;
-color: #000000 !important;
-border-radius: 8px;
-}
-/* Placeholder en gris */
-[data-testid="stSidebar"] .stDateInput [data-baseweb="input"]::placeholder {
-color: #6b7280 !important;
-}
-/* Botones premium */
-.stButton > button {
-background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
-color: white !important;
-border: none !important;
-padding: 0.8em 1.5em !important;
-border-radius: 12px !important;
-font-weight: 700 !important;
-font-size: 1em !important;
-box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4) !important;
-transition: all 0.3s ease !important;
-text-transform: uppercase !important;
-letter-spacing: 0.5px !important;
-}
-.stButton > button:hover {
-transform: translateY(-3px) !important;
-box-shadow: 0 8px 25px rgba(59, 130, 246, 0.6) !important;
-background: linear-gradient(135deg, #4f8df8 0%, #2d5fe8 100%) !important;
-}
-/* === HERO BANNER PRINCIPAL CON IMAGEN === */
-.hero-banner {
-background: linear-gradient(rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.95)),
-url('https://images.unsplash.com/photo-1597981309443-6e2d2a4d9c3f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80') !important;
-background-size: cover !important;
-background-position: center 40% !important;
-padding: 3.5em 2em !important;
-border-radius: 24px !important;
-margin-bottom: 2.5em !important;
-box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
-border: 1px solid rgba(59, 130, 246, 0.2) !important;
-position: relative !important;
-overflow: hidden !important;
-}
-.hero-banner::before {
-content: '' !important;
-position: absolute !important;
-top: 0 !important;
-left: 0 !important;
-right: 0 !important;
-bottom: 0 !important;
-background: linear-gradient(45deg, rgba(59, 130, 246, 0.1), rgba(29, 78, 216, 0.05)) !important;
-z-index: 1 !important;
-}
-.hero-content {
-position: relative !important;
-z-index: 2 !important;
-text-align: center !important;
-}
-.hero-title {
-color: #ffffff !important;
-font-size: 3.2em !important;
-font-weight: 900 !important;
-margin-bottom: 0.3em !important;
-text-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
-letter-spacing: -0.5px !important;
-background: linear-gradient(135deg, #ffffff 0%, #93c5fd 100%) !important;
--webkit-background-clip: text !important;
--webkit-text-fill-color: transparent !important;
-background-clip: text !important;
-}
-.hero-subtitle {
-color: #cbd5e1 !important;
-font-size: 1.3em !important;
-font-weight: 400 !important;
-max-width: 800px !important;
-margin: 0 auto !important;
-line-height: 1.6 !important;
-}
-/* === PESTAÑAS PRINCIPALES (fuera del sidebar) - SIN CAMBIOS === */
-.stTabs [data-baseweb="tab-list"] {
-background: rgba(255, 255, 255, 0.05) !important;
-backdrop-filter: blur(10px) !important;
-padding: 8px 16px !important;
-border-radius: 16px !important;
-border: 1px solid rgba(255, 255, 255, 0.1) !important;
-margin-top: 1em !important;
-gap: 8px !important;
-}
-.stTabs [data-baseweb="tab"] {
-color: #94a3b8 !important;
-font-weight: 600 !important;
-padding: 12px 24px !important;
-border-radius: 12px !important;
-background: transparent !important;
-transition: all 0.3s ease !important;
-border: 1px solid transparent !important;
-}
-.stTabs [data-baseweb="tab"]:hover {
-color: #ffffff !important;
-background: rgba(59, 130, 246, 0.2) !important;
-border-color: rgba(59, 130, 246, 0.3) !important;
-transform: translateY(-2px) !important;
-}
-.stTabs [aria-selected="true"] {
-background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
-color: #ffffff !important;
-font-weight: 700 !important;
-border: none !important;
-box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4) !important;
-}
-/* === PESTAÑAS DEL SIDEBAR: FONDO BLANCO + TEXTO NEGRO === */
-[data-testid="stSidebar"] .stTabs [data-baseweb="tab-list"] {
-background: #ffffff !important;
-border: 1px solid #e2e8f0 !important;
-padding: 8px !important;
-border-radius: 12px !important;
-gap: 6px !important;
-}
-[data-testid="stSidebar"] .stTabs [data-baseweb="tab"] {
-color: #000000 !important;
-background: transparent !important;
-border-radius: 8px !important;
-padding: 8px 16px !important;
-font-weight: 600 !important;
-border: 1px solid transparent !important;
-}
-[data-testid="stSidebar"] .stTabs [data-baseweb="tab"]:hover {
-background: #f1f5f9 !important;
-color: #000000 !important;
-border-color: #cbd5e1 !important;
-}
-/* Pestaña activa en el sidebar: blanco con texto negro */
-[data-testid="stSidebar"] .stTabs [aria-selected="true"] {
-background: #ffffff !important;
-color: #000000 !important;
-font-weight: 700 !important;
-border: 1px solid #3b82f6 !important;
-}
-/* === MÉTRICAS PREMIUM === */
-div[data-testid="metric-container"] {
-background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9)) !important;
-backdrop-filter: blur(10px) !important;
-border-radius: 20px !important;
-padding: 24px !important;
-box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
-border: 1px solid rgba(59, 130, 246, 0.2) !important;
-transition: all 0.3s ease !important;
-}
-div[data-testid="metric-container"]:hover {
-transform: translateY(-5px) !important;
-box-shadow: 0 15px 40px rgba(59, 130, 246, 0.2) !important;
-border-color: rgba(59, 130, 246, 0.4) !important;
-}
-div[data-testid="metric-container"] label,
-div[data-testid="metric-container"] div,
-div[data-testid="metric-container"] [data-testid="stMetricValue"],
-div[data-testid="metric-container"] [data-testid="stMetricLabel"] {
-color: #ffffff !important;
-font-weight: 600 !important;
-}
-div[data-testid="metric-container"] [data-testid="stMetricValue"] {
-font-size: 2.5em !important;
-font-weight: 800 !important;
-background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
--webkit-background-clip: text !important;
--webkit-text-fill-color: transparent !important;
-background-clip: text !important;
-}
-/* === GRÁFICOS CON ESTILO OSCURO === */
-.stPlotlyChart, .stPyplot {
-background: rgba(15, 23, 42, 0.8) !important;
-backdrop-filter: blur(10px) !important;
-border-radius: 20px !important;
-padding: 20px !important;
-box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
-border: 1px solid rgba(59, 130, 246, 0.2) !important;
-}
-/* === EXPANDERS ELEGANTES === */
-.streamlit-expanderHeader {
-color: #ffffff !important;
-background: rgba(30, 41, 59, 0.8) !important;
-backdrop-filter: blur(10px) !important;
-border-radius: 16px !important;
-font-weight: 700 !important;
-border: 1px solid rgba(255, 255, 255, 0.1) !important;
-padding: 16px 20px !important;
-margin-bottom: 10px !important;
-}
-.streamlit-expanderContent {
-background: rgba(15, 23, 42, 0.6) !important;
-border-radius: 0 0 16px 16px !important;
-padding: 20px !important;
-border: 1px solid rgba(255, 255, 255, 0.1) !important;
-border-top: none !important;
-}
-/* === TEXTOS GENERALES === */
-h1, h2, h3, h4, h5, h6 {
-color: #ffffff !important;
-font-weight: 800 !important;
-margin-top: 1.5em !important;
-}
-p, div, span, label, li {
-color: #cbd5e1 !important;
-line-height: 1.7 !important;
-}
-/* === DATA FRAMES TABLAS ELEGANTES === */
-.dataframe {
-background: rgba(15, 23, 42, 0.8) !important;
-backdrop-filter: blur(10px) !important;
-border-radius: 16px !important;
-border: 1px solid rgba(255, 255, 255, 0.1) !important;
-color: #ffffff !important;
-}
-.dataframe th {
-background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
-color: #ffffff !important;
-font-weight: 700 !important;
-padding: 16px !important;
-}
-.dataframe td {
-color: #cbd5e1 !important;
-padding: 14px 16px !important;
-border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-/* === ALERTS Y MENSAJES === */
-.stAlert {
-border-radius: 16px !important;
-border: 1px solid rgba(255, 255, 255, 0.1) !important;
-backdrop-filter: blur(10px) !important;
-}
-/* === SCROLLBAR PERSONALIZADA === */
-::-webkit-scrollbar {
-width: 10px !important;
-height: 10px !important;
-}
-::-webkit-scrollbar-track {
-background: rgba(15, 23, 42, 0.8) !important;
-border-radius: 10px !important;
-}
-::-webkit-scrollbar-thumb {
-background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
-border-radius: 10px !important;
-}
-::-webkit-scrollbar-thumb:hover {
-background: linear-gradient(135deg, #4f8df8 0%, #2d5fe8 100%) !important;
-}
-/* === TARJETAS DE CULTIVOS === */
-.cultivo-card {
-background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)) !important;
-border-radius: 20px !important;
-padding: 25px !important;
-border: 1px solid rgba(59, 130, 246, 0.2) !important;
-box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
-transition: all 0.3s ease !important;
-height: 100% !important;
-}
-.cultivo-card:hover {
-transform: translateY(-8px) !important;
-box-shadow: 0 20px 40px rgba(59, 130, 246, 0.2) !important;
-border-color: rgba(59, 130, 246, 0.4) !important;
-}
-/* === TABLERO DE CONTROL === */
-.dashboard-grid {
-display: grid !important;
-grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
-gap: 25px !important;
-margin: 30px 0 !important;
-}
-.dashboard-card {
-background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)) !important;
-border-radius: 20px !important;
-padding: 25px !important;
-border: 1px solid rgba(59, 130, 246, 0.2) !important;
-box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
-transition: all 0.3s ease !important;
-}
-.dashboard-card:hover {
-transform: translateY(-5px) !important;
-box-shadow: 0 20px 40px rgba(59, 130, 246, 0.2) !important;
-}
-/* === STATS BADGES === */
-.stats-badge {
-display: inline-block !important;
-padding: 6px 14px !important;
-border-radius: 50px !important;
-font-size: 0.85em !important;
-font-weight: 700 !important;
-margin: 2px !important;
-}
-.badge-success {
-background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
-color: white !important;
-}
-.badge-warning {
-background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
-color: white !important;
-}
-.badge-danger {
-background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
-color: white !important;
-}
-.badge-info {
-background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
-color: white !important;
-}
+
 </style>
 """, unsafe_allow_html=True)
+
+# ===== INYECTAR BOTÓN DE PANTALLA COMPLETA =====
+inject_maximize_button()
 
 # ===== HERO BANNER PRINCIPAL =====
 st.markdown("""
@@ -643,7 +774,7 @@ with st.sidebar:
     fecha_inicio = st.date_input("Fecha inicio", datetime.now() - timedelta(days=30))
     
     st.subheader("🎯 División de Parcela")
-    n_divisiones = st.slider("Número de zonas de manejo:", min_value=16, max_value=48, value=32)
+    n_divisiones = st.slider("Número de zonas de manejo:", min_value=16, max_value=48, value=32, step=4)
     
     st.subheader("🏔️ Configuración Curvas de Nivel")
     intervalo_curvas = st.slider("Intervalo entre curvas (metros):", 1.0, 20.0, 5.0, 1.0)
@@ -1445,7 +1576,7 @@ def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
     """Crear mapa de fertilidad actual"""
     try:
         gdf_plot = gdf_completo.to_crs(epsg=3857)
-        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+        fig, ax = plt.subplots(1, 1, figsize=(22, 14))  # AUMENTADO DE 12x8 a 22x14
         
         cmap = LinearSegmentedColormap.from_list('fertilidad_gee', PALETAS_GEE['FERTILIDAD'])
         vmin, vmax = 0, 1
@@ -1456,12 +1587,12 @@ def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
             valor_norm = max(0, min(1, valor_norm))
             color = cmap(valor_norm)
             
-            gdf_plot.iloc[[idx]].plot(ax=ax, color=color, edgecolor='black', linewidth=1.5, alpha=0.7)
+            gdf_plot.iloc[[idx]].plot(ax=ax, color=color, edgecolor='black', linewidth=2.0, alpha=0.7)
             
             centroid = row.geometry.centroid
             ax.annotate(f"Z{row['id_zona']}\n{valor:.2f}", (centroid.x, centroid.y),
                         xytext=(5, 5), textcoords="offset points",
-                        fontsize=8, color='black', weight='bold',
+                        fontsize=10, color='black', weight='bold',  # Aumentado fontsize
                         bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9))
         
         try:
@@ -1472,19 +1603,21 @@ def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
         info_satelite = SATELITES_DISPONIBLES.get(satelite, SATELITES_DISPONIBLES['DATOS_SIMULADOS'])
         ax.set_title(f'{ICONOS_CULTIVOS[cultivo]} FERTILIDAD ACTUAL - {cultivo}\n'
                      f'{info_satelite["icono"]} {info_satelite["nombre"]}',
-                     fontsize=16, fontweight='bold', pad=20)
-        ax.set_xlabel('Longitud')
-        ax.set_ylabel('Latitud')
+                     fontsize=20, fontweight='bold', pad=30)  # Aumentado fontsize
+        ax.set_xlabel('Longitud', fontsize=14)
+        ax.set_ylabel('Latitud', fontsize=14)
         ax.grid(True, alpha=0.3)
+        ax.tick_params(axis='both', which='major', labelsize=12)
         
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
         sm.set_array([])
         cbar = plt.colorbar(sm, ax=ax, shrink=0.8)
-        cbar.set_label('Índice de Fertilidad', fontsize=12, fontweight='bold')
+        cbar.set_label('Índice de Fertilidad', fontsize=16, fontweight='bold')
+        cbar.ax.tick_params(labelsize=12)
         
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight')  # Aumentado dpi
         buf.seek(0)
         plt.close()
         return buf
@@ -1496,7 +1629,7 @@ def crear_mapa_npk(gdf_completo, cultivo, nutriente='N'):
     """Crear mapa de recomendaciones NPK"""
     try:
         gdf_plot = gdf_completo.to_crs(epsg=3857)
-        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+        fig, ax = plt.subplots(1, 1, figsize=(22, 14))  # AUMENTADO DE 12x8 a 22x14
         
         if nutriente == 'N':
             cmap = LinearSegmentedColormap.from_list('nitrogeno_gee', PALETAS_GEE['NITROGENO'])
@@ -1523,12 +1656,12 @@ def crear_mapa_npk(gdf_completo, cultivo, nutriente='N'):
             valor_norm = max(0, min(1, valor_norm))
             color = cmap(valor_norm)
             
-            gdf_plot.iloc[[idx]].plot(ax=ax, color=color, edgecolor='black', linewidth=1.5, alpha=0.7)
+            gdf_plot.iloc[[idx]].plot(ax=ax, color=color, edgecolor='black', linewidth=2.0, alpha=0.7)
             
             centroid = row.geometry.centroid
             ax.annotate(f"Z{row['id_zona']}\n{valor:.0f}", (centroid.x, centroid.y),
                         xytext=(5, 5), textcoords="offset points",
-                        fontsize=8, color='black', weight='bold',
+                        fontsize=10, color='black', weight='bold',  # Aumentado fontsize
                         bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9))
         
         try:
@@ -1537,19 +1670,21 @@ def crear_mapa_npk(gdf_completo, cultivo, nutriente='N'):
             pass
         
         ax.set_title(f'{ICONOS_CULTIVOS[cultivo]} RECOMENDACIONES {titulo_nut} - {cultivo}',
-                     fontsize=16, fontweight='bold', pad=20)
-        ax.set_xlabel('Longitud')
-        ax.set_ylabel('Latitud')
+                     fontsize=20, fontweight='bold', pad=30)  # Aumentado fontsize
+        ax.set_xlabel('Longitud', fontsize=14)
+        ax.set_ylabel('Latitud', fontsize=14)
         ax.grid(True, alpha=0.3)
+        ax.tick_params(axis='both', which='major', labelsize=12)
         
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
         sm.set_array([])
         cbar = plt.colorbar(sm, ax=ax, shrink=0.8)
-        cbar.set_label(f'{titulo_nut} (kg/ha)', fontsize=12, fontweight='bold')
+        cbar.set_label(f'{titulo_nut} (kg/ha)', fontsize=16, fontweight='bold')
+        cbar.ax.tick_params(labelsize=12)
         
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight')  # Aumentado dpi
         buf.seek(0)
         plt.close()
         return buf
@@ -1561,7 +1696,7 @@ def crear_mapa_texturas(gdf_completo, cultivo):
     """Crear mapa de texturas"""
     try:
         gdf_plot = gdf_completo.to_crs(epsg=3857)
-        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+        fig, ax = plt.subplots(1, 1, figsize=(22, 14))  # AUMENTADO DE 12x8 a 22x14
         
         colores_textura = {
             'Franco': '#c7eae5',
@@ -1574,12 +1709,12 @@ def crear_mapa_texturas(gdf_completo, cultivo):
             textura = row['textura_suelo']
             color = colores_textura.get(textura, '#999999')
             
-            gdf_plot.iloc[[idx]].plot(ax=ax, color=color, edgecolor='black', linewidth=1.5, alpha=0.8)
+            gdf_plot.iloc[[idx]].plot(ax=ax, color=color, edgecolor='black', linewidth=2.0, alpha=0.8)
             
             centroid = row.geometry.centroid
             ax.annotate(f"Z{row['id_zona']}\n{textura[:10]}", (centroid.x, centroid.y),
                         xytext=(5, 5), textcoords="offset points",
-                        fontsize=8, color='black', weight='bold',
+                        fontsize=10, color='black', weight='bold',  # Aumentado fontsize
                         bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9))
         
         try:
@@ -1588,19 +1723,21 @@ def crear_mapa_texturas(gdf_completo, cultivo):
             pass
         
         ax.set_title(f'{ICONOS_CULTIVOS[cultivo]} MAPA DE TEXTURAS - {cultivo}',
-                     fontsize=16, fontweight='bold', pad=20)
-        ax.set_xlabel('Longitud')
-        ax.set_ylabel('Latitud')
+                     fontsize=20, fontweight='bold', pad=30)  # Aumentado fontsize
+        ax.set_xlabel('Longitud', fontsize=14)
+        ax.set_ylabel('Latitud', fontsize=14)
         ax.grid(True, alpha=0.3)
+        ax.tick_params(axis='both', which='major', labelsize=12)
         
         from matplotlib.patches import Patch
         legend_elements = [Patch(facecolor=color, edgecolor='black', label=textura)
                            for textura, color in colores_textura.items()]
-        ax.legend(handles=legend_elements, title='Texturas', loc='upper left', bbox_to_anchor=(1.05, 1))
+        ax.legend(handles=legend_elements, title='Texturas', loc='upper left', 
+                  bbox_to_anchor=(1.05, 1), fontsize=12, title_fontsize=14)
         
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight')  # Aumentado dpi
         buf.seek(0)
         plt.close()
         return buf
@@ -1611,25 +1748,26 @@ def crear_mapa_texturas(gdf_completo, cultivo):
 def crear_grafico_distribucion_costos(costos_n, costos_p, costos_k, otros, costo_total):
     """Crear gráfico de distribución de costos"""
     try:
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(16, 9))  # AUMENTADO DE 10x6 a 16x9
         
         categorias = ['Nitrógeno', 'Fósforo', 'Potasio', 'Otros']
         valores = [costos_n, costos_p, costos_k, otros]
         colores = ['#00ff00', '#0000ff', '#4B0082', '#cccccc']
         
-        bars = ax.bar(categorias, valores, color=colores, edgecolor='black')
-        ax.set_title('Distribución de Costos de Fertilización', fontsize=14, fontweight='bold')
-        ax.set_ylabel('USD', fontsize=12)
-        ax.set_xlabel('Componente', fontsize=12)
+        bars = ax.bar(categorias, valores, color=colores, edgecolor='black', linewidth=2)
+        ax.set_title('Distribución de Costos de Fertilización', fontsize=18, fontweight='bold', pad=20)
+        ax.set_ylabel('USD', fontsize=16)
+        ax.set_xlabel('Componente', fontsize=16)
+        ax.tick_params(axis='both', which='major', labelsize=14)
         
         for bar in bars:
             height = bar.get_height()
             ax.text(bar.get_x() + bar.get_width()/2., height + 10,
-                   f'${height:.0f}', ha='center', va='bottom', fontweight='bold')
+                   f'${height:.0f}', ha='center', va='bottom', fontweight='bold', fontsize=12)
         
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight')  # Aumentado dpi
         buf.seek(0)
         plt.close()
         return buf
@@ -1640,24 +1778,27 @@ def crear_grafico_distribucion_costos(costos_n, costos_p, costos_k, otros, costo
 def crear_grafico_composicion_textura(arena_prom, limo_prom, arcilla_prom, textura_dist):
     """Crear gráfico de composición granulométrica"""
     try:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))  # AUMENTADO DE 14x6 a 20x10
         
         composicion = [arena_prom, limo_prom, arcilla_prom]
         labels = ['Arena', 'Limo', 'Arcilla']
         colors_pie = ['#d8b365', '#f6e8c3', '#01665e']
-        ax1.pie(composicion, labels=labels, colors=colors_pie, autopct='%1.1f%%', startangle=90)
-        ax1.set_title('Composición Promedio del Suelo')
+        ax1.pie(composicion, labels=labels, colors=colors_pie, autopct='%1.1f%%', 
+                startangle=90, textprops={'fontsize': 14})
+        ax1.set_title('Composición Promedio del Suelo', fontsize=16, fontweight='bold', pad=20)
         
         ax2.bar(textura_dist.index, textura_dist.values, 
-               color=[PALETAS_GEE['TEXTURA'][i % len(PALETAS_GEE['TEXTURA'])] for i in range(len(textura_dist))])
-        ax2.set_title('Distribución de Texturas')
-        ax2.set_xlabel('Textura')
-        ax2.set_ylabel('Número de Zonas')
-        ax2.tick_params(axis='x', rotation=45)
+               color=[PALETAS_GEE['TEXTURA'][i % len(PALETAS_GEE['TEXTURA'])] for i in range(len(textura_dist))],
+               edgecolor='black', linewidth=1.5)
+        ax2.set_title('Distribución de Texturas', fontsize=16, fontweight='bold', pad=20)
+        ax2.set_xlabel('Textura', fontsize=14)
+        ax2.set_ylabel('Número de Zonas', fontsize=14)
+        ax2.tick_params(axis='x', rotation=45, labelsize=12)
+        ax2.tick_params(axis='y', labelsize=12)
         
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight')  # Aumentado dpi
         buf.seek(0)
         plt.close()
         return buf
@@ -1668,33 +1809,34 @@ def crear_grafico_composicion_textura(arena_prom, limo_prom, arcilla_prom, textu
 def crear_grafico_proyecciones_rendimiento(zonas, sin_fert, con_fert):
     """Crear gráfico de proyecciones de rendimiento"""
     try:
-        fig, ax = plt.subplots(figsize=(12, 6))
+        fig, ax = plt.subplots(figsize=(18, 9))  # AUMENTADO DE 12x6 a 18x9
         
         x = np.arange(len(zonas))
         width = 0.35
         
-        bars1 = ax.bar(x - width/2, sin_fert, width, label='Sin Fertilización', color='#ff9999')
-        bars2 = ax.bar(x + width/2, con_fert, width, label='Con Fertilización', color='#66b3ff')
+        bars1 = ax.bar(x - width/2, sin_fert, width, label='Sin Fertilización', color='#ff9999', edgecolor='black', linewidth=1.5)
+        bars2 = ax.bar(x + width/2, con_fert, width, label='Con Fertilización', color='#66b3ff', edgecolor='black', linewidth=1.5)
         
-        ax.set_xlabel('Zona')
-        ax.set_ylabel('Rendimiento (kg)')
-        ax.set_title('Proyecciones de Rendimiento por Zona')
+        ax.set_xlabel('Zona', fontsize=14)
+        ax.set_ylabel('Rendimiento (kg)', fontsize=14)
+        ax.set_title('Proyecciones de Rendimiento por Zona', fontsize=18, fontweight='bold', pad=20)
         ax.set_xticks(x)
-        ax.set_xticklabels(zonas)
-        ax.legend()
+        ax.set_xticklabels(zonas, fontsize=12)
+        ax.tick_params(axis='y', labelsize=12)
+        ax.legend(fontsize=12)
         
         def autolabel(bars):
             for bar in bars:
                 height = bar.get_height()
                 ax.text(bar.get_x() + bar.get_width()/2., height + 50,
-                       f'{height:.0f}', ha='center', va='bottom', fontsize=8)
+                       f'{height:.0f}', ha='center', va='bottom', fontsize=10)
         
         autolabel(bars1)
         autolabel(bars2)
         
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight')  # Aumentado dpi
         buf.seek(0)
         plt.close()
         return buf
@@ -1706,21 +1848,23 @@ def crear_grafico_proyecciones_rendimiento(zonas, sin_fert, con_fert):
 def crear_mapa_pendientes(X, Y, pendientes, gdf_original):
     """Crear mapa de pendientes"""
     try:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 10))  # AUMENTADO DE 16x6 a 24x10
         
         # Mapa de calor de pendientes
         scatter = ax1.scatter(X.flatten(), Y.flatten(), c=pendientes.flatten(), 
-                             cmap='RdYlGn_r', s=10, alpha=0.7, vmin=0, vmax=30)
+                             cmap='RdYlGn_r', s=20, alpha=0.7, vmin=0, vmax=30)  # Aumentado tamaño punto
         
-        gdf_original.plot(ax=ax1, color='none', edgecolor='black', linewidth=2)
+        gdf_original.plot(ax=ax1, color='none', edgecolor='black', linewidth=3)
         
         cbar = plt.colorbar(scatter, ax=ax1, shrink=0.8)
-        cbar.set_label('Pendiente (%)')
+        cbar.set_label('Pendiente (%)', fontsize=14)
+        cbar.ax.tick_params(labelsize=12)
         
-        ax1.set_title('Mapa de Calor de Pendientes', fontsize=12, fontweight='bold')
-        ax1.set_xlabel('Longitud')
-        ax1.set_ylabel('Latitud')
+        ax1.set_title('Mapa de Calor de Pendientes', fontsize=16, fontweight='bold', pad=20)
+        ax1.set_xlabel('Longitud', fontsize=14)
+        ax1.set_ylabel('Latitud', fontsize=14)
         ax1.grid(True, alpha=0.3)
+        ax1.tick_params(axis='both', which='major', labelsize=12)
         
         # Histograma de pendientes
         pendientes_flat = pendientes.flatten()
@@ -1731,9 +1875,9 @@ def crear_mapa_pendientes(X, Y, pendientes, gdf_original):
         # Líneas de referencia
         for porcentaje, color in [(2, 'green'), (5, 'lightgreen'), (10, 'yellow'), 
                                  (15, 'orange'), (25, 'red')]:
-            ax2.axvline(x=porcentaje, color=color, linestyle='--', linewidth=1, alpha=0.7)
+            ax2.axvline(x=porcentaje, color=color, linestyle='--', linewidth=2, alpha=0.7)  # Aumentado grosor línea
             ax2.text(porcentaje+0.5, ax2.get_ylim()[1]*0.9, f'{porcentaje}%', 
-                    color=color, fontsize=8)
+                    color=color, fontsize=10)
         
         stats_text = f"""
 Estadísticas:
@@ -1742,18 +1886,19 @@ Estadísticas:
 • Promedio: {np.nanmean(pendientes_flat):.1f}%
 • Desviación: {np.nanstd(pendientes_flat):.1f}%
 """
-        ax2.text(0.02, 0.98, stats_text, transform=ax2.transAxes, fontsize=9, 
+        ax2.text(0.02, 0.98, stats_text, transform=ax2.transAxes, fontsize=11, 
                 verticalalignment='top', 
                 bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
         
-        ax2.set_xlabel('Pendiente (%)')
-        ax2.set_ylabel('Frecuencia')
-        ax2.set_title('Distribución de Pendientes', fontsize=12, fontweight='bold')
+        ax2.set_xlabel('Pendiente (%)', fontsize=14)
+        ax2.set_ylabel('Frecuencia', fontsize=14)
+        ax2.set_title('Distribución de Pendientes', fontsize=16, fontweight='bold', pad=20)
         ax2.grid(True, alpha=0.3)
+        ax2.tick_params(axis='both', which='major', labelsize=12)
         
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight')  # Aumentado dpi
         buf.seek(0)
         plt.close()
         
@@ -1772,7 +1917,7 @@ Estadísticas:
 def crear_mapa_curvas_nivel(X, Y, Z, curvas_nivel, elevaciones, gdf_original):
     """Crear mapa con curvas de nivel"""
     try:
-        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+        fig, ax = plt.subplots(1, 1, figsize=(22, 14))  # AUMENTADO DE 12x8 a 22x14
         
         # Mapa de elevación
         contour = ax.contourf(X, Y, Z, levels=20, cmap='terrain', alpha=0.7)
@@ -1782,27 +1927,29 @@ def crear_mapa_curvas_nivel(X, Y, Z, curvas_nivel, elevaciones, gdf_original):
             for curva, elevacion in zip(curvas_nivel, elevaciones):
                 if hasattr(curva, 'coords'):
                     coords = np.array(curva.coords)
-                    ax.plot(coords[:, 0], coords[:, 1], 'b-', linewidth=0.8, alpha=0.7)
+                    ax.plot(coords[:, 0], coords[:, 1], 'b-', linewidth=1.5, alpha=0.7)  # Aumentado grosor línea
                     # Etiqueta de elevación
                     if len(coords) > 0:
                         mid_idx = len(coords) // 2
                         ax.text(coords[mid_idx, 0], coords[mid_idx, 1], 
-                               f'{elevacion:.0f}m', fontsize=8, color='blue',
+                               f'{elevacion:.0f}m', fontsize=10, color='blue',  # Aumentado fontsize
                                bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.7))
         
-        gdf_original.plot(ax=ax, color='none', edgecolor='black', linewidth=2)
+        gdf_original.plot(ax=ax, color='none', edgecolor='black', linewidth=3)
         
         cbar = plt.colorbar(contour, ax=ax, shrink=0.8)
-        cbar.set_label('Elevación (m)')
+        cbar.set_label('Elevación (m)', fontsize=14)
+        cbar.ax.tick_params(labelsize=12)
         
-        ax.set_title('Mapa de Curvas de Nivel', fontsize=14, fontweight='bold')
-        ax.set_xlabel('Longitud')
-        ax.set_ylabel('Latitud')
+        ax.set_title('Mapa de Curvas de Nivel', fontsize=20, fontweight='bold', pad=30)
+        ax.set_xlabel('Longitud', fontsize=14)
+        ax.set_ylabel('Latitud', fontsize=14)
         ax.grid(True, alpha=0.3)
+        ax.tick_params(axis='both', which='major', labelsize=12)
         
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight')  # Aumentado dpi
         buf.seek(0)
         plt.close()
         return buf
@@ -1813,18 +1960,19 @@ def crear_mapa_curvas_nivel(X, Y, Z, curvas_nivel, elevaciones, gdf_original):
 def crear_visualizacion_3d(X, Y, Z):
     """Crear visualización 3D del terreno"""
     try:
-        fig = plt.figure(figsize=(14, 10))
+        fig = plt.figure(figsize=(20, 14))  # AUMENTADO DE 14x10 a 20x14
         ax = fig.add_subplot(111, projection='3d')
         
         # Plot superficie 3D
         surf = ax.plot_surface(X, Y, Z, cmap='terrain', alpha=0.8, 
-                              linewidth=0.5, antialiased=True)
+                              linewidth=0.8, antialiased=True, rstride=1, cstride=1)  # Reducido stride para más detalle
         
         # Configuración de ejes
-        ax.set_xlabel('Longitud', fontsize=10)
-        ax.set_ylabel('Latitud', fontsize=10)
-        ax.set_zlabel('Elevación (m)', fontsize=10)
-        ax.set_title('Modelo 3D del Terreno', fontsize=14, fontweight='bold', pad=20)
+        ax.set_xlabel('Longitud', fontsize=14)
+        ax.set_ylabel('Latitud', fontsize=14)
+        ax.set_zlabel('Elevación (m)', fontsize=14)
+        ax.set_title('Modelo 3D del Terreno', fontsize=20, fontweight='bold', pad=30)
+        ax.tick_params(axis='both', which='major', labelsize=12)
         
         # Colorbar
         fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5, label='Elevación (m)')
@@ -1835,7 +1983,7 @@ def crear_visualizacion_3d(X, Y, Z):
         
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight')  # Aumentado dpi
         buf.seek(0)
         plt.close()
         return buf
@@ -2110,17 +2258,18 @@ if uploaded_file:
                     st.write(f"- Formato: {uploaded_file.name.split('.')[-1].upper()}")
                     
                     # Vista previa
-                    fig, ax = plt.subplots(figsize=(8, 6))
+                    fig, ax = plt.subplots(figsize=(12, 9))  # Aumentado figsize
                     gdf.plot(ax=ax, color='lightgreen', edgecolor='darkgreen', alpha=0.7)
-                    ax.set_title(f"Parcela: {uploaded_file.name}")
-                    ax.set_xlabel("Longitud")
-                    ax.set_ylabel("Latitud")
+                    ax.set_title(f"Parcela: {uploaded_file.name}", fontsize=16, fontweight='bold')
+                    ax.set_xlabel("Longitud", fontsize=14)
+                    ax.set_ylabel("Latitud", fontsize=14)
                     ax.grid(True, alpha=0.3)
+                    ax.tick_params(axis='both', which='major', labelsize=12)
                     st.pyplot(fig)
                     
                     # Botón descarga vista previa
                     buf_vista = io.BytesIO()
-                    plt.savefig(buf_vista, format='png', dpi=150, bbox_inches='tight')
+                    plt.savefig(buf_vista, format='png', dpi=200, bbox_inches='tight')  # Aumentado dpi
                     buf_vista.seek(0)
                     crear_boton_descarga_png(
                         buf_vista,
@@ -2209,7 +2358,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         tabla_fert = resultados['gdf_completo'][columnas_fert].copy()
         tabla_fert.columns = ['Zona', 'Área (ha)', 'Índice NPK', 'NDVI', 
                             'NDRE', 'Materia Org (%)', 'Humedad']
-        st.dataframe(tabla_fert)
+        st.dataframe(tabla_fert, height=500)
     
     with tab2:
         st.subheader("RECOMENDACIONES NPK")
@@ -2264,7 +2413,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         tabla_npk = resultados['gdf_completo'][columnas_npk].copy()
         tabla_npk.columns = ['Zona', 'Área (ha)', 'Nitrógeno (kg/ha)', 
                            'Fósforo (kg/ha)', 'Potasio (kg/ha)']
-        st.dataframe(tabla_npk)
+        st.dataframe(tabla_npk, height=500)
     
     with tab3:
         st.subheader("ANÁLISIS DE COSTOS")
@@ -2303,7 +2452,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         tabla_costos = resultados['gdf_completo'][columnas_costos].copy()
         tabla_costos.columns = ['Zona', 'Área (ha)', 'Costo N (USD)', 
                               'Costo P (USD)', 'Costo K (USD)', 'Total (USD)']
-        st.dataframe(tabla_costos)
+        st.dataframe(tabla_costos, height=500)
     
     with tab4:
         st.subheader("TEXTURA DEL SUELO")
@@ -2350,7 +2499,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         columnas_text = ['id_zona', 'area_ha', 'textura_suelo', 'arena', 'limo', 'arcilla']
         tabla_text = resultados['gdf_completo'][columnas_text].copy()
         tabla_text.columns = ['Zona', 'Área (ha)', 'Textura', 'Arena (%)', 'Limo (%)', 'Arcilla (%)']
-        st.dataframe(tabla_text)
+        st.dataframe(tabla_text, height=500)
     
     with tab5:
         st.subheader("PROYECCIONES DE COSECHA")
@@ -2405,7 +2554,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         tabla_proy = resultados['gdf_completo'][columnas_proy].copy()
         tabla_proy.columns = ['Zona', 'Área (ha)', 'Sin Fertilización (kg)', 
                             'Con Fertilización (kg)', 'Incremento (%)']
-        st.dataframe(tabla_proy)
+        st.dataframe(tabla_proy, height=500)
     
     with tab6:
         if 'dem_data' in resultados and resultados['dem_data']:
@@ -2511,7 +2660,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
             
             if sample_points:
                 df_dem = pd.DataFrame(sample_points).head(20)
-                st.dataframe(df_dem)
+                st.dataframe(df_dem, height=500)
         else:
             st.warning("⚠️ No se generaron datos DEM. Intenta ejecutar el análisis nuevamente.")
     
@@ -2523,7 +2672,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
     
     with col_exp1:
         st.markdown("**GeoJSON**")
-        if st.button("📤 Generar GeoJSON", key="generate_geojson"):
+        if st.button("📤 Generar GeoJSON", key="generate_geojson", use_container_width=True):
             with st.spinner("Generando GeoJSON..."):
                 geojson_data, nombre_geojson = exportar_a_geojson(
                     resultados['gdf_completo'], 
@@ -2541,12 +2690,13 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                 data=st.session_state.geojson_data,
                 file_name=st.session_state.nombre_geojson,
                 mime="application/json",
-                key="geojson_download"
+                key="geojson_download",
+                use_container_width=True
             )
     
     with col_exp2:
         st.markdown("**Reporte Completo**")
-        if st.button("📄 Generar Reporte DOCX", key="generate_docx"):
+        if st.button("📄 Generar Reporte DOCX", key="generate_docx", use_container_width=True):
             with st.spinner("Generando reporte completo..."):
                 reporte = generar_reporte_completo(
                     resultados, 
@@ -2569,13 +2719,14 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                 data=st.session_state.reporte_completo,
                 file_name=st.session_state.nombre_reporte,
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                key="docx_download"
+                key="docx_download",
+                use_container_width=True
             )
     
     # Limpiar reportes
     if st.session_state.reporte_completo or st.session_state.geojson_data:
         st.markdown("---")
-        if st.button("🗑️ Limpiar Reportes Generados", key="clear_reports"):
+        if st.button("🗑️ Limpiar Reportes Generados", key="clear_reports", use_container_width=True):
             st.session_state.reporte_completo = None
             st.session_state.geojson_data = None
             st.session_state.nombre_geojson = ""
@@ -2612,7 +2763,7 @@ with col_footer3:
 - Última actualización: Enero 2026
 """)
 st.markdown(
-    '<div style="text-align: center; color: #94a3b8; font-size: 0.9em; margin-top: 2em;">'
+    '<div style="text-align: center; color: #94a3b8; font-size: 1.1em; margin-top: 3em; padding: 2em; background: rgba(15, 23, 42, 0.8); border-radius: 20px; border: 1px solid rgba(59, 130, 246, 0.2);">'
     '© 2026 Analizador Multi-Cultivo Satelital. Todos los derechos reservados.'
     '</div>',
     unsafe_allow_html=True
