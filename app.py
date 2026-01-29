@@ -10,8 +10,9 @@ import matplotlib.pyplot as plt
 from matplotlib.tri import Triangulation
 import matplotlib.patches as mpatches
 from matplotlib.colors import LinearSegmentedColormap
+from mpl_toolkits.mplot3d import Axes3D
 import io
-from shapely.geometry import Polygon, LineString
+from shapely.geometry import Polygon, LineString, Point
 import math
 import warnings
 import xml.etree.ElementTree as ET
@@ -42,6 +43,10 @@ if 'resultados_todos' not in st.session_state:
     st.session_state.resultados_todos = {}
 if 'analisis_completado' not in st.session_state:
     st.session_state.analisis_completado = False
+if 'mapas_generados' not in st.session_state:
+    st.session_state.mapas_generados = {}
+if 'dem_data' not in st.session_state:
+    st.session_state.dem_data = {}
 
 # === ESTILOS PERSONALIZADOS - VERSIÓN PREMIUM MODERNA ===
 st.markdown("""
@@ -470,9 +475,9 @@ PARAMETROS_CULTIVOS = {
 'HUMEDAD_OPTIMA': 0.25,
 'NDVI_OPTIMO': 0.65,
 'NDRE_OPTIMO': 0.35,
-'RENDIMIENTO_OPTIMO': 12000,  # kg/ha
-'COSTO_FERTILIZACION': 850,  # USD/ha
-'PRECIO_VENTA': 1.5  # USD/kg
+'RENDIMIENTO_OPTIMO': 12000,
+'COSTO_FERTILIZACION': 850,
+'PRECIO_VENTA': 1.5
 },
 'OLIVO': {
 'NITROGENO': {'min': 60, 'max': 120},
@@ -482,9 +487,9 @@ PARAMETROS_CULTIVOS = {
 'HUMEDAD_OPTIMA': 0.20,
 'NDVI_OPTIMO': 0.60,
 'NDRE_OPTIMO': 0.30,
-'RENDIMIENTO_OPTIMO': 8000,  # kg/ha
-'COSTO_FERTILIZACION': 700,  # USD/ha
-'PRECIO_VENTA': 2.0  # USD/kg
+'RENDIMIENTO_OPTIMO': 8000,
+'COSTO_FERTILIZACION': 700,
+'PRECIO_VENTA': 2.0
 },
 'HORTALIZAS DE HOJA': {
 'NITROGENO': {'min': 150, 'max': 250},
@@ -494,9 +499,9 @@ PARAMETROS_CULTIVOS = {
 'HUMEDAD_OPTIMA': 0.35,
 'NDVI_OPTIMO': 0.75,
 'NDRE_OPTIMO': 0.40,
-'RENDIMIENTO_OPTIMO': 20000,  # kg/ha
-'COSTO_FERTILIZACION': 1200,  # USD/ha
-'PRECIO_VENTA': 0.8  # USD/kg
+'RENDIMIENTO_OPTIMO': 20000,
+'COSTO_FERTILIZACION': 1200,
+'PRECIO_VENTA': 0.8
 }
 }
 
@@ -639,6 +644,10 @@ with st.sidebar:
     
     st.subheader("🎯 División de Parcela")
     n_divisiones = st.slider("Número de zonas de manejo:", min_value=16, max_value=48, value=32)
+    
+    st.subheader("🏔️ Configuración Curvas de Nivel")
+    intervalo_curvas = st.slider("Intervalo entre curvas (metros):", 1.0, 20.0, 5.0, 1.0)
+    resolucion_dem = st.slider("Resolución DEM (metros):", 5.0, 50.0, 10.0, 5.0)
     
     st.subheader("📤 Subir Parcela")
     uploaded_file = st.file_uploader("Subir archivo de tu parcela", type=['zip', 'kml', 'kmz'],
@@ -944,6 +953,131 @@ def obtener_datos_nasa_power(gdf, fecha_inicio, fecha_fin):
     except Exception as e:
         return None
 
+# ===== FUNCIONES DEM SINTÉTICO Y CURVAS DE NIVEL =====
+def generar_dem_sintetico(gdf, resolucion=10.0):
+    """Genera un DEM sintético para análisis de terreno"""
+    gdf = validar_y_corregir_crs(gdf)
+    bounds = gdf.total_bounds
+    minx, miny, maxx, maxy = bounds
+    
+    # Crear grid
+    num_cells_x = int((maxx - minx) * 111000 / resolucion)  # 1 grado ≈ 111km
+    num_cells_y = int((maxy - miny) * 111000 / resolucion)
+    num_cells_x = max(50, min(num_cells_x, 200))
+    num_cells_y = max(50, min(num_cells_y, 200))
+    
+    x = np.linspace(minx, maxx, num_cells_x)
+    y = np.linspace(miny, maxy, num_cells_y)
+    X, Y = np.meshgrid(x, y)
+    
+    # Generar terreno sintético
+    centroid = gdf.geometry.unary_union.centroid
+    seed_value = int(centroid.x * 10000 + centroid.y * 10000) % (2**32)
+    rng = np.random.RandomState(seed_value)
+    
+    # Elevación base
+    elevacion_base = rng.uniform(100, 300)
+    
+    # Pendiente general
+    slope_x = rng.uniform(-0.001, 0.001)
+    slope_y = rng.uniform(-0.001, 0.001)
+    
+    # Relieve
+    relief = np.zeros_like(X)
+    n_hills = rng.randint(3, 7)
+    for _ in range(n_hills):
+        hill_center_x = rng.uniform(minx, maxx)
+        hill_center_y = rng.uniform(miny, maxy)
+        hill_radius = rng.uniform(0.001, 0.005)
+        hill_height = rng.uniform(20, 80)
+        dist = np.sqrt((X - hill_center_x)**2 + (Y - hill_center_y)**2)
+        relief += hill_height * np.exp(-(dist**2) / (2 * hill_radius**2))
+    
+    # Valles
+    n_valleys = rng.randint(2, 5)
+    for _ in range(n_valleys):
+        valley_center_x = rng.uniform(minx, maxx)
+        valley_center_y = rng.uniform(miny, maxy)
+        valley_radius = rng.uniform(0.002, 0.006)
+        valley_depth = rng.uniform(10, 40)
+        dist = np.sqrt((X - valley_center_x)**2 + (Y - valley_center_y)**2)
+        relief -= valley_depth * np.exp(-(dist**2) / (2 * valley_radius**2))
+    
+    # Ruido
+    noise = rng.randn(*X.shape) * 5
+    
+    Z = elevacion_base + slope_x * (X - minx) + slope_y * (Y - miny) + relief + noise
+    Z = np.maximum(Z, 50)  # Evitar valores negativos
+    
+    # Aplicar máscara de la parcela
+    points = np.vstack([X.flatten(), Y.flatten()]).T
+    parcel_mask = gdf.geometry.unary_union.contains([Point(p) for p in points])
+    parcel_mask = parcel_mask.reshape(X.shape)
+    
+    Z[~parcel_mask] = np.nan
+    
+    return X, Y, Z, bounds
+
+def calcular_pendiente(X, Y, Z, resolucion):
+    """Calcula pendiente a partir del DEM"""
+    # Calcular gradientes
+    dy = np.gradient(Z, axis=0) / resolucion
+    dx = np.gradient(Z, axis=1) / resolucion
+    
+    # Calcular pendiente en porcentaje
+    pendiente = np.sqrt(dx**2 + dy**2) * 100
+    pendiente = np.clip(pendiente, 0, 100)
+    
+    return pendiente
+
+def generar_curvas_nivel(X, Y, Z, intervalo=5.0):
+    """Genera curvas de nivel a partir del DEM"""
+    curvas_nivel = []
+    elevaciones = []
+    
+    # Calcular valores únicos de elevación para las curvas
+    z_min = np.nanmin(Z)
+    z_max = np.nanmax(Z)
+    
+    if np.isnan(z_min) or np.isnan(z_max):
+        return curvas_nivel, elevaciones
+    
+    niveles = np.arange(
+        np.ceil(z_min / intervalo) * intervalo,
+        np.floor(z_max / intervalo) * intervalo + intervalo,
+        intervalo
+    )
+    
+    if len(niveles) == 0:
+        niveles = [z_min]
+    
+    # Generar curvas de nivel
+    for nivel in niveles:
+        # Crear máscara para el nivel
+        mascara = (Z >= nivel - 0.5) & (Z <= nivel + 0.5)
+        
+        if np.any(mascara):
+            # Encontrar contornos
+            from scipy import ndimage
+            estructura = ndimage.generate_binary_structure(2, 2)
+            labeled, num_features = ndimage.label(mascara, structure=estructura)
+            
+            for i in range(1, num_features + 1):
+                # Extraer contorno
+                contorno = (labeled == i)
+                if np.sum(contorno) > 10:  # Filtrar contornos muy pequeños
+                    # Obtener coordenadas del contorno
+                    y_indices, x_indices = np.where(contorno)
+                    if len(x_indices) > 2:
+                        # Crear línea de contorno
+                        puntos = np.column_stack([X[contorno].flatten(), Y[contorno].flatten()])
+                        if len(puntos) >= 3:
+                            linea = LineString(puntos)
+                            curvas_nivel.append(linea)
+                            elevaciones.append(nivel)
+    
+    return curvas_nivel, elevaciones
+
 # ===== FUNCIONES DE ANÁLISIS COMPLETOS =====
 def analizar_fertilidad_actual(gdf_dividido, cultivo, datos_satelitales):
     """Análisis de fertilidad actual"""
@@ -1173,7 +1307,7 @@ def analizar_textura_suelo(gdf_dividido, cultivo):
     return gdf_dividido
 
 # ===== FUNCIÓN PARA EJECUTAR TODOS LOS ANÁLISIS =====
-def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inicio, fecha_fin):
+def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inicio, fecha_fin, intervalo_curvas=5.0, resolucion_dem=10.0):
     """Ejecuta todos los análisis y guarda los resultados"""
     
     resultados = {
@@ -1186,7 +1320,10 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
         'textura': None,
         'df_power': None,
         'area_total': 0,
-        'mapas': {}
+        'mapas': {},
+        'dem_data': {},
+        'curvas_nivel': None,
+        'pendientes': None
     }
     
     try:
@@ -1251,6 +1388,24 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
         textura = analizar_textura_suelo(gdf_dividido, cultivo)
         resultados['textura'] = textura
         
+        # 6. Análisis DEM y curvas de nivel
+        try:
+            X, Y, Z, bounds = generar_dem_sintetico(gdf, resolucion_dem)
+            pendientes = calcular_pendiente(X, Y, Z, resolucion_dem)
+            curvas_nivel, elevaciones = generar_curvas_nivel(X, Y, Z, intervalo_curvas)
+            
+            resultados['dem_data'] = {
+                'X': X,
+                'Y': Y,
+                'Z': Z,
+                'bounds': bounds,
+                'pendientes': pendientes,
+                'curvas_nivel': curvas_nivel,
+                'elevaciones': elevaciones
+            }
+        except Exception as e:
+            st.warning(f"⚠️ Error generando DEM y curvas de nivel: {e}")
+        
         # Combinar todos los resultados en un solo GeoDataFrame
         gdf_completo = textura.copy()
         
@@ -1285,7 +1440,7 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
         traceback.print_exc()
         return resultados
 
-# ===== FUNCIONES DE VISUALIZACIÓN =====
+# ===== FUNCIONES DE VISUALIZACIÓN CON BOTONES DESCARGA =====
 def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
     """Crear mapa de fertilidad actual"""
     try:
@@ -1451,6 +1606,241 @@ def crear_mapa_texturas(gdf_completo, cultivo):
         return buf
     except Exception as e:
         st.error(f"❌ Error creando mapa de texturas: {str(e)}")
+        return None
+
+def crear_grafico_distribucion_costos(costos_n, costos_p, costos_k, otros, costo_total):
+    """Crear gráfico de distribución de costos"""
+    try:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        categorias = ['Nitrógeno', 'Fósforo', 'Potasio', 'Otros']
+        valores = [costos_n, costos_p, costos_k, otros]
+        colores = ['#00ff00', '#0000ff', '#4B0082', '#cccccc']
+        
+        bars = ax.bar(categorias, valores, color=colores, edgecolor='black')
+        ax.set_title('Distribución de Costos de Fertilización', fontsize=14, fontweight='bold')
+        ax.set_ylabel('USD', fontsize=12)
+        ax.set_xlabel('Componente', fontsize=12)
+        
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + 10,
+                   f'${height:.0f}', ha='center', va='bottom', fontweight='bold')
+        
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        buf.seek(0)
+        plt.close()
+        return buf
+    except Exception as e:
+        st.error(f"❌ Error creando gráfico de costos: {str(e)}")
+        return None
+
+def crear_grafico_composicion_textura(arena_prom, limo_prom, arcilla_prom, textura_dist):
+    """Crear gráfico de composición granulométrica"""
+    try:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        
+        composicion = [arena_prom, limo_prom, arcilla_prom]
+        labels = ['Arena', 'Limo', 'Arcilla']
+        colors_pie = ['#d8b365', '#f6e8c3', '#01665e']
+        ax1.pie(composicion, labels=labels, colors=colors_pie, autopct='%1.1f%%', startangle=90)
+        ax1.set_title('Composición Promedio del Suelo')
+        
+        ax2.bar(textura_dist.index, textura_dist.values, 
+               color=[PALETAS_GEE['TEXTURA'][i % len(PALETAS_GEE['TEXTURA'])] for i in range(len(textura_dist))])
+        ax2.set_title('Distribución de Texturas')
+        ax2.set_xlabel('Textura')
+        ax2.set_ylabel('Número de Zonas')
+        ax2.tick_params(axis='x', rotation=45)
+        
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        buf.seek(0)
+        plt.close()
+        return buf
+    except Exception as e:
+        st.error(f"❌ Error creando gráfico de textura: {str(e)}")
+        return None
+
+def crear_grafico_proyecciones_rendimiento(zonas, sin_fert, con_fert):
+    """Crear gráfico de proyecciones de rendimiento"""
+    try:
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        x = np.arange(len(zonas))
+        width = 0.35
+        
+        bars1 = ax.bar(x - width/2, sin_fert, width, label='Sin Fertilización', color='#ff9999')
+        bars2 = ax.bar(x + width/2, con_fert, width, label='Con Fertilización', color='#66b3ff')
+        
+        ax.set_xlabel('Zona')
+        ax.set_ylabel('Rendimiento (kg)')
+        ax.set_title('Proyecciones de Rendimiento por Zona')
+        ax.set_xticks(x)
+        ax.set_xticklabels(zonas)
+        ax.legend()
+        
+        def autolabel(bars):
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height + 50,
+                       f'{height:.0f}', ha='center', va='bottom', fontsize=8)
+        
+        autolabel(bars1)
+        autolabel(bars2)
+        
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        buf.seek(0)
+        plt.close()
+        return buf
+    except Exception as e:
+        st.error(f"❌ Error creando gráfico de proyecciones: {str(e)}")
+        return None
+
+# ===== FUNCIONES PARA CURVAS DE NIVEL Y 3D =====
+def crear_mapa_pendientes(X, Y, pendientes, gdf_original):
+    """Crear mapa de pendientes"""
+    try:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+        
+        # Mapa de calor de pendientes
+        scatter = ax1.scatter(X.flatten(), Y.flatten(), c=pendientes.flatten(), 
+                             cmap='RdYlGn_r', s=10, alpha=0.7, vmin=0, vmax=30)
+        
+        gdf_original.plot(ax=ax1, color='none', edgecolor='black', linewidth=2)
+        
+        cbar = plt.colorbar(scatter, ax=ax1, shrink=0.8)
+        cbar.set_label('Pendiente (%)')
+        
+        ax1.set_title('Mapa de Calor de Pendientes', fontsize=12, fontweight='bold')
+        ax1.set_xlabel('Longitud')
+        ax1.set_ylabel('Latitud')
+        ax1.grid(True, alpha=0.3)
+        
+        # Histograma de pendientes
+        pendientes_flat = pendientes.flatten()
+        pendientes_flat = pendientes_flat[~np.isnan(pendientes_flat)]
+        
+        ax2.hist(pendientes_flat, bins=30, edgecolor='black', color='skyblue', alpha=0.7)
+        
+        # Líneas de referencia
+        for porcentaje, color in [(2, 'green'), (5, 'lightgreen'), (10, 'yellow'), 
+                                 (15, 'orange'), (25, 'red')]:
+            ax2.axvline(x=porcentaje, color=color, linestyle='--', linewidth=1, alpha=0.7)
+            ax2.text(porcentaje+0.5, ax2.get_ylim()[1]*0.9, f'{porcentaje}%', 
+                    color=color, fontsize=8)
+        
+        stats_text = f"""
+Estadísticas:
+• Mínima: {np.nanmin(pendientes_flat):.1f}%
+• Máxima: {np.nanmax(pendientes_flat):.1f}%
+• Promedio: {np.nanmean(pendientes_flat):.1f}%
+• Desviación: {np.nanstd(pendientes_flat):.1f}%
+"""
+        ax2.text(0.02, 0.98, stats_text, transform=ax2.transAxes, fontsize=9, 
+                verticalalignment='top', 
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
+        
+        ax2.set_xlabel('Pendiente (%)')
+        ax2.set_ylabel('Frecuencia')
+        ax2.set_title('Distribución de Pendientes', fontsize=12, fontweight='bold')
+        ax2.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        buf.seek(0)
+        plt.close()
+        
+        stats = {
+            'min': float(np.nanmin(pendientes_flat)),
+            'max': float(np.nanmax(pendientes_flat)),
+            'mean': float(np.nanmean(pendientes_flat)),
+            'std': float(np.nanstd(pendientes_flat))
+        }
+        
+        return buf, stats
+    except Exception as e:
+        st.error(f"❌ Error creando mapa de pendientes: {str(e)}")
+        return None, {}
+
+def crear_mapa_curvas_nivel(X, Y, Z, curvas_nivel, elevaciones, gdf_original):
+    """Crear mapa con curvas de nivel"""
+    try:
+        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+        
+        # Mapa de elevación
+        contour = ax.contourf(X, Y, Z, levels=20, cmap='terrain', alpha=0.7)
+        
+        # Curvas de nivel
+        if curvas_nivel:
+            for curva, elevacion in zip(curvas_nivel, elevaciones):
+                if hasattr(curva, 'coords'):
+                    coords = np.array(curva.coords)
+                    ax.plot(coords[:, 0], coords[:, 1], 'b-', linewidth=0.8, alpha=0.7)
+                    # Etiqueta de elevación
+                    if len(coords) > 0:
+                        mid_idx = len(coords) // 2
+                        ax.text(coords[mid_idx, 0], coords[mid_idx, 1], 
+                               f'{elevacion:.0f}m', fontsize=8, color='blue',
+                               bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.7))
+        
+        gdf_original.plot(ax=ax, color='none', edgecolor='black', linewidth=2)
+        
+        cbar = plt.colorbar(contour, ax=ax, shrink=0.8)
+        cbar.set_label('Elevación (m)')
+        
+        ax.set_title('Mapa de Curvas de Nivel', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Longitud')
+        ax.set_ylabel('Latitud')
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        buf.seek(0)
+        plt.close()
+        return buf
+    except Exception as e:
+        st.error(f"❌ Error creando mapa de curvas de nivel: {str(e)}")
+        return None
+
+def crear_visualizacion_3d(X, Y, Z):
+    """Crear visualización 3D del terreno"""
+    try:
+        fig = plt.figure(figsize=(14, 10))
+        ax = fig.add_subplot(111, projection='3d')
+        
+        # Plot superficie 3D
+        surf = ax.plot_surface(X, Y, Z, cmap='terrain', alpha=0.8, 
+                              linewidth=0.5, antialiased=True)
+        
+        # Configuración de ejes
+        ax.set_xlabel('Longitud', fontsize=10)
+        ax.set_ylabel('Latitud', fontsize=10)
+        ax.set_zlabel('Elevación (m)', fontsize=10)
+        ax.set_title('Modelo 3D del Terreno', fontsize=14, fontweight='bold', pad=20)
+        
+        # Colorbar
+        fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5, label='Elevación (m)')
+        
+        # Estilo
+        ax.grid(True, alpha=0.3)
+        ax.view_init(elev=30, azim=45)
+        
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        buf.seek(0)
+        plt.close()
+        return buf
+    except Exception as e:
+        st.error(f"❌ Error creando visualización 3D: {str(e)}")
         return None
 
 # ===== FUNCIONES DE EXPORTACIÓN =====
@@ -1619,8 +2009,28 @@ def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_
         
         doc.add_paragraph()
         
-        # 7. RECOMENDACIONES FINALES
-        doc.add_heading('7. RECOMENDACIONES FINALES', level=1)
+        # 7. TOPOGRAFÍA Y CURVAS DE NIVEL
+        if 'dem_data' in resultados and resultados['dem_data']:
+            doc.add_heading('7. TOPOGRAFÍA Y CURVAS DE NIVEL', level=1)
+            
+            dem_stats = {
+                'Elevación mínima': f"{np.nanmin(resultados['dem_data']['Z']):.1f} m",
+                'Elevación máxima': f"{np.nanmax(resultados['dem_data']['Z']):.1f} m",
+                'Elevación promedio': f"{np.nanmean(resultados['dem_data']['Z']):.1f} m",
+                'Pendiente promedio': f"{np.nanmean(resultados['dem_data']['pendientes']):.1f} %",
+                'Número de curvas': f"{len(resultados['dem_data'].get('curvas_nivel', []))}"
+            }
+            
+            for key, value in dem_stats.items():
+                p = doc.add_paragraph()
+                run_key = p.add_run(f'{key}: ')
+                run_key.bold = True
+                p.add_run(value)
+        
+        doc.add_paragraph()
+        
+        # 8. RECOMENDACIONES FINALES
+        doc.add_heading('8. RECOMENDACIONES FINALES', level=1)
         
         recomendaciones = [
             f"Aplicar fertilización diferenciada por zonas según el análisis NPK",
@@ -1637,15 +2047,17 @@ def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_
         
         doc.add_paragraph()
         
-        # 8. METADATOS TÉCNICOS
-        doc.add_heading('8. METADATOS TÉCNICOS', level=1)
+        # 9. METADATOS TÉCNICOS
+        doc.add_heading('9. METADATOS TÉCNICOS', level=1)
         metadatos = [
             ('Generado por', 'Analizador Multi-Cultivo Satellital'),
             ('Versión', '3.0 - Cultivos Mediterráneos'),
             ('Fecha de generación', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
             ('Sistema de coordenadas', 'EPSG:4326 (WGS84)'),
             ('Número de zonas', str(len(resultados['gdf_completo']))),
-            ('Resolución satelital', SATELITES_DISPONIBLES[satelite]['resolucion'])
+            ('Resolución satelital', SATELITES_DISPONIBLES[satelite]['resolucion']),
+            ('Resolución DEM', f'{resolucion_dem} m'),
+            ('Intervalo curvas de nivel', f'{intervalo_curvas} m')
         ]
         
         for key, value in metadatos:
@@ -1666,6 +2078,17 @@ def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_
         import traceback
         traceback.print_exc()
         return None
+
+# ===== FUNCIÓN PARA DESCARGAR PNG =====
+def crear_boton_descarga_png(buffer, nombre_archivo, texto_boton="📥 Descargar PNG"):
+    """Crear botón de descarga para archivos PNG"""
+    if buffer:
+        st.download_button(
+            label=texto_boton,
+            data=buffer,
+            file_name=nombre_archivo,
+            mime="image/png"
+        )
 
 # ===== INTERFAZ PRINCIPAL =====
 st.title("ANALIZADOR MULTI-CULTIVO SATELITAL")
@@ -1695,18 +2118,31 @@ if uploaded_file:
                     ax.grid(True, alpha=0.3)
                     st.pyplot(fig)
                     
+                    # Botón descarga vista previa
+                    buf_vista = io.BytesIO()
+                    plt.savefig(buf_vista, format='png', dpi=150, bbox_inches='tight')
+                    buf_vista.seek(0)
+                    crear_boton_descarga_png(
+                        buf_vista,
+                        f"vista_previa_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                        "📥 Descargar Vista Previa PNG"
+                    )
+                    
                 with col2:
                     st.write("**🎯 CONFIGURACIÓN**")
                     st.write(f"- Cultivo: {ICONOS_CULTIVOS[cultivo]} {cultivo}")
                     st.write(f"- Zonas: {n_divisiones}")
                     st.write(f"- Satélite: {SATELITES_DISPONIBLES[satelite_seleccionado]['nombre']}")
                     st.write(f"- Período: {fecha_inicio} a {fecha_fin}")
+                    st.write(f"- Intervalo curvas: {intervalo_curvas} m")
+                    st.write(f"- Resolución DEM: {resolucion_dem} m")
                 
                 if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_width=True):
                     with st.spinner("Ejecutando análisis completo..."):
                         resultados = ejecutar_analisis_completo(
                             gdf, cultivo, n_divisiones, 
-                            satelite_seleccionado, fecha_inicio, fecha_fin
+                            satelite_seleccionado, fecha_inicio, fecha_fin,
+                            intervalo_curvas, resolucion_dem
                         )
                         
                         if resultados['exitoso']:
@@ -1730,12 +2166,13 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
     resultados = st.session_state.resultados_todos
     
     # Mostrar resultados en pestañas
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 Fertilidad Actual",
         "🧪 Recomendaciones NPK",
         "💰 Análisis de Costos",
         "🏗️ Textura del Suelo",
-        "📈 Proyecciones"
+        "📈 Proyecciones",
+        "🏔️ Curvas de Nivel y 3D"
     ])
     
     with tab1:
@@ -1759,6 +2196,11 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         mapa_fert = crear_mapa_fertilidad(resultados['gdf_completo'], cultivo, satelite_seleccionado)
         if mapa_fert:
             st.image(mapa_fert, use_container_width=True)
+            crear_boton_descarga_png(
+                mapa_fert,
+                f"mapa_fertilidad_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                "📥 Descargar Mapa de Fertilidad PNG"
+            )
         
         # Tabla de resultados
         st.subheader("📋 TABLA DE RESULTADOS")
@@ -1790,16 +2232,31 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
             if mapa_n:
                 st.image(mapa_n, use_container_width=True)
                 st.caption("Nitrógeno (N)")
+                crear_boton_descarga_png(
+                    mapa_n,
+                    f"mapa_nitrogeno_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                    "📥 Descargar Mapa N"
+                )
         with col_p:
             mapa_p = crear_mapa_npk(resultados['gdf_completo'], cultivo, 'P')
             if mapa_p:
                 st.image(mapa_p, use_container_width=True)
                 st.caption("Fósforo (P)")
+                crear_boton_descarga_png(
+                    mapa_p,
+                    f"mapa_fosforo_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                    "📥 Descargar Mapa P"
+                )
         with col_k:
             mapa_k = crear_mapa_npk(resultados['gdf_completo'], cultivo, 'K')
             if mapa_k:
                 st.image(mapa_k, use_container_width=True)
                 st.caption("Potasio (K)")
+                crear_boton_descarga_png(
+                    mapa_k,
+                    f"mapa_potasio_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                    "📥 Descargar Mapa K"
+                )
         
         # Tabla de recomendaciones
         st.subheader("📋 TABLA DE RECOMENDACIONES")
@@ -1830,22 +2287,14 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         costos_k = resultados['gdf_completo']['costo_costo_potasio'].sum()
         otros = costo_total - (costos_n + costos_p + costos_k)
         
-        fig, ax = plt.subplots(figsize=(10, 6))
-        categorias = ['Nitrógeno', 'Fósforo', 'Potasio', 'Otros']
-        valores = [costos_n, costos_p, costos_k, otros]
-        colores = ['#00ff00', '#0000ff', '#4B0082', '#cccccc']
-        
-        bars = ax.bar(categorias, valores, color=colores, edgecolor='black')
-        ax.set_title('Distribución de Costos de Fertilización', fontsize=14, fontweight='bold')
-        ax.set_ylabel('USD', fontsize=12)
-        ax.set_xlabel('Componente', fontsize=12)
-        
-        for bar in bars:
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height + 10,
-                   f'${height:.0f}', ha='center', va='bottom', fontweight='bold')
-        
-        st.pyplot(fig)
+        grafico_costos = crear_grafico_distribucion_costos(costos_n, costos_p, costos_k, otros, costo_total)
+        if grafico_costos:
+            st.image(grafico_costos, use_container_width=True)
+            crear_boton_descarga_png(
+                grafico_costos,
+                f"grafico_costos_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                "📥 Descargar Gráfico de Costos PNG"
+            )
         
         # Tabla de costos
         st.subheader("📋 TABLA DE COSTOS POR ZONA")
@@ -1878,27 +2327,23 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         mapa_text = crear_mapa_texturas(resultados['gdf_completo'], cultivo)
         if mapa_text:
             st.image(mapa_text, use_container_width=True)
+            crear_boton_descarga_png(
+                mapa_text,
+                f"mapa_texturas_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                "📥 Descargar Mapa de Texturas PNG"
+            )
         
         # Gráfico de composición
         st.subheader("📊 COMPOSICIÓN GRANULOMÉTRICA")
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-        
-        composicion = [arena_prom, limo_prom, arcilla_prom]
-        labels = ['Arena', 'Limo', 'Arcilla']
-        colors_pie = ['#d8b365', '#f6e8c3', '#01665e']
-        ax1.pie(composicion, labels=labels, colors=colors_pie, autopct='%1.1f%%', startangle=90)
-        ax1.set_title('Composición Promedio del Suelo')
-        
         textura_dist = resultados['gdf_completo']['textura_suelo'].value_counts()
-        ax2.bar(textura_dist.index, textura_dist.values, 
-               color=[PALETAS_GEE['TEXTURA'][i % len(PALETAS_GEE['TEXTURA'])] for i in range(len(textura_dist))])
-        ax2.set_title('Distribución de Texturas')
-        ax2.set_xlabel('Textura')
-        ax2.set_ylabel('Número de Zonas')
-        ax2.tick_params(axis='x', rotation=45)
-        
-        plt.tight_layout()
-        st.pyplot(fig)
+        grafico_textura = crear_grafico_composicion_textura(arena_prom, limo_prom, arcilla_prom, textura_dist)
+        if grafico_textura:
+            st.image(grafico_textura, use_container_width=True)
+            crear_boton_descarga_png(
+                grafico_textura,
+                f"grafico_textura_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                "📥 Descargar Gráfico de Textura PNG"
+            )
         
         # Tabla de texturas
         st.subheader("📋 TABLA DE TEXTURAS POR ZONA")
@@ -1923,36 +2368,18 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         
         # Gráfico de proyecciones
         st.subheader("📊 COMPARATIVA DE RENDIMIENTOS")
-        fig, ax = plt.subplots(figsize=(12, 6))
-        
         zonas = resultados['gdf_completo']['id_zona'].head(10).astype(str)
         sin_fert = resultados['gdf_completo']['proy_rendimiento_sin_fert'].head(10)
         con_fert = resultados['gdf_completo']['proy_rendimiento_con_fert'].head(10)
         
-        x = np.arange(len(zonas))
-        width = 0.35
-        
-        bars1 = ax.bar(x - width/2, sin_fert, width, label='Sin Fertilización', color='#ff9999')
-        bars2 = ax.bar(x + width/2, con_fert, width, label='Con Fertilización', color='#66b3ff')
-        
-        ax.set_xlabel('Zona')
-        ax.set_ylabel('Rendimiento (kg)')
-        ax.set_title('Proyecciones de Rendimiento por Zona')
-        ax.set_xticks(x)
-        ax.set_xticklabels(zonas)
-        ax.legend()
-        
-        def autolabel(bars):
-            for bar in bars:
-                height = bar.get_height()
-                ax.text(bar.get_x() + bar.get_width()/2., height + 50,
-                       f'{height:.0f}', ha='center', va='bottom', fontsize=8)
-        
-        autolabel(bars1)
-        autolabel(bars2)
-        
-        plt.tight_layout()
-        st.pyplot(fig)
+        grafico_proyecciones = crear_grafico_proyecciones_rendimiento(zonas, sin_fert, con_fert)
+        if grafico_proyecciones:
+            st.image(grafico_proyecciones, use_container_width=True)
+            crear_boton_descarga_png(
+                grafico_proyecciones,
+                f"grafico_proyecciones_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                "📥 Descargar Gráfico de Proyecciones PNG"
+            )
         
         # Análisis económico
         st.subheader("💰 ANÁLISIS ECONÓMICO")
@@ -1979,6 +2406,114 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         tabla_proy.columns = ['Zona', 'Área (ha)', 'Sin Fertilización (kg)', 
                             'Con Fertilización (kg)', 'Incremento (%)']
         st.dataframe(tabla_proy)
+    
+    with tab6:
+        if 'dem_data' in resultados and resultados['dem_data']:
+            dem_data = resultados['dem_data']
+            
+            st.subheader("🏔️ ANÁLISIS TOPOGRÁFICO")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                elev_min = np.nanmin(dem_data['Z'])
+                st.metric("Elevación Mínima", f"{elev_min:.1f} m")
+            with col2:
+                elev_max = np.nanmax(dem_data['Z'])
+                st.metric("Elevación Máxima", f"{elev_max:.1f} m")
+            with col3:
+                elev_prom = np.nanmean(dem_data['Z'])
+                st.metric("Elevación Promedio", f"{elev_prom:.1f} m")
+            with col4:
+                pend_prom = np.nanmean(dem_data['pendientes'])
+                st.metric("Pendiente Promedio", f"{pend_prom:.1f}%")
+            
+            # Mapa de pendientes
+            st.subheader("🗺️ MAPA DE PENDIENTES")
+            mapa_pendientes, stats_pendientes = crear_mapa_pendientes(
+                dem_data['X'], dem_data['Y'], dem_data['pendientes'], gdf
+            )
+            if mapa_pendientes:
+                st.image(mapa_pendientes, use_container_width=True)
+                crear_boton_descarga_png(
+                    mapa_pendientes,
+                    f"mapa_pendientes_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                    "📥 Descargar Mapa de Pendientes PNG"
+                )
+            
+            # Mapa de curvas de nivel
+            st.subheader("🗺️ MAPA DE CURVAS DE NIVEL")
+            mapa_curvas = crear_mapa_curvas_nivel(
+                dem_data['X'], dem_data['Y'], dem_data['Z'],
+                dem_data.get('curvas_nivel', []), dem_data.get('elevaciones', []), gdf
+            )
+            if mapa_curvas:
+                st.image(mapa_curvas, use_container_width=True)
+                crear_boton_descarga_png(
+                    mapa_curvas,
+                    f"mapa_curvas_nivel_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                    "📥 Descargar Mapa de Curvas PNG"
+                )
+            
+            # Visualización 3D
+            st.subheader("🎨 VISUALIZACIÓN 3D DEL TERRENO")
+            visualizacion_3d = crear_visualizacion_3d(dem_data['X'], dem_data['Y'], dem_data['Z'])
+            if visualizacion_3d:
+                st.image(visualizacion_3d, use_container_width=True)
+                crear_boton_descarga_png(
+                    visualizacion_3d,
+                    f"visualizacion_3d_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                    "📥 Descargar Visualización 3D PNG"
+                )
+            
+            # Análisis de riesgo de erosión
+            st.subheader("⚠️ ANÁLISIS DE RIESGO DE EROSION")
+            if stats_pendientes:
+                riesgo_total = 0
+                for categoria, params in CLASIFICACION_PENDIENTES.items():
+                    mask = (dem_data['pendientes'].flatten() >= params['min']) & (dem_data['pendientes'].flatten() < params['max'])
+                    porcentaje = np.sum(mask) / len(dem_data['pendientes'].flatten()) * 100
+                    riesgo_total += porcentaje * params['factor_erosivo']
+                
+                riesgo_promedio = riesgo_total / 100
+                
+                col_r1, col_r2, col_r3 = st.columns(3)
+                with col_r1:
+                    if riesgo_promedio < 0.3:
+                        st.success("✅ **RIESGO BAJO**")
+                        st.metric("Factor Riesgo", f"{riesgo_promedio:.2f}")
+                    elif riesgo_promedio < 0.6:
+                        st.warning("⚠️ **RIESGO MODERADO**")
+                        st.metric("Factor Riesgo", f"{riesgo_promedio:.2f}")
+                    else:
+                        st.error("🚨 **RIESGO ALTO**")
+                        st.metric("Factor Riesgo", f"{riesgo_promedio:.2f}")
+                
+                with col_r2:
+                    area_critica = resultados['area_total'] * (np.sum(dem_data['pendientes'].flatten() > 10) / len(dem_data['pendientes'].flatten()))
+                    st.metric("Área Crítica (>10%)", f"{area_critica:.2f} ha")
+                
+                with col_r3:
+                    area_manejable = resultados['area_total'] * (np.sum(dem_data['pendientes'].flatten() <= 10) / len(dem_data['pendientes'].flatten()))
+                    st.metric("Área Manejable (≤10%)", f"{area_manejable:.2f} ha")
+            
+            # Tabla de datos DEM
+            st.subheader("📊 DATOS TOPOGRÁFICOS")
+            sample_points = []
+            step = max(1, dem_data['X'].shape[0] // 20)
+            for i in range(0, dem_data['X'].shape[0], step):
+                for j in range(0, dem_data['X'].shape[1], step):
+                    if not np.isnan(dem_data['Z'][i, j]):
+                        sample_points.append({
+                            'Latitud': dem_data['Y'][i, j],
+                            'Longitud': dem_data['X'][i, j],
+                            'Elevación (m)': dem_data['Z'][i, j],
+                            'Pendiente (%)': dem_data['pendientes'][i, j]
+                        })
+            
+            if sample_points:
+                df_dem = pd.DataFrame(sample_points).head(20)
+                st.dataframe(df_dem)
+        else:
+            st.warning("⚠️ No se generaron datos DEM. Intenta ejecutar el análisis nuevamente.")
     
     # Sección de exportación
     st.markdown("---")
@@ -2073,7 +2608,7 @@ with col_footer2:
 with col_footer3:
     st.markdown("""
 **📞 Soporte:**
-- Versión: 3.0 - Cultivos Mediterráneos
+- Versión: 4.0 - - Cultivos Mediterráneos
 - Última actualización: Enero 2026
 """)
 st.markdown(
