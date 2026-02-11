@@ -463,7 +463,7 @@ st.markdown("""
 <div class="hero-banner">
 <div class="hero-content">
 <h1 class="hero-title">ANALIZADOR MULTI-CULTIVO SATELITAL</h1>
-<p class="hero-subtitle">Potenciado con NASA POWER y datos SRTM de la NASA para agricultura de precisión</p>
+<p class="hero-subtitle">DEMO . USA DATOS SIMULADOS</p>
 </div>
 </div>
 """, unsafe_allow_html=True)
@@ -2623,9 +2623,6 @@ col_footer1, col_footer2, col_footer3 = st.columns(3)
 with col_footer1:
     st.markdown("""
 **📡 Fuentes de Datos:**
-- NASA POWER API
-- Sentinel-2 (ESA)
-- Landsat-8 (USGS)
 - Datos simulados
 """)
 with col_footer2:
@@ -2639,7 +2636,7 @@ with col_footer2:
 with col_footer3:
     st.markdown("""
 **📞 Soporte:**
-- Versión: 4.0 - - Cultivos Mediterráneos
+- Versión: 4.0 - - Cultivos Mediterráneos. PARA MAYOR INFORMACION COMUNICARSE CON ING.AGR. MARTIN CANO.
 - Última actualización: Enero 2026
 """)
 st.markdown(
