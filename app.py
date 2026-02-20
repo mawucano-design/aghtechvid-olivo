@@ -237,7 +237,7 @@ def check_payment_status(payment_id):
         st.error(f"Error verificando pago: {e}")
     return False
 
-===== FUNCIONES DE AUTENTICACIÓN EN STREAMLIT =====
+#===== FUNCIONES DE AUTENTICACIÓN EN STREAMLIT =====
 def show_login_signup():
     with st.sidebar:
         st.markdown("## 🔐 Acceso")
