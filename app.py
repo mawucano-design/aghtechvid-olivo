@@ -357,7 +357,7 @@ def check_subscription():
 
     st.stop()
 
-===== FUNCIONES DE SIMULACIÓN PARA MODO DEMO =====
+#===== FUNCIONES DE SIMULACIÓN PARA MODO DEMO =====
 def generar_datos_simulados_completos(gdf_original, n_divisiones):
     gdf_dividido = dividir_plantacion_en_bloques(gdf_original, n_divisiones)
     areas_ha = []
