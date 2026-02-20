@@ -1,0 +1,65 @@
+[server]
+port = 8501
+address = "0.0.0.0"
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+fileWatcherType = "none"
+
+[browser]
+serverAddress = "localhost"
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#1f77b4"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#262730"
+font = "sans serif"
+
+[runner]
+magicEnabled = false
+fastRerun = true
+
+[client]
+showErrorDetails = true
+
+[deprecation]
+showfileUploaderEncoding = false
+showImageFormat = false
+
+[mapbox]
+token = ""
+
+[global]
+developmentMode = false
+enableStaticServing = true
+
+[cache]
+ttl = 3600
+maxSize = 500000000
+
+[logger]
+level = "info"
+
+[client]
+toolbarMode = "minimal"
+showSidebarNavigation = false
+
+[ui]
+hideTopBar = true
+
+[theme]
+primaryColor = "#4caf50"
+backgroundColor = "#0f172a"
+secondaryBackgroundColor = "#1e293b"
+textColor = "#ffffff"
+font = "sans serif"
+
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
