@@ -2291,7 +2291,7 @@ def ejecutar_analisis_completo():
         st.session_state.analisis_completado = True
         st.success("✅ Análisis completado!")
 
-Mostrar advertencias de librerías opcionales
+# Mostrar advertencias de librerías opcionales
 if not EARTHDATA_OK:
     st.warning("Para usar datos satelitales reales, instala 'earthaccess', 'xarray' y 'rioxarray': pip install earthaccess xarray rioxarray")
 if not RASTERIO_OK and not PYHDF_OK:
