@@ -1967,7 +1967,7 @@ def crear_grafico_textural(arena, limo, arcilla, tipo_suelo):
     )
     return fig
 
-FUNCIONES YOLO
+# FUNCIONES YOLO
 def cargar_modelo_yolo(ruta_modelo):
     try:
         from ultralytics import YOLO
@@ -2052,7 +2052,7 @@ def crear_leyenda_html(detecciones_info):
     html += "</table></div>"
     return html
 
-CURVAS DE NIVEL
+# CURVAS DE NIVEL
 def obtener_dem_opentopography(gdf, api_key=None):
     try:
         import rasterio
@@ -2201,7 +2201,7 @@ def mapa_curvas_coloreadas(gdf_original, curvas_con_elevacion):
     Fullscreen().add_to(m)
     return m
 
-FUNCIÓN PRINCIPAL DE ANÁLISIS
+# FUNCIÓN PRINCIPAL DE ANÁLISIS
 def ejecutar_analisis_completo():
     if st.session_state.gdf_original is None:
         st.error("Primero debe cargar un archivo de plantación")
@@ -2297,7 +2297,7 @@ if not EARTHDATA_OK:
 if not RASTERIO_OK and not PYHDF_OK:
     st.warning("⚠️ rasterio y pyhdf no están instalados. No se podrán leer archivos HDF4. Instala al menos uno: pip install rasterio o pip install pyhdf")
 
-ESTILOS Y CABECERA (OCULTAMIENTO TOTAL DE GITHUB)
+# ESTILOS Y CABECERA (OCULTAMIENTO TOTAL DE GITHUB)
 st.markdown("""
 <style>
 /* Ocultar menú principal (tres puntos) */
@@ -2417,7 +2417,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-SIDEBAR
+# SIDEBAR
 with st.sidebar:
     st.markdown("## 🍇 CONFIGURACIÓN")
     cultivo = st.selectbox("Cultivo:", CULTIVOS_DISPONIBLES, index=0)
@@ -2495,7 +2495,7 @@ with st.sidebar:
             st.write("CRS:", st.session_state.gdf_original.crs)
             st.write("Área:", calcular_superficie(st.session_state.gdf_original))
 
-ÁREA PRINCIPAL
+# ÁREA PRINCIPAL
 if st.session_state.archivo_cargado and st.session_state.gdf_original is not None:
     gdf = st.session_state.gdf_original
     try:
@@ -2552,7 +2552,7 @@ else:
     if st.session_state.demo_mode:
         st.info("🎮 Estás en modo DEMO. Sube tu propio archivo (KML, KMZ o ZIP con shapefile) para ejecutar el análisis con datos simulados.")
 
-PESTAÑAS DE RESULTADOS
+# PESTAÑAS DE RESULTADOS
 if st.session_state.analisis_completado:
     resultados = st.session_state.resultados_todos
     gdf_completo = resultados.get('gdf_completo')
@@ -3046,7 +3046,7 @@ if st.session_state.analisis_completado:
                     else:
                         st.info("👆 Sube una imagen y un modelo YOLO para comenzar.")
 
-PIE DE PÁGINA
+# PIE DE PÁGINA
 st.markdown("---")
 st.markdown("""
 © 2026 Analizador de Vid y Olivo Satelital
