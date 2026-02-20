@@ -761,7 +761,7 @@ def cargar_archivo_plantacion(uploaded_file):
         st.code(traceback.format_exc())
         return None
 
-===== FUNCIONES PARA DATOS SATELITALES CON EARTHDATA =====
+#===== FUNCIONES PARA DATOS SATELITALES CON EARTHDATA =====
 def es_archivo_hdf(ruta):
     try:
         with open(ruta, 'rb') as f:
