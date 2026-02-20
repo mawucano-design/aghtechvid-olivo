@@ -864,7 +864,8 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 st.error("No se pudo descargar el archivo.")
                 return None, None
 
-            hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
+            # CORRECCIÓN: usar f.suffix para filtrar por extensión
+            hdf_files = [f for f in downloaded_files if f.suffix == '.hdf']
             if not hdf_files:
                 st.error("No se encontró archivo HDF en la descarga.")
                 return None, None
@@ -953,7 +954,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 ndvi_scaled = ndvi_array * 0.0001
                                 ndvi_mean = np.nanmean(ndvi_scaled[ndvi_scaled != src_ndvi.nodata * 0.0001])
                     except Exception as e_rasterio:
-                        st.error(f"rasterio falló: {str(e_rasterio)}")
+                        st.error(f"rasterio falló: {e_rasterio}")
                         return None, None
                 else:
                     st.error("Ni pyhdf ni rasterio están instalados. No se puede leer HDF4.")
@@ -1014,7 +1015,8 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 st.error("No se pudo descargar el archivo.")
                 return None, None
 
-            hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
+            # CORRECCIÓN: usar f.suffix para filtrar por extensión
+            hdf_files = [f for f in downloaded_files if f.suffix == '.hdf']
             if not hdf_files:
                 st.error("No se encontró archivo HDF.")
                 return None, None
