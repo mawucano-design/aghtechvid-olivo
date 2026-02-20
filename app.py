@@ -1,16 +1,3 @@
-app.py - Versión definitiva con Earthaccess (MODIS desde NASA Earthdata) y fallback a pyhdf
-- Registro e inicio de sesión de usuarios.
-- Suscripción mensual (150 USD) con Mercado Pago.
-- Modo DEMO con datos simulados y posibilidad de subir tu propio polígono (sin ejemplos precargados).
-- Modo PREMIUM con datos reales de NDVI y NDWI desde Earthdata (MOD13Q1 y MOD09GA).
-- Usuario administrador mawucano@gmail.com con suscripción permanente.
-- Cultivos: VID y OLIVO (adaptado desde palma aceitera)
-
-IMPORTANTE:
-- Configurar variables de entorno en secrets: MERCADOPAGO_ACCESS_TOKEN,
-EARTHDATA_USERNAME, EARTHDATA_PASSWORD, APP_BASE_URL.
-- Instalar dependencias: pip install earthaccess xarray rioxarray rasterio pyhdf
-
 import streamlit as st
 import geopandas as gpd
 import pandas as pd
