@@ -767,31 +767,21 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         st.error("No se pudieron extraer dimensiones del HDF.")
                         st.stop()
                     ulx = None; uly = None
-                    patterns_ul = [
-                        r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
-                        r'UpperLeftPointMtrs=\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
-                        r'UpperLeftPointMtrs\s*=\s*\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)',
-                        r'UpperLeftPointMtrs=\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)'
-                    ]
-                    for pat in patterns_ul:
-                        match = re.search(pat, metadata, re.I)
-                        if match:
-                            ulx = float(match.group(1))
-                            uly = float(match.group(2))
-                            break
                     lrx = None; lry = None
-                    patterns_lr = [
-                        r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
-                        r'LowerRightMtrs=\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
-                        r'LowerRightMtrs\s*=\s*\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)',
-                        r'LowerRightMtrs=\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)'
-                    ]
-                    for pat in patterns_lr:
-                        match = re.search(pat, metadata, re.I)
-                        if match:
-                            lrx = float(match.group(1))
-                            lry = float(match.group(2))
-                            break
+                    # Extraer UpperLeftPointMtrs
+                    match_ul = re.search(r'UpperLeftPointMtrs\s*=\s*\(\s*(.*?)\s*\)', metadata, re.I)
+                    if match_ul:
+                        parts = match_ul.group(1).split(',')
+                        if len(parts) >= 2:
+                            ulx = float(parts[0].strip())
+                            uly = float(parts[1].strip())
+                    # Extraer LowerRightMtrs
+                    match_lr = re.search(r'LowerRightMtrs\s*=\s*\(\s*(.*?)\s*\)', metadata, re.I)
+                    if match_lr:
+                        parts = match_lr.group(1).split(',')
+                        if len(parts) >= 2:
+                            lrx = float(parts[0].strip())
+                            lry = float(parts[1].strip())
                     if ulx is None or uly is None or lrx is None or lry is None:
                         st.error("No se pudieron extraer los puntos de esquina del HDF.")
                         st.stop()
@@ -966,31 +956,21 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         st.error("No se pudieron extraer dimensiones del HDF.")
                         st.stop()
                     ulx = None; uly = None
-                    patterns_ul = [
-                        r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
-                        r'UpperLeftPointMtrs=\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
-                        r'UpperLeftPointMtrs\s*=\s*\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)',
-                        r'UpperLeftPointMtrs=\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)'
-                    ]
-                    for pat in patterns_ul:
-                        match = re.search(pat, metadata, re.I)
-                        if match:
-                            ulx = float(match.group(1))
-                            uly = float(match.group(2))
-                            break
                     lrx = None; lry = None
-                    patterns_lr = [
-                        r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
-                        r'LowerRightMtrs=\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
-                        r'LowerRightMtrs\s*=\s*\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)',
-                        r'LowerRightMtrs=\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)'
-                    ]
-                    for pat in patterns_lr:
-                        match = re.search(pat, metadata, re.I)
-                        if match:
-                            lrx = float(match.group(1))
-                            lry = float(match.group(2))
-                            break
+                    # Extraer UpperLeftPointMtrs
+                    match_ul = re.search(r'UpperLeftPointMtrs\s*=\s*\(\s*(.*?)\s*\)', metadata, re.I)
+                    if match_ul:
+                        parts = match_ul.group(1).split(',')
+                        if len(parts) >= 2:
+                            ulx = float(parts[0].strip())
+                            uly = float(parts[1].strip())
+                    # Extraer LowerRightMtrs
+                    match_lr = re.search(r'LowerRightMtrs\s*=\s*\(\s*(.*?)\s*\)', metadata, re.I)
+                    if match_lr:
+                        parts = match_lr.group(1).split(',')
+                        if len(parts) >= 2:
+                            lrx = float(parts[0].strip())
+                            lry = float(parts[1].strip())
                     if ulx is None or uly is None or lrx is None or lry is None:
                         st.error("No se pudieron extraer los puntos de esquina del HDF.")
                         st.stop()
