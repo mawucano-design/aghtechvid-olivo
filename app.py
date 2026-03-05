@@ -751,19 +751,57 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         st.error("No se encontró metadata en el HDF.")
                         st.stop()
                     import re
-                    xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.I)
-                    ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.I)
-                    ul_match = re.search(r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.I)
-                    lr_match = re.search(r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.I)
-                    if not (xdim_match and ydim_match and ul_match and lr_match):
-                        st.error("No se pudo extraer geolocalización completa del HDF.")
+                    # Extraer dimensiones
+                    xdim = None
+                    ydim = None
+                    match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.I)
+                    if match:
+                        xdim = int(match.group(1))
+                    match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.I)
+                    if match:
+                        ydim = int(match.group(1))
+                    if xdim is None:
+                        match = re.search(r'XDim=(\d+)', metadata, re.I)
+                        if match:
+                            xdim = int(match.group(1))
+                    if ydim is None:
+                        match = re.search(r'YDim=(\d+)', metadata, re.I)
+                        if match:
+                            ydim = int(match.group(1))
+                    if xdim is None or ydim is None:
+                        st.error("No se pudieron extraer dimensiones del HDF.")
                         st.stop()
-                    xdim = int(xdim_match.group(1))
-                    ydim = int(ydim_match.group(1))
-                    ulx = float(ul_match.group(1))
-                    uly = float(ul_match.group(2))
-                    lrx = float(lr_match.group(1))
-                    lry = float(lr_match.group(2))
+                    # Extraer UpperLeftPointMtrs
+                    ulx = None; uly = None
+                    patterns_ul = [
+                        r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
+                        r'UpperLeftPointMtrs=\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
+                        r'UpperLeftPointMtrs\s*=\s*\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)',
+                        r'UpperLeftPointMtrs=\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)'
+                    ]
+                    for pat in patterns_ul:
+                        match = re.search(pat, metadata, re.I)
+                        if match:
+                            ulx = float(match.group(1))
+                            uly = float(match.group(2))
+                            break
+                    # Extraer LowerRightMtrs
+                    lrx = None; lry = None
+                    patterns_lr = [
+                        r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
+                        r'LowerRightMtrs=\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
+                        r'LowerRightMtrs\s*=\s*\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)',
+                        r'LowerRightMtrs=\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)'
+                    ]
+                    for pat in patterns_lr:
+                        match = re.search(pat, metadata, re.I)
+                        if match:
+                            lrx = float(match.group(1))
+                            lry = float(match.group(2))
+                            break
+                    if ulx is None or uly is None or lrx is None or lry is None:
+                        st.error("No se pudieron extraer los puntos de esquina del HDF.")
+                        st.stop()
                     if ndvi_scaled.shape != (ydim, xdim):
                         ydim, xdim = ndvi_scaled.shape
                     res_x = (lrx - ulx) / xdim
@@ -914,19 +952,56 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         st.error("No se encontró metadata en el HDF.")
                         st.stop()
                     import re
-                    xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.I)
-                    ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.I)
-                    ul_match = re.search(r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.I)
-                    lr_match = re.search(r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.I)
-                    if not (xdim_match and ydim_match and ul_match and lr_match):
-                        st.error("No se pudo extraer geolocalización completa del HDF.")
+                    # Extraer dimensiones
+                    xdim = None; ydim = None
+                    match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.I)
+                    if match:
+                        xdim = int(match.group(1))
+                    match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.I)
+                    if match:
+                        ydim = int(match.group(1))
+                    if xdim is None:
+                        match = re.search(r'XDim=(\d+)', metadata, re.I)
+                        if match:
+                            xdim = int(match.group(1))
+                    if ydim is None:
+                        match = re.search(r'YDim=(\d+)', metadata, re.I)
+                        if match:
+                            ydim = int(match.group(1))
+                    if xdim is None or ydim is None:
+                        st.error("No se pudieron extraer dimensiones del HDF.")
                         st.stop()
-                    xdim = int(xdim_match.group(1))
-                    ydim = int(ydim_match.group(1))
-                    ulx = float(ul_match.group(1))
-                    uly = float(ul_match.group(2))
-                    lrx = float(lr_match.group(1))
-                    lry = float(lr_match.group(2))
+                    # Extraer UpperLeftPointMtrs
+                    ulx = None; uly = None
+                    patterns_ul = [
+                        r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
+                        r'UpperLeftPointMtrs=\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
+                        r'UpperLeftPointMtrs\s*=\s*\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)',
+                        r'UpperLeftPointMtrs=\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)'
+                    ]
+                    for pat in patterns_ul:
+                        match = re.search(pat, metadata, re.I)
+                        if match:
+                            ulx = float(match.group(1))
+                            uly = float(match.group(2))
+                            break
+                    # Extraer LowerRightMtrs
+                    lrx = None; lry = None
+                    patterns_lr = [
+                        r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
+                        r'LowerRightMtrs=\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
+                        r'LowerRightMtrs\s*=\s*\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)',
+                        r'LowerRightMtrs=\(([+-]?\d+\.?\d*),([+-]?\d+\.?\d*)\)'
+                    ]
+                    for pat in patterns_lr:
+                        match = re.search(pat, metadata, re.I)
+                        if match:
+                            lrx = float(match.group(1))
+                            lry = float(match.group(2))
+                            break
+                    if ulx is None or uly is None or lrx is None or lry is None:
+                        st.error("No se pudieron extraer los puntos de esquina del HDF.")
+                        st.stop()
                     if nir.shape != (ydim, xdim):
                         ydim, xdim = nir.shape
                     res_x = (lrx - ulx) / xdim
@@ -980,7 +1055,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         st.error(f"Error en obtención de NDWI: {e}")
         st.stop()
 
-# ===== FUNCIONES CLIMÁTICAS (se mantienen con fallback simulado) =====
+# ===== FUNCIONES CLIMÁTICAS (con fallback simulado) =====
 def obtener_clima_openmeteo(gdf, fecha_inicio, fecha_fin):
     try:
         centroide = gdf.geometry.unary_union.centroid
