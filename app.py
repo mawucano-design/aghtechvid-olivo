@@ -81,7 +81,7 @@ sdk = mercadopago.SDK(MERCADOPAGO_ACCESS_TOKEN)
 EARTHDATA_USERNAME = os.environ.get("EARTHDATA_USERNAME")
 EARTHDATA_PASSWORD = os.environ.get("EARTHDATA_PASSWORD")
 
-# ===== BASE DE DATOS DE USUARIOS =====
+# ===== BASE DE DATOS DE USUARIOS (con plan de suscripción) =====
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -160,7 +160,7 @@ def get_user_by_email(email):
         return {'id': row[0], 'email': row[1], 'subscription_expires': row[2], 'subscription_plan': row[3]}
     return None
 
-# ===== FUNCIONES DE MERCADO PAGO =====
+# ===== FUNCIONES DE MERCADO PAGO (con plan) =====
 def create_preference(email, amount, description):
     try:
         base_url = os.environ.get("APP_BASE_URL", "https://tuapp.streamlit.app")
@@ -691,7 +691,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         st.error("El archivo descargado es una página HTML de error.")
                         st.stop()
             ndvi_values = []
-            # Intentar con rasterio (silenciosamente)
             if RASTERIO_OK:
                 try:
                     with rasterio.open(download_path) as src:
@@ -728,7 +727,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 st.success("✅ NDVI calculado con rasterio.")
                                 return gdf_dividido
                 except:
-                    pass  # Silenciar error de rasterio
+                    pass
             if PYHDF_OK:
                 try:
                     hdf = SD(download_path, SDC.READ)
@@ -747,8 +746,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         st.error("No se encontró metadata en el HDF.")
                         st.stop()
                     import re
-                    xdim = None
-                    ydim = None
+                    xdim = None; ydim = None
                     match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.I)
                     if match:
                         xdim = int(match.group(1))
@@ -871,7 +869,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         st.error("El archivo descargado es una página HTML de error.")
                         st.stop()
             ndwi_values = []
-            # Intentar con rasterio (silenciosamente)
             if RASTERIO_OK:
                 try:
                     with rasterio.open(download_path) as src:
@@ -915,7 +912,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 st.success("✅ NDWI calculado con rasterio.")
                                 return gdf_dividido
                 except:
-                    pass  # Silenciar error de rasterio
+                    pass
             if PYHDF_OK:
                 try:
                     hdf = SD(download_path, SDC.READ)
@@ -936,8 +933,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         st.error("No se encontró metadata en el HDF.")
                         st.stop()
                     import re
-                    xdim = None
-                    ydim = None
+                    xdim = None; ydim = None
                     match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.I)
                     if match:
                         xdim = int(match.group(1))
