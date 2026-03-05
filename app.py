@@ -91,19 +91,16 @@ def verify_password(password, hash):
 def init_db():
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
-    # Crear tabla base
     c.execute('''CREATE TABLE IF NOT EXISTS users
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                   email TEXT UNIQUE,
                   password_hash TEXT,
                   subscription_expires TIMESTAMP,
                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    # Agregar columna subscription_plan si no existe
     c.execute("PRAGMA table_info(users)")
     columns = [col[1] for col in c.fetchall()]
     if 'subscription_plan' not in columns:
         c.execute("ALTER TABLE users ADD COLUMN subscription_plan TEXT DEFAULT 'combo'")
-    # Usuario administrador
     admin_email = "mawucano@gmail.com"
     far_future = "2100-01-01 00:00:00"
     c.execute("SELECT id FROM users WHERE email = ?", (admin_email,))
@@ -269,7 +266,6 @@ def check_subscription():
                 dias = (expiry_date - datetime.now()).days
                 st.sidebar.info(f"✅ Suscripción activa ({dias} días) - Plan: {plan}")
                 st.session_state.demo_mode = False
-                # Validar plan contra cultivo
                 if crop_type == 'Vid' and plan not in ['vid', 'combo']:
                     st.warning("Tu plan no incluye Vid. Debes adquirir el plan Vid o Combo.")
                     st.session_state.payment_intent = True
@@ -689,13 +685,13 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 st.error("No se encontró archivo HDF.")
                 st.stop()
             download_path = str(hdf_files[0])
-            # Verificar HTML
             if os.path.getsize(download_path) < 10240:
                 with open(download_path, 'r', errors='ignore') as f:
                     if '<html' in f.read(500).lower():
                         st.error("El archivo descargado es una página HTML de error.")
                         st.stop()
             ndvi_values = []
+            # Intentar con rasterio (silenciosamente)
             if RASTERIO_OK:
                 try:
                     with rasterio.open(download_path) as src:
@@ -731,8 +727,8 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 gdf_dividido['ndvi_modis'] = ndvi_values
                                 st.success("✅ NDVI calculado con rasterio.")
                                 return gdf_dividido
-                except Exception as e:
-                    st.warning(f"rasterio falló: {e}. Intentando con pyhdf...")
+                except:
+                    pass  # Silenciar error de rasterio
             if PYHDF_OK:
                 try:
                     hdf = SD(download_path, SDC.READ)
@@ -751,7 +747,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         st.error("No se encontró metadata en el HDF.")
                         st.stop()
                     import re
-                    # Extraer dimensiones
                     xdim = None
                     ydim = None
                     match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.I)
@@ -771,7 +766,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     if xdim is None or ydim is None:
                         st.error("No se pudieron extraer dimensiones del HDF.")
                         st.stop()
-                    # Extraer UpperLeftPointMtrs
                     ulx = None; uly = None
                     patterns_ul = [
                         r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
@@ -785,7 +779,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             ulx = float(match.group(1))
                             uly = float(match.group(2))
                             break
-                    # Extraer LowerRightMtrs
                     lrx = None; lry = None
                     patterns_lr = [
                         r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
@@ -888,6 +881,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         st.error("El archivo descargado es una página HTML de error.")
                         st.stop()
             ndwi_values = []
+            # Intentar con rasterio (silenciosamente)
             if RASTERIO_OK:
                 try:
                     with rasterio.open(download_path) as src:
@@ -930,8 +924,8 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 gdf_dividido['ndwi_modis'] = ndwi_values
                                 st.success("✅ NDWI calculado con rasterio.")
                                 return gdf_dividido
-                except Exception as e:
-                    st.warning(f"rasterio falló: {e}. Intentando con pyhdf...")
+                except:
+                    pass  # Silenciar error de rasterio
             if PYHDF_OK:
                 try:
                     hdf = SD(download_path, SDC.READ)
@@ -952,8 +946,8 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         st.error("No se encontró metadata en el HDF.")
                         st.stop()
                     import re
-                    # Extraer dimensiones
-                    xdim = None; ydim = None
+                    xdim = None
+                    ydim = None
                     match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.I)
                     if match:
                         xdim = int(match.group(1))
@@ -971,7 +965,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     if xdim is None or ydim is None:
                         st.error("No se pudieron extraer dimensiones del HDF.")
                         st.stop()
-                    # Extraer UpperLeftPointMtrs
                     ulx = None; uly = None
                     patterns_ul = [
                         r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
@@ -985,7 +978,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             ulx = float(match.group(1))
                             uly = float(match.group(2))
                             break
-                    # Extraer LowerRightMtrs
                     lrx = None; lry = None
                     patterns_lr = [
                         r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)',
