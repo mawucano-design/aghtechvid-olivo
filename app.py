@@ -126,13 +126,21 @@ def verify_password(password, hash):
 def init_db():
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
+    # Crear tabla con columnas básicas (si no existe)
     c.execute('''CREATE TABLE IF NOT EXISTS users
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                   email TEXT UNIQUE,
                   password_hash TEXT,
                   subscription_expires TIMESTAMP,
-                  subscription_plan TEXT DEFAULT 'combo',
                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    
+    # Verificar si la columna subscription_plan ya existe
+    c.execute("PRAGMA table_info(users)")
+    columns = [col[1] for col in c.fetchall()]
+    if 'subscription_plan' not in columns:
+        c.execute("ALTER TABLE users ADD COLUMN subscription_plan TEXT DEFAULT 'combo'")
+    
+    # Configurar usuario administrador
     admin_email = "mawucano@gmail.com"
     far_future = "2100-01-01 00:00:00"
     c.execute("SELECT id FROM users WHERE email = ?", (admin_email,))
