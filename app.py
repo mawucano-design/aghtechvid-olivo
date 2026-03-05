@@ -853,7 +853,7 @@ def cargar_archivo_plantacion(uploaded_file):
         st.code(traceback.format_exc())
         return None
 
-# ===== FUNCIONES PARA DATOS SATELITALES CON EARTHDATA (SILENCIOSAS) =====
+# ===== FUNCIONES PARA DATOS SATELITALES CON EARTHDATA (CORREGIDAS) =====
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     """
     Obtiene NDVI real para cada bloque usando MOD13Q1.
@@ -898,12 +898,13 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-        hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
+        # Usar .suffix en lugar de .endswith porque downloaded_files son objetos Path
+        hdf_files = [f for f in downloaded_files if f.suffix == '.hdf']
         if not hdf_files:
             st.error("No se encontró archivo HDF en la descarga.")
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
-        download_path = hdf_files[0]
+        download_path = str(hdf_files[0])
 
         # Verificar que no sea una página HTML de error
         file_size = os.path.getsize(download_path)
@@ -1114,12 +1115,12 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-        hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
+        hdf_files = [f for f in downloaded_files if f.suffix == '.hdf']
         if not hdf_files:
             st.error("No se encontró archivo HDF.")
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
-        download_path = hdf_files[0]
+        download_path = str(hdf_files[0])
 
         file_size = os.path.getsize(download_path)
         if file_size < 10240:
