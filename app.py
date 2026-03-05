@@ -773,6 +773,12 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         if len(parts) >= 2:
                             ulx = float(parts[0].strip())
                             uly = float(parts[1].strip())
+                        else:
+                            # Intentar extraer números con regex
+                            nums = re.findall(r'[+-]?\d+\.?\d*', match_ul.group(1))
+                            if len(nums) >= 2:
+                                ulx = float(nums[0])
+                                uly = float(nums[1])
                     # Extraer LowerRightMtrs
                     match_lr = re.search(r'LowerRightMtrs\s*=\s*\(\s*(.*?)\s*\)', metadata, re.I)
                     if match_lr:
@@ -780,6 +786,11 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         if len(parts) >= 2:
                             lrx = float(parts[0].strip())
                             lry = float(parts[1].strip())
+                        else:
+                            nums = re.findall(r'[+-]?\d+\.?\d*', match_lr.group(1))
+                            if len(nums) >= 2:
+                                lrx = float(nums[0])
+                                lry = float(nums[1])
                     if ulx is None or uly is None or lrx is None or lry is None:
                         st.error("No se pudieron extraer los puntos de esquina del HDF.")
                         st.stop()
@@ -960,6 +971,12 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         if len(parts) >= 2:
                             ulx = float(parts[0].strip())
                             uly = float(parts[1].strip())
+                        else:
+                            # Intentar extraer números con regex
+                            nums = re.findall(r'[+-]?\d+\.?\d*', match_ul.group(1))
+                            if len(nums) >= 2:
+                                ulx = float(nums[0])
+                                uly = float(nums[1])
                     # Extraer LowerRightMtrs
                     match_lr = re.search(r'LowerRightMtrs\s*=\s*\(\s*(.*?)\s*\)', metadata, re.I)
                     if match_lr:
@@ -967,6 +984,11 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         if len(parts) >= 2:
                             lrx = float(parts[0].strip())
                             lry = float(parts[1].strip())
+                        else:
+                            nums = re.findall(r'[+-]?\d+\.?\d*', match_lr.group(1))
+                            if len(nums) >= 2:
+                                lrx = float(nums[0])
+                                lry = float(nums[1])
                     if ulx is None or uly is None or lrx is None or lry is None:
                         st.error("No se pudieron extraer los puntos de esquina del HDF.")
                         st.stop()
