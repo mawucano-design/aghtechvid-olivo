@@ -1,10 +1,3 @@
-app.py - Versión definitiva con Earthaccess (MODIS desde NASA Earthdata)
-- SIN autenticación de usuarios
-- SIN Mercado Pago (acceso libre a todas las funciones)
-- Cultivo: VID y OLIVO (en lugar de palma aceitera)
-- Datos reales de NDVI y NDWI desde Earthdata (MOD13Q1 y MOD09GA) calculados por bloque
-- IMPORTANTE: Configurar variables de entorno en secrets: EARTHDATA_USERNAME, EARTHDATA_PASSWORD, APP_BASE_URL
-- Instalar dependencias: pip install earthaccess xarray rioxarray rasterio pyhdf
 
 import streamlit as st
 import geopandas as gpd
