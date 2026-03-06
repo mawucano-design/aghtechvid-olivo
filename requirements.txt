@@ -11,8 +11,8 @@ plotly==5.18.0
 scipy==1.12.0
 Pillow==10.2.0
 requests==2.31.0
-earthaccess==0.8.0
-xarray==2024.1.0
-rioxarray==0.15.0
+earthaccess
+xarray
+rioxarray
 rasterio==1.3.9
 statsmodels==0.14.1
