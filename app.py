@@ -25,7 +25,12 @@ from branca.colormap import LinearColormap
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
-import cv2
+try:
+    import cv2
+    CV2_OK = True
+except ImportError:
+    CV2_OK = False
+    cv2 = None
 from PIL import Image
 from scipy.spatial import KDTree
 from scipy.interpolate import Rbf
