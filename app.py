@@ -1,4 +1,4 @@
-# app.py - Versión para vid y olivo (sin autenticación ni pagos)
+# app.py - Versión para vid y olivo (sin autenticación, con cv2 opcional)
 # 
 # - Análisis de viñedos y olivares con datos satelitales NASA Earthdata.
 # - Datos climáticos de Open-Meteo y NASA POWER.
@@ -7,7 +7,7 @@
 #
 # IMPORTANTE: 
 # - Configurar variables de entorno: EARTHDATA_USERNAME, EARTHDATA_PASSWORD.
-# - Instalar dependencias: pip install earthaccess xarray rioxarray rasterio pyhdf ultralytics opencv-python
+# - Instalar dependencias: pip install earthaccess xarray rioxarray rasterio pyhdf
 
 import streamlit as st
 import geopandas as gpd
@@ -35,13 +35,25 @@ from branca.colormap import LinearColormap
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
-import cv2
 from PIL import Image
 from scipy.spatial import KDTree
 from scipy.interpolate import Rbf
 import base64
 import time
 import shutil
+
+# ===== LIBRERÍAS OPCIONALES (YOLO y OpenCV) =====
+try:
+    from ultralytics import YOLO
+    YOLO_AVAILABLE = True
+except ImportError:
+    YOLO_AVAILABLE = False
+
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
 
 # Suprimir advertencias de rasterio y otras librerías
 warnings.filterwarnings('ignore', category=UserWarning, module='rasterio')
@@ -396,7 +408,6 @@ def procesar_kml_robusto(file_content):
 def cargar_archivo_plantacion(uploaded_file):
     """
     Carga un archivo de plantación con manejo robusto de errores.
-    Funciona tanto en modo DEMO como PREMIUM.
     """
     try:
         file_content = uploaded_file.read()
@@ -516,8 +527,6 @@ def cargar_archivo_plantacion(uploaded_file):
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     """
     Obtiene NDVI real para cada bloque usando MOD13Q1.
-    Primero intenta con rasterio (extracción por bloque) sin mostrar advertencias.
-    Si falla, usa pyhdf para leer datos y metadata, y realiza extracción por bloque con rasterio en memoria.
     """
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess/xarray/rioxarray no instaladas.")
@@ -732,8 +741,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     """
     Obtiene NDWI real para cada bloque usando MOD09GA (bandas NIR y SWIR).
-    Primero intenta con rasterio (extracción por bloque) sin mostrar advertencias.
-    Si falla, usa pyhdf para leer datos y metadata, y realiza extracción por bloque con rasterio en memoria.
     """
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
@@ -1700,10 +1707,12 @@ def crear_grafico_textural(arena, limo, arcilla, tipo_suelo):
     )
     return fig
 
-# ===== FUNCIONES YOLO =====
+# ===== FUNCIONES YOLO (protegidas) =====
 def cargar_modelo_yolo(ruta_modelo):
+    if not YOLO_AVAILABLE or not CV2_AVAILABLE:
+        st.error("Las librerías ultralytics u opencv-python no están instaladas.")
+        return None
     try:
-        from ultralytics import YOLO
         modelo = YOLO(ruta_modelo)
         return modelo
     except Exception as e:
@@ -1721,6 +1730,8 @@ def detectar_en_imagen(modelo, imagen_cv, conf_threshold=0.25):
         return None
 
 def dibujar_detecciones_con_leyenda(imagen_cv, resultados, colores_aleatorios=True):
+    if not CV2_AVAILABLE:
+        return imagen_cv, []
     if resultados is None or len(resultados) == 0:
         return imagen_cv, []
 
@@ -2682,22 +2693,16 @@ if st.session_state.analisis_completado:
         
         with tab9:
             st.subheader("🐛 Detección de Enfermedades y Plagas con YOLO")
-            st.markdown("""
-            Esta herramienta utiliza modelos YOLO para detectar automáticamente signos de enfermedades o plagas en imágenes de vid u olivo.
-            - **Sube una imagen** (JPG, PNG) tomada con drone o cámara.
-            - **Carga un modelo YOLO** pre-entrenado (formato `.pt` de PyTorch o `.onnx`).
-            - Ajusta el **umbral de confianza** para filtrar detecciones débiles.
-            """)
-
-            try:
-                from ultralytics import YOLO
-                YOLO_AVAILABLE = True
-            except ImportError:
-                YOLO_AVAILABLE = False
-
-            if not YOLO_AVAILABLE:
-                st.error("⚠️ La librería 'ultralytics' no está instalada. Para usar esta función, ejecuta: `pip install ultralytics`")
+            if not YOLO_AVAILABLE or not CV2_AVAILABLE:
+                st.warning("⚠️ Esta función requiere las librerías 'ultralytics' y 'opencv-python'. Para instalarlas, ejecuta: `pip install ultralytics opencv-python`")
             else:
+                st.markdown("""
+                Esta herramienta utiliza modelos YOLO para detectar automáticamente signos de enfermedades o plagas en imágenes de vid u olivo.
+                - **Sube una imagen** (JPG, PNG) tomada con drone o cámara.
+                - **Carga un modelo YOLO** pre-entrenado (formato `.pt` de PyTorch o `.onnx`).
+                - Ajusta el **umbral de confianza** para filtrar detecciones débiles.
+                """)
+
                 col1, col2 = st.columns(2)
                 with col1:
                     archivo_imagen = st.file_uploader("📸 Subir imagen (RGB)", type=['jpg', 'jpeg', 'png'], key="yolo_img")
