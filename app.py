@@ -50,10 +50,6 @@ try:
 except ImportError:
     YOLO_AVAILABLE = False
 
-# ===== AUTENTICACIÓN Y PAGOS =====
-import sqlite3
-import hashlib
-import mercadopago
 
 # ===== LIBRERÍAS PARA DATOS SATELITALES (EARTHDATA) =====
 try:
