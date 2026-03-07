@@ -2477,7 +2477,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 st.markdown("""
 <div class="hero-banner">
-    <h1 class="hero-title">🌴 ANALIZADOR DE PALMA ACEITERA SATELITAL</h1>
+    <h1 class="hero-title">🍇 ANALIZADOR DE VID Y OLIVO SATELITAL</h1>
     <p style="color: #cbd5e1; font-size: 1.2em;">
         Monitoreo biológico con datos reales NASA Earthdata · Open-Meteo · NASA POWER
     </p>
@@ -2486,9 +2486,20 @@ st.markdown("""
 
 # ===== SIDEBAR =====
 with st.sidebar:
-    st.markdown("## 🌴 CONFIGURACIÓN")
-    variedad = st.selectbox("Variedad de palma:", VARIEDADES_PALMA_ACEITERA, index=0)
-    st.session_state.variedad_seleccionada = variedad
+    st.markdown("## 🍇 CONFIGURACIÓN")
+    
+    # Selección de cultivo
+    crop_type = st.radio("Cultivo", ["Vid", "Olivo"], horizontal=True, key="crop_selector")
+    st.session_state.crop_type = crop_type
+    
+    # Variedades según cultivo
+    if crop_type == "Vid":
+        variedad = st.selectbox("Variedad de Vid:", VARIEDADES_VID, index=0)
+    else:
+        variedad = st.selectbox("Variedad de Olivo:", VARIEDADES_OLIVO, index=0)
+    
+    st.session_state.variedad_seleccionada = f"{crop_type} - {variedad}"
+    
     st.markdown("---")
     st.markdown("### 📅 Rango Temporal")
     fecha_fin_default = datetime.now()
@@ -2506,7 +2517,7 @@ with st.sidebar:
     n_divisiones = st.slider("Número de bloques:", 8, 32, 16)
     st.session_state.n_divisiones = n_divisiones
     st.markdown("---")
-    st.markdown("### 🌴 Detección de Palmas")
+    st.markdown("### 🌱 Detección de Plantas")
     deteccion_habilitada = st.checkbox("Activar detección de plantas", value=True)
     if deteccion_habilitada:
         densidad_personalizada = st.slider("Densidad objetivo (plantas/ha):", 50, 200, 130)
@@ -2517,8 +2528,7 @@ with st.sidebar:
     if analisis_suelo:
         st.info("Incluye: Textura por bloque, fertilidad NPK, recomendaciones")
     st.session_state.analisis_suelo = analisis_suelo
-    st.markdown("---")
-    
+    st.markdown("---")    
     # === SECCIÓN DE CARGA DE POLÍGONO MEJORADA ===
     st.markdown("### 📤 Subir Polígono")
     
