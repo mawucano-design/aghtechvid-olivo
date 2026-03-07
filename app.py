@@ -120,9 +120,6 @@ def init_session_state():
 
 init_session_state()
 
-# Verificar suscripción antes de continuar
-check_subscription()
-
 # ===== CONFIGURACIONES =====
 VARIEDADES_VID = [
     'Malbec', 'Cabernet Sauvignon', 'Merlot', 'Syrah', 'Chardonnay',
