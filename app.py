@@ -870,7 +870,8 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-        hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
+        # Convertir a string para manejar objetos Path
+        hdf_files = [str(f) for f in downloaded_files if str(f).endswith('.hdf')]
         if not hdf_files:
             st.error("No se encontró archivo HDF en la descarga.")
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1087,7 +1088,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-        hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
+        hdf_files = [str(f) for f in downloaded_files if str(f).endswith('.hdf')]
         if not hdf_files:
             st.error("No se encontró archivo HDF.")
             shutil.rmtree(temp_dir, ignore_errors=True)
