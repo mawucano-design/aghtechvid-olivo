@@ -1,13 +1,15 @@
-# app.py - Versión para vid y olivo (sin autenticación, con cv2 opcional)
+# app.py - Versión corregida para vid y olivo con Earthdata y fallback a simulación
 # 
-# - Análisis de viñedos y olivares con datos satelitales NASA Earthdata.
-# - Datos climáticos de Open-Meteo y NASA POWER.
-# - Detección de plantas individuales, índices de vegetación, fertilidad, textura de suelo, curvas de nivel y YOLO.
-# - Sin registro de usuarios ni suscripciones.
+# - Registro e inicio de sesión de usuarios.
+# - Suscripción mensual (150 USD) con Mercado Pago.
+# - Modo DEMO con datos simulados.
+# - Modo PREMIUM con datos reales de NDVI y NDWI desde Earthdata (MOD13Q1 y MOD09GA) calculados por bloque.
+# - Usuario administrador mawucano@gmail.com con suscripción permanente.
 #
 # IMPORTANTE: 
-# - Configurar variables de entorno: EARTHDATA_USERNAME, EARTHDATA_PASSWORD.
-# - Instalar dependencias: pip install earthaccess xarray rioxarray rasterio pyhdf
+# - Configurar variables de entorno en secrets: MERCADOPAGO_ACCESS_TOKEN,
+#   EARTHDATA_USERNAME, EARTHDATA_PASSWORD, APP_BASE_URL.
+# - Instalar dependencias: pip install earthaccess xarray rioxarray rasterio pyhdf pooch
 
 import streamlit as st
 import geopandas as gpd
@@ -42,22 +44,14 @@ import base64
 import time
 import shutil
 
-# ===== LIBRERÍAS OPCIONALES (YOLO y OpenCV) =====
-try:
-    from ultralytics import YOLO
-    YOLO_AVAILABLE = True
-except ImportError:
-    YOLO_AVAILABLE = False
-
-try:
-    import cv2
-    CV2_AVAILABLE = True
-except ImportError:
-    CV2_AVAILABLE = False
-
 # Suprimir advertencias de rasterio y otras librerías
 warnings.filterwarnings('ignore', category=UserWarning, module='rasterio')
 warnings.filterwarnings('ignore', category=RuntimeWarning)
+
+# ===== AUTENTICACIÓN Y PAGOS =====
+import sqlite3
+import hashlib
+import mercadopago
 
 # ===== LIBRERÍAS PARA DATOS SATELITALES (EARTHDATA) =====
 try:
@@ -82,6 +76,19 @@ try:
     PYHDF_OK = True
 except ImportError:
     PYHDF_OK = False
+
+# ===== LIBRERÍAS OPCIONALES (YOLO) =====
+try:
+    from ultralytics import YOLO
+    YOLO_AVAILABLE = True
+except ImportError:
+    YOLO_AVAILABLE = False
+
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
 
 # Mostrar advertencias solo si ninguna está disponible
 if not RASTERIO_OK and not PYHDF_OK:
@@ -155,9 +162,273 @@ st.markdown("""
 <div id="overlay"></div>
 """, unsafe_allow_html=True)
 
+# ===== CONFIGURACIÓN DE MERCADO PAGO =====
+MERCADOPAGO_ACCESS_TOKEN = os.environ.get("MERCADOPAGO_ACCESS_TOKEN")
+if not MERCADOPAGO_ACCESS_TOKEN:
+    st.error("❌ No se encontró la variable de entorno MERCADOPAGO_ACCESS_TOKEN. Configúrala para habilitar pagos.")
+    st.stop()
+
+sdk = mercadopago.SDK(MERCADOPAGO_ACCESS_TOKEN)
+
 # ===== CREDENCIALES EARTHDATA (desde secrets) =====
 EARTHDATA_USERNAME = os.environ.get("EARTHDATA_USERNAME")
 EARTHDATA_PASSWORD = os.environ.get("EARTHDATA_PASSWORD")
+
+# ===== BASE DE DATOS DE USUARIOS =====
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def verify_password(password, hash):
+    return hash_password(password) == hash
+
+def init_db():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS users
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  email TEXT UNIQUE,
+                  password_hash TEXT,
+                  subscription_expires TIMESTAMP,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    admin_email = "mawucano@gmail.com"
+    far_future = "2100-01-01 00:00:00"
+    c.execute("SELECT id FROM users WHERE email = ?", (admin_email,))
+    existing = c.fetchone()
+    if existing:
+        c.execute("UPDATE users SET subscription_expires = ? WHERE email = ?", (far_future, admin_email))
+    else:
+        default_password = "jocauru"
+        password_hash = hash_password(default_password)
+        c.execute("INSERT INTO users (email, password_hash, subscription_expires) VALUES (?, ?, ?)",
+                  (admin_email, password_hash, far_future))
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def register_user(email, password):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    try:
+        password_hash = hash_password(password)
+        c.execute("INSERT INTO users (email, password_hash, subscription_expires) VALUES (?, ?, ?)",
+                  (email, password_hash, None))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+def login_user(email, password):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT id, password_hash, subscription_expires FROM users WHERE email = ?", (email,))
+    row = c.fetchone()
+    conn.close()
+    if row and verify_password(password, row[1]):
+        return {'id': row[0], 'email': email, 'subscription_expires': row[2]}
+    return None
+
+def update_subscription(email, days=30):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    new_expiry = (datetime.now() + timedelta(days=days)).isoformat()
+    c.execute("UPDATE users SET subscription_expires = ? WHERE email = ?", (new_expiry, email))
+    conn.commit()
+    conn.close()
+    return new_expiry
+
+def get_user_by_email(email):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT id, email, subscription_expires FROM users WHERE email = ?", (email,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return {'id': row[0], 'email': row[1], 'subscription_expires': row[2]}
+    return None
+
+# ===== FUNCIONES DE MERCADO PAGO =====
+def create_preference(email, amount=150.0, description="Suscripción mensual - Analizador de Viñedos y Olivares"):
+    """
+    Crea una preferencia de pago en Mercado Pago y retorna el init_point y el ID.
+    Maneja errores y retorna (None, None) si falla.
+    """
+    try:
+        base_url = os.environ.get("APP_BASE_URL")
+        if not base_url:
+            try:
+                base_url = st.secrets.get("APP_BASE_URL", "https://tuapp.streamlit.app")
+            except:
+                base_url = "https://tuapp.streamlit.app"
+
+        preference_data = {
+            "items": [{
+                "title": description,
+                "quantity": 1,
+                "currency_id": "USD",
+                "unit_price": amount
+            }],
+            "payer": {"email": email},
+            "back_urls": {
+                "success": f"{base_url}?payment=success",
+                "failure": f"{base_url}?payment=failure",
+                "pending": f"{base_url}?payment=pending"
+            },
+            "auto_return": "approved",
+            "external_reference": email,
+        }
+        preference_response = sdk.preference().create(preference_data)
+        
+        if preference_response["status"] in [200, 201]:
+            preference = preference_response["response"]
+            return preference["init_point"], preference["id"]
+        else:
+            error_msg = preference_response.get("response", {}).get("message", "Error desconocido")
+            st.error(f"❌ Error al crear preferencia de pago: {error_msg}")
+            return None, None
+    except Exception as e:
+        st.error(f"❌ Error al conectar con Mercado Pago: {str(e)}")
+        return None, None
+
+def check_payment_status(payment_id):
+    try:
+        payment_info = sdk.payment().get(payment_id)
+        if payment_info["status"] == 200:
+            payment = payment_info["response"]
+            if payment["status"] == "approved":
+                email = payment.get("external_reference")
+                if email:
+                    new_expiry = update_subscription(email)
+                    return True
+    except Exception as e:
+        st.error(f"Error verificando pago: {e}")
+    return False
+
+# ===== FUNCIONES DE AUTENTICACIÓN EN STREAMLIT =====
+def show_login_signup():
+    with st.sidebar:
+        st.markdown("## 🔐 Acceso")
+        menu = st.radio("", ["Iniciar sesión", "Registrarse"], key="auth_menu")
+        email = st.text_input("Email", key="auth_email")
+        password = st.text_input("Contraseña", type="password", key="auth_password")
+        
+        if menu == "Registrarse":
+            if st.button("Registrar", key="register_btn"):
+                if register_user(email, password):
+                    st.success("Registro exitoso. Ahora inicia sesión.")
+                else:
+                    st.error("El email ya está registrado.")
+        else:
+            if st.button("Ingresar", key="login_btn"):
+                user = login_user(email, password)
+                if user:
+                    st.session_state.user = user
+                    st.success("Sesión iniciada")
+                    st.rerun()
+                else:
+                    st.error("Email o contraseña incorrectos")
+
+def logout():
+    if st.sidebar.button("Cerrar sesión"):
+        del st.session_state.user
+        st.rerun()
+
+# ===== FUNCIÓN DE SUSCRIPCIÓN MODIFICADA PARA PRESERVAR POLÍGONO =====
+def check_subscription():
+    """
+    Verifica suscripción SIN perder el polígono cargado.
+    """
+    # Guardar referencia al polígono antes de cualquier redirección
+    gdf_temp = st.session_state.get('gdf_original', None)
+    
+    if 'user' not in st.session_state:
+        show_login_signup()
+        # Restaurar polígono si existía
+        if gdf_temp is not None:
+            st.session_state.gdf_original = gdf_temp
+        st.stop()
+    
+    # Modo DEMO - mantener polígono
+    if st.session_state.get('demo_mode', False):
+        with st.sidebar:
+            st.markdown(f"👤 Usuario: {st.session_state.user['email']} (Modo DEMO)")
+            if st.button("💳 Actualizar a Premium", key="upgrade_from_demo"):
+                st.session_state.demo_mode = False
+                st.session_state.payment_intent = True
+                # NO borrar gdf_original
+                st.rerun()
+            logout()
+        return
+    
+    with st.sidebar:
+        st.markdown(f"👤 Usuario: {st.session_state.user['email']}")
+        logout()
+    
+    user = st.session_state.user
+    expiry = user.get('subscription_expires')
+    if expiry:
+        try:
+            expiry_date = datetime.fromisoformat(expiry)
+            if expiry_date > datetime.now():
+                dias_restantes = (expiry_date - datetime.now()).days
+                st.sidebar.info(f"✅ Suscripción activa (vence en {dias_restantes} días)")
+                st.session_state.demo_mode = False
+                return True
+        except:
+            pass
+    
+    st.warning("🔒 Tu suscripción ha expirado o no tienes una activa.")
+    st.markdown("### ¿Cómo deseas continuar?")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("#### 💳 Pagar ahora")
+        st.write("Obtén acceso completo a datos satelitales reales y todas las funciones por **150 USD/mes**.")
+        if st.button("💵 Ir a pagar", key="pay_now"):
+            st.session_state.payment_intent = True
+            st.rerun()
+    with col2:
+        st.markdown("#### 🆓 Modo DEMO")
+        st.write("Continúa con datos simulados y funcionalidad limitada. (Sin guardar resultados)")
+        if st.button("🎮 Continuar con DEMO", key="demo_button"):
+            st.session_state.demo_mode = True
+            st.rerun()
+    
+    if st.session_state.get('payment_intent', False):
+        st.markdown("### 💳 Pago con Mercado Pago")
+        st.write("Paga con tarjeta de crédito, débito o efectivo (en USD).")
+        if st.button("💵 Pagar ahora 150 USD", key="pay_mp"):
+            init_point, pref_id = create_preference(user['email'])
+            if init_point:
+                st.session_state.pref_id = pref_id
+                st.markdown(f"[Haz clic aquí para pagar]({init_point})")
+                st.info("Serás redirigido a Mercado Pago. Luego de pagar, regresa a esta página.")
+            else:
+                st.error("No se pudo generar el link de pago. Verifica la configuración de Mercado Pago.")
+        
+        st.markdown("### 🏦 Transferencia bancaria")
+        st.write("También puedes pagar por transferencia (USD) a:")
+        st.code("CBU: 3220001888034378480018\nAlias: inflar.pacu.inaudita")
+        st.write("Luego envía el comprobante a **mawucano@gmail.com** para activar tu suscripción manualmente.")
+        
+        query_params = st.query_params
+        if 'payment' in query_params and query_params['payment'] == 'success' and 'collection_id' in query_params:
+            payment_id = query_params['collection_id']
+            if check_payment_status(payment_id):
+                st.success("✅ ¡Pago aprobado! Tu suscripción ha sido activada por 30 días.")
+                updated_user = get_user_by_email(user['email'])
+                if updated_user:
+                    st.session_state.user = updated_user
+                st.session_state.demo_mode = False
+                st.session_state.payment_intent = False
+                st.rerun()
+            else:
+                st.error("No se pudo verificar el pago. Contacta a soporte.")
+        st.stop()
+    
+    st.stop()
 
 # ===== CONFIGURACIÓN DE PÁGINA =====
 st.set_page_config(page_title="Analizador de Viñedos y Olivares", page_icon="🍇", layout="wide", initial_sidebar_state="expanded")
@@ -168,7 +439,7 @@ def init_session_state():
         'geojson_data': None,
         'analisis_completado': False,
         'resultados_todos': {},
-        'palmas_detectadas': [],  # Mantenemos el nombre de variable por compatibilidad, pero se refiere a plantas
+        'plantas_detectadas': [],
         'archivo_cargado': False,
         'gdf_original': None,
         'datos_modis': {},
@@ -177,12 +448,15 @@ def init_session_state():
         'n_divisiones': 16,
         'fecha_inicio': datetime.now() - timedelta(days=60),
         'fecha_fin': datetime.now(),
-        'crop_type': 'Vid',  # Nuevo: tipo de cultivo seleccionado
+        'crop_type': 'Vid',
+        'variedad_seleccionada': 'Tempranillo',
         'textura_suelo': {},
         'textura_por_bloque': [],
         'datos_fertilidad': [],
         'analisis_suelo': True,
         'curvas_nivel': None,
+        'demo_mode': False,
+        'payment_intent': False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -190,8 +464,10 @@ def init_session_state():
 
 init_session_state()
 
+# Verificar suscripción antes de continuar
+check_subscription()
+
 # ===== CONFIGURACIONES =====
-# Listas de variedades para cada cultivo (se pueden expandir)
 VARIEDADES_VID = [
     'Tempranillo', 'Garnacha', 'Cabernet Sauvignon', 'Merlot', 'Syrah',
     'Chardonnay', 'Sauvignon Blanc', 'Malbec', 'Pinot Noir', 'Moscatel'
@@ -408,6 +684,7 @@ def procesar_kml_robusto(file_content):
 def cargar_archivo_plantacion(uploaded_file):
     """
     Carga un archivo de plantación con manejo robusto de errores.
+    Funciona tanto en modo DEMO como PREMIUM.
     """
     try:
         file_content = uploaded_file.read()
@@ -508,7 +785,7 @@ def cargar_archivo_plantacion(uploaded_file):
             st.error("❌ El polígono tiene área cero o inválida")
             return None
         
-        # === Guardar en session state ===
+        # === Guardar en session state para persistir entre modos ===
         st.session_state.gdf_original = gdf_unido
         st.session_state.archivo_cargado = True
         st.session_state.analisis_completado = False
@@ -523,10 +800,88 @@ def cargar_archivo_plantacion(uploaded_file):
         st.code(traceback.format_exc())
         return None
 
-# ===== FUNCIONES PARA DATOS SATELITALES CON EARTHDATA (SILENCIOSAS) =====
+# ===== FUNCIONES DE SIMULACIÓN PARA MODO DEMO =====
+def generar_datos_simulados_completos(gdf_original, n_divisiones, crop_type):
+    gdf_dividido = dividir_plantacion_en_bloques(gdf_original, n_divisiones)
+    areas_ha = []
+    for idx, row in gdf_dividido.iterrows():
+        area_gdf = gpd.GeoDataFrame({'geometry': [row.geometry]}, crs=gdf_dividido.crs)
+        areas_ha.append(float(calcular_superficie(area_gdf)))
+    gdf_dividido['area_ha'] = areas_ha
+    
+    np.random.seed(42)
+    centroides = gdf_dividido.geometry.centroid
+    lons = centroides.x.values
+    lats = centroides.y.values
+    
+    ndvi_vals = 0.5 + 0.2 * np.sin(lons * 10) * np.cos(lats * 10) + 0.1 * np.random.randn(len(lons))
+    ndvi_vals = np.clip(ndvi_vals, 0.2, 0.9)
+    gdf_dividido['ndvi_modis'] = np.round(ndvi_vals, 3)
+    
+    ndwi_vals = 0.3 + 0.15 * np.cos(lons * 5) * np.sin(lats * 5) + 0.1 * np.random.randn(len(lons))
+    ndwi_vals = np.clip(ndwi_vals, 0.1, 0.7)
+    gdf_dividido['ndwi_modis'] = np.round(ndwi_vals, 3)
+    
+    # Edad simulada (difiere entre vid y olivo)
+    if crop_type == 'Vid':
+        edad_base = 5
+        rango = 15
+    else:
+        edad_base = 10
+        rango = 30
+    edades = edad_base + rango * np.random.rand(len(lons))
+    gdf_dividido['edad_anios'] = np.round(edades, 1)
+    
+    def clasificar_salud(ndvi):
+        if ndvi < 0.4: return 'Crítica'
+        if ndvi < 0.6: return 'Baja'
+        if ndvi < 0.75: return 'Moderada'
+        return 'Buena'
+    gdf_dividido['salud'] = gdf_dividido['ndvi_modis'].apply(clasificar_salud)
+    
+    return gdf_dividido
+
+def generar_clima_simulado():
+    dias = 60
+    np.random.seed(42)
+    precip_diaria = np.random.exponential(3, dias) * (np.random.rand(dias) > 0.6)
+    temp_diaria = 25 + 5 * np.sin(np.linspace(0, 4*np.pi, dias)) + np.random.randn(dias)*2
+    rad_diaria = 20 + 5 * np.sin(np.linspace(0, 4*np.pi, dias)) + np.random.randn(dias)*3
+    wind_diaria = 3 + 2 * np.sin(np.linspace(0, 2*np.pi, dias)) + np.random.randn(dias)*1
+    
+    return {
+        'precipitacion': {
+            'total': round(sum(precip_diaria), 1),
+            'maxima_diaria': round(max(precip_diaria), 1),
+            'dias_con_lluvia': int(sum(precip_diaria > 0.1)),
+            'diaria': [round(p, 1) for p in precip_diaria]
+        },
+        'temperatura': {
+            'promedio': round(np.mean(temp_diaria), 1),
+            'maxima': round(np.max(temp_diaria), 1),
+            'minima': round(np.min(temp_diaria), 1),
+            'diaria': [round(t, 1) for t in temp_diaria]
+        },
+        'radiacion': {
+            'promedio': round(np.mean(rad_diaria), 1),
+            'maxima': round(np.max(rad_diaria), 1),
+            'minima': round(np.min(rad_diaria), 1),
+            'diaria': [round(r, 1) for r in rad_diaria]
+        },
+        'viento': {
+            'promedio': round(np.mean(wind_diaria), 1),
+            'maxima': round(np.max(wind_diaria), 1),
+            'diaria': [round(w, 1) for w in wind_diaria]
+        },
+        'periodo': 'Últimos 60 días (simulado)',
+        'fuente': 'Datos simulados (DEMO)'
+    }
+
+# ===== FUNCIONES PARA DATOS SATELITALES CON EARTHDATA (CORREGIDAS) =====
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     """
     Obtiene NDVI real para cada bloque usando MOD13Q1.
+    Con manejo mejorado de errores de descarga (pooch, permisos, etc.)
     """
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess/xarray/rioxarray no instaladas.")
@@ -560,9 +915,15 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         st.info(f"Procesando escena NDVI: {granule['umm']['GranuleUR']}")
 
         temp_dir = tempfile.mkdtemp()
-        downloaded_files = earthaccess.download(granule, local_path=temp_dir)
+        try:
+            downloaded_files = earthaccess.download(granule, local_path=temp_dir)
+        except Exception as e:
+            st.error(f"Error en la descarga con earthaccess: {str(e)}. Usando datos simulados.")
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return None
+
         if not downloaded_files:
-            st.error("No se pudo descargar el archivo.")
+            st.error("No se pudo descargar el archivo (lista vacía).")
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
@@ -575,7 +936,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
         # Verificar que no sea una página HTML de error
         file_size = os.path.getsize(download_path)
-        if file_size < 10240:
+        if file_size < 10240:  # menos de 10KB, probablemente error
             with open(download_path, 'r', errors='ignore') as f:
                 head = f.read(500).lower()
                 if '<html' in head:
@@ -587,7 +948,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         rasterio_success = False
         if RASTERIO_OK:
             try:
-                # Intentar abrir con rasterio (puede fallar si no reconoce el formato)
                 with rasterio.open(download_path) as src:
                     subdatasets = src.subdatasets
                     ndvi_sub = None
@@ -628,6 +988,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             gdf_dividido['ndvi_modis'] = ndvi_values
                             st.success("✅ NDVI calculado por bloque correctamente con rasterio.")
                             rasterio_success = True
+                            shutil.rmtree(temp_dir, ignore_errors=True)
                             return gdf_dividido
 
             except Exception:
@@ -646,6 +1007,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         break
                 if ndvi_dataset is None:
                     st.error("No se encontró dataset NDVI en el archivo HDF.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
                 ndvi_data = hdf.select(ndvi_dataset).get()
@@ -719,17 +1081,21 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
                             gdf_dividido['ndvi_modis'] = ndvi_values
                             st.success("✅ NDVI calculado por bloque correctamente con pyhdf.")
+                            shutil.rmtree(temp_dir, ignore_errors=True)
                             return gdf_dividido
 
                 except Exception as e_meta:
                     st.error(f"No se pudo extraer la geolocalización del archivo HDF: {str(e_meta)}")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
             except Exception as e_pyhdf:
                 st.error(f"Error al procesar con pyhdf: {str(e_pyhdf)}")
+                shutil.rmtree(temp_dir, ignore_errors=True)
                 return None
         elif not rasterio_success:
             st.error("No se pudo leer el archivo HDF: ni rasterio ni pyhdf están disponibles o funcionaron.")
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
     except Exception as e:
@@ -741,6 +1107,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     """
     Obtiene NDWI real para cada bloque usando MOD09GA (bandas NIR y SWIR).
+    Con manejo mejorado de errores de descarga.
     """
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
@@ -774,7 +1141,13 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         st.info(f"Procesando escena NDWI: {granule['umm']['GranuleUR']}")
 
         temp_dir = tempfile.mkdtemp()
-        downloaded_files = earthaccess.download(granule, local_path=temp_dir)
+        try:
+            downloaded_files = earthaccess.download(granule, local_path=temp_dir)
+        except Exception as e:
+            st.error(f"Error en la descarga con earthaccess: {str(e)}. Usando datos simulados.")
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return None
+
         if not downloaded_files:
             st.error("No se pudo descargar el archivo.")
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -851,6 +1224,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             gdf_dividido['ndwi_modis'] = ndwi_values
                             st.success("✅ NDWI calculado por bloque correctamente con rasterio.")
                             rasterio_success = True
+                            shutil.rmtree(temp_dir, ignore_errors=True)
                             return gdf_dividido
 
             except Exception:
@@ -870,6 +1244,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         swir_data = hdf.select(name).get()
                 if nir_data is None or swir_data is None:
                     st.error("No se encontraron las bandas NIR o SWIR con pyhdf.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
                 nir = nir_data.astype(np.float32) * 0.0001
@@ -945,17 +1320,21 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
                             gdf_dividido['ndwi_modis'] = ndwi_values
                             st.success("✅ NDWI calculado por bloque correctamente con pyhdf.")
+                            shutil.rmtree(temp_dir, ignore_errors=True)
                             return gdf_dividido
 
                 except Exception as e_meta:
                     st.error(f"No se pudo extraer la geolocalización del archivo HDF: {str(e_meta)}")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
             except Exception as e_pyhdf:
                 st.error(f"Error al procesar con pyhdf: {str(e_pyhdf)}")
+                shutil.rmtree(temp_dir, ignore_errors=True)
                 return None
         elif not rasterio_success:
             st.error("No se pudo leer el archivo HDF: ni rasterio ni pyhdf están disponibles o funcionaron.")
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
     except Exception as e:
@@ -1119,18 +1498,20 @@ def generar_datos_climaticos_simulados(gdf, fecha_inicio, fecha_fin):
             'fuente': 'Simulado (fallback)'
         }
 
-def analizar_edad_plantacion(gdf_dividido):
+def analizar_edad_plantacion(gdf_dividido, crop_type):
     edades = []
     for idx, row in gdf_dividido.iterrows():
         try:
             centroid = row.geometry.centroid
             lat_norm = (centroid.y + 90) / 180
             lon_norm = (centroid.x + 180) / 360
-            # Simulación de edad, se puede ajustar según cultivo
-            edad = 2 + (lat_norm * lon_norm * 18)
+            if crop_type == 'Vid':
+                edad = 2 + (lat_norm * lon_norm * 18)  # vid: hasta 20 años
+            else:
+                edad = 5 + (lat_norm * lon_norm * 40)  # olivo: hasta 45 años
             edades.append(round(edad, 1))
         except:
-            edades.append(10.0)
+            edades.append(10.0 if crop_type == 'Vid' else 20.0)
     return edades
 
 # ===== DETECCIÓN DE PLANTAS =====
@@ -1145,8 +1526,11 @@ def verificar_puntos_en_poligono(puntos, gdf):
                 puntos_dentro.append(punto)
     return puntos_dentro
 
-def mejorar_deteccion_palmas(gdf, densidad=130):
-    # Esta función se mantiene con el nombre "palmas" por compatibilidad, pero detecta plantas en general
+def mejorar_deteccion_plantas(gdf, densidad=130, crop_type='Vid'):
+    """
+    Detecta plantas individuales en el polígono.
+    Los tamaños se ajustan según el cultivo.
+    """
     try:
         bounds = gdf.total_bounds
         min_lon, min_lat, max_lon, max_lat = bounds
@@ -1155,7 +1539,7 @@ def mejorar_deteccion_palmas(gdf, densidad=130):
         area_ha = area_m2 / 10000
         if area_ha <= 0:
             return {'detectadas': [], 'total': 0}
-        num_palmas_objetivo = int(area_ha * densidad)
+        num_plantas_objetivo = int(area_ha * densidad)
         espaciado_grados = 9 / 111000
         x_coords = []
         y_coords = []
@@ -1171,45 +1555,51 @@ def mejorar_deteccion_palmas(gdf, densidad=130):
             if i % 2 == 1:
                 x_coords[i] += espaciado_grados / 2
         plantacion_union = gdf.unary_union
-        palmas = []
+        plantas = []
         for i in range(len(x_coords)):
-            if len(palmas) >= num_palmas_objetivo:
+            if len(plantas) >= num_plantas_objetivo:
                 break
             point = Point(x_coords[i], y_coords[i])
             if plantacion_union.contains(point):
                 lon = x_coords[i] + np.random.normal(0, espaciado_grados * 0.1)
                 lat = y_coords[i] + np.random.normal(0, espaciado_grados * 0.1)
-                # Para vid y olivo, los diámetros y áreas pueden variar; se mantienen valores genéricos
-                palmas.append({
+                if crop_type == 'Vid':
+                    area_m2 = np.random.uniform(1, 4)       # vid: copa pequeña
+                    diametro = np.random.uniform(1.0, 2.5)
+                else:
+                    area_m2 = np.random.uniform(4, 12)      # olivo: copa más grande
+                    diametro = np.random.uniform(2.0, 4.0)
+                plantas.append({
                     'centroide': (lon, lat),
-                    'area_m2': np.random.uniform(2, 8),  # Área de copa más pequeña
+                    'area_m2': area_m2,
                     'circularidad': np.random.uniform(0.7, 0.95),
-                    'diametro_aprox': np.random.uniform(1.5, 3.5),
+                    'diametro_aprox': diametro,
                     'simulado': True
                 })
         return {
-            'detectadas': palmas,
-            'total': len(palmas),
+            'detectadas': plantas,
+            'total': len(plantas),
             'patron': 'hexagonal adaptativo',
-            'densidad_calculada': len(palmas) / area_ha,
+            'densidad_calculada': len(plantas) / area_ha,
             'area_ha': area_ha
         }
     except Exception as e:
         print(f"Error en detección mejorada: {e}")
         return {'detectadas': [], 'total': 0}
 
-def ejecutar_deteccion_palmas():
+def ejecutar_deteccion_plantas():
     if st.session_state.gdf_original is None:
         st.error("Primero debe cargar un archivo de plantación")
         return
     with st.spinner("Ejecutando detección de plantas..."):
         gdf = st.session_state.gdf_original
         densidad = st.session_state.get('densidad_personalizada', 130)
-        resultados = mejorar_deteccion_palmas(gdf, densidad)
-        palmas_verificadas = verificar_puntos_en_poligono(resultados['detectadas'], gdf)
-        st.session_state.palmas_detectadas = palmas_verificadas
+        crop_type = st.session_state.crop_type
+        resultados = mejorar_deteccion_plantas(gdf, densidad, crop_type)
+        plantas_verificadas = verificar_puntos_en_poligono(resultados['detectadas'], gdf)
+        st.session_state.plantas_detectadas = plantas_verificadas
         st.session_state.deteccion_ejecutada = True
-        st.success(f"✅ Detección completada: {len(palmas_verificadas)} plantas detectadas")
+        st.success(f"✅ Detección completada: {len(plantas_verificadas)} plantas detectadas")
 
 def crear_graficos_climaticos_completos(datos_climaticos):
     longitudes = []
@@ -1944,56 +2334,69 @@ def ejecutar_analisis_completo():
         fecha_inicio = st.session_state.get('fecha_inicio', datetime.now() - timedelta(days=60))
         fecha_fin = st.session_state.get('fecha_fin', datetime.now())
         gdf = st.session_state.gdf_original.copy()
+        crop_type = st.session_state.crop_type
         
-        # Modo sin autenticación: siempre se intenta con datos reales (si hay credenciales) o simulados
-        st.info("🛰️ Obteniendo datos satelitales desde Earthdata...")
-        gdf_dividido = dividir_plantacion_en_bloques(gdf, n_divisiones)
-        areas_ha = []
-        for idx, row in gdf_dividido.iterrows():
-            area_gdf = gpd.GeoDataFrame({'geometry': [row.geometry]}, crs=gdf_dividido.crs)
-            areas_ha.append(float(calcular_superficie(area_gdf)))
-        gdf_dividido['area_ha'] = areas_ha
-
-        # 1. Obtener NDVI real
-        st.info("🛰️ Obteniendo NDVI desde Earthdata (MOD13Q1)...")
-        resultado_ndvi = obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
-        if resultado_ndvi is None:
-            st.error("No se pudo obtener NDVI real. Verifique su conexión y credenciales de Earthdata. Usando datos simulados.")
-            # Fallback a simulación
-            gdf_dividido['ndvi_modis'] = np.random.uniform(0.3, 0.9, len(gdf_dividido))
+        if st.session_state.demo_mode:
+            st.info("🎮 Modo DEMO activo: usando datos simulados.")
+            gdf_dividido = generar_datos_simulados_completos(gdf, n_divisiones, crop_type)
+            st.session_state.datos_climaticos = generar_clima_simulado()
+            st.session_state.datos_modis = {
+                'ndvi': gdf_dividido['ndvi_modis'].mean(),
+                'ndwi': gdf_dividido['ndwi_modis'].mean(),
+                'fecha': fecha_inicio.strftime('%Y-%m-%d'),
+                'fuente': 'Datos simulados (DEMO)'
+            }
         else:
-            gdf_dividido = resultado_ndvi
-            fuente_ndvi = "Earthdata MOD13Q1"
+            # Modo PREMIUM: obtener datos reales con Earthdata
+            gdf_dividido = dividir_plantacion_en_bloques(gdf, n_divisiones)
+            areas_ha = []
+            for idx, row in gdf_dividido.iterrows():
+                area_gdf = gpd.GeoDataFrame({'geometry': [row.geometry]}, crs=gdf_dividido.crs)
+                areas_ha.append(float(calcular_superficie(area_gdf)))
+            gdf_dividido['area_ha'] = areas_ha
 
-        # 2. Obtener NDWI real
-        st.info("💧 Obteniendo NDWI desde Earthdata (MOD09GA)...")
-        resultado_ndwi = obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
-        if resultado_ndwi is None:
-            st.error("No se pudo obtener NDWI real. Verifique su conexión y credenciales de Earthdata. Usando datos simulados.")
-            gdf_dividido['ndwi_modis'] = np.random.uniform(0.1, 0.6, len(gdf_dividido))
-        else:
-            gdf_dividido = resultado_ndwi
-            fuente_ndwi = "Earthdata MOD09GA"
+            # 1. Obtener NDVI real
+            st.info("🛰️ Obteniendo NDVI desde Earthdata (MOD13Q1)...")
+            resultado_ndvi = obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
+            if resultado_ndvi is None:
+                st.error("No se pudo obtener NDVI real. Usando datos simulados como fallback.")
+                # Fallback a datos simulados
+                gdf_dividido['ndvi_modis'] = np.random.uniform(0.3, 0.9, len(gdf_dividido))
+                fuente_ndvi = "Simulado (fallback)"
+            else:
+                gdf_dividido = resultado_ndvi
+                fuente_ndvi = "Earthdata MOD13Q1"
 
-        # 3. Datos climáticos (con protección contra None)
-        st.info("🌦️ Obteniendo datos climáticos de Open-Meteo ERA5...")
-        datos_clima = obtener_clima_openmeteo(gdf, fecha_inicio, fecha_fin) or {}
-        st.info("☀️ Obteniendo radiación y viento de NASA POWER...")
-        datos_power = obtener_radiacion_viento_power(gdf, fecha_inicio, fecha_fin) or {}
-        st.session_state.datos_climaticos = {**datos_clima, **datos_power}
+            # 2. Obtener NDWI real
+            st.info("💧 Obteniendo NDWI desde Earthdata (MOD09GA)...")
+            resultado_ndwi = obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
+            if resultado_ndwi is None:
+                st.error("No se pudo obtener NDWI real. Usando datos simulados como fallback.")
+                gdf_dividido['ndwi_modis'] = np.random.uniform(0.1, 0.6, len(gdf_dividido))
+                fuente_ndwi = "Simulado (fallback)"
+            else:
+                gdf_dividido = resultado_ndwi
+                fuente_ndwi = "Earthdata MOD09GA"
 
-        # 4. Edad simulada (se mantiene como simulación simple)
-        edades = analizar_edad_plantacion(gdf_dividido)
-        gdf_dividido['edad_anios'] = edades
+            # 3. Datos climáticos (con protección contra None)
+            st.info("🌦️ Obteniendo datos climáticos de Open-Meteo ERA5...")
+            datos_clima = obtener_clima_openmeteo(gdf, fecha_inicio, fecha_fin) or {}
+            st.info("☀️ Obteniendo radiación y viento de NASA POWER...")
+            datos_power = obtener_radiacion_viento_power(gdf, fecha_inicio, fecha_fin) or {}
+            st.session_state.datos_climaticos = {**datos_clima, **datos_power}
 
-        st.session_state.datos_modis = {
-            'ndvi': gdf_dividido['ndvi_modis'].mean(),
-            'ndwi': gdf_dividido['ndwi_modis'].mean(),
-            'fecha': fecha_inicio.strftime('%Y-%m-%d'),
-            'fuente': f"NDVI: {fuente_ndvi if 'fuente_ndvi' in locals() else 'Simulado'}, NDWI: {fuente_ndwi if 'fuente_ndwi' in locals() else 'Simulado'}"
-        }
+            # 4. Edad simulada (se mantiene como simulación simple)
+            edades = analizar_edad_plantacion(gdf_dividido, crop_type)
+            gdf_dividido['edad_anios'] = edades
 
-        # Clasificar salud (común para vid y olivo)
+            st.session_state.datos_modis = {
+                'ndvi': gdf_dividido['ndvi_modis'].mean(),
+                'ndwi': gdf_dividido['ndwi_modis'].mean(),
+                'fecha': fecha_inicio.strftime('%Y-%m-%d'),
+                'fuente': f"NDVI: {fuente_ndvi}, NDWI: {fuente_ndwi}"
+            }
+
+        # Clasificar salud (común)
         def clasificar_salud(ndvi):
             if ndvi < 0.4: return 'Crítica'
             if ndvi < 0.6: return 'Baja'
@@ -2271,17 +2674,21 @@ if st.session_state.archivo_cargado and st.session_state.gdf_original is not Non
         with col_btn2:
             if deteccion_habilitada:
                 if st.button("🔍 DETECTAR PLANTAS", use_container_width=True):
-                    ejecutar_deteccion_palmas()
+                    ejecutar_deteccion_plantas()
                     st.rerun()
 else:
     # Si no hay archivo cargado, mostrar un mensaje amigable
     st.info("👆 Por favor, sube un archivo de plantación en la barra lateral para comenzar.")
     st.markdown("""
     ### ¿Cómo empezar?
-    1. Sube un archivo con el polígono de tu plantación (formatos: Shapefile .zip, KML, KMZ, GeoJSON).
-    2. Configura los parámetros de análisis.
-    3. Haz clic en **EJECUTAR ANÁLISIS** para obtener resultados.
+    1. Inicia sesión o regístrate.
+    2. Sube un archivo con el polígono de tu plantación (formatos: Shapefile .zip, KML, KMZ, GeoJSON).
+    3. Configura los parámetros de análisis.
+    4. Haz clic en **EJECUTAR ANÁLISIS** para obtener resultados.
     """)
+    # Mensaje específico para modo DEMO
+    if st.session_state.demo_mode:
+        st.info("🎮 Estás en modo DEMO. **Sube tu propio archivo** (KML, KMZ o ZIP con shapefile) para ejecutar el análisis con datos simulados.")
 
 # ===== PESTAÑAS DE RESULTADOS =====
 if st.session_state.analisis_completado:
@@ -2426,14 +2833,14 @@ if st.session_state.analisis_completado:
                     tooltip_fields=['id_bloque','ndvi_modis','salud'],
                     tooltip_aliases=['Bloque','NDVI','Salud']
                 )
-                if st.session_state.palmas_detectadas:
-                    palmas_group = folium.FeatureGroup(name="Plantas detectadas")
-                    for i, palma in enumerate(st.session_state.palmas_detectadas[:2000]):
-                        if 'centroide' in palma:
-                            lon, lat = palma['centroide']
+                if st.session_state.plantas_detectadas:
+                    plantas_group = folium.FeatureGroup(name="Plantas detectadas")
+                    for i, planta in enumerate(st.session_state.plantas_detectadas[:2000]):
+                        if 'centroide' in planta:
+                            lon, lat = planta['centroide']
                             folium.CircleMarker([lat, lon], radius=2, color='red', fill=True,
-                                                fill_color='red', fill_opacity=0.8).add_to(palmas_group)
-                    palmas_group.add_to(mapa_interactivo)
+                                                fill_color='red', fill_opacity=0.8).add_to(plantas_group)
+                    plantas_group.add_to(mapa_interactivo)
                     folium.LayerControl().add_to(mapa_interactivo)
                 if mapa_interactivo:
                     folium_static(mapa_interactivo, width=1000, height=600)
@@ -2499,49 +2906,49 @@ if st.session_state.analisis_completado:
         
         with tab5:
             st.subheader("🌴 DETECCIÓN DE PLANTAS INDIVIDUALES")
-            if st.session_state.deteccion_ejecutada and st.session_state.palmas_detectadas:
-                palmas = st.session_state.palmas_detectadas
-                total = len(palmas)
+            if st.session_state.deteccion_ejecutada and st.session_state.plantas_detectadas:
+                plantas = st.session_state.plantas_detectadas
+                total = len(plantas)
                 area_total_val = resultados.get('area_total', 0)
                 densidad = total / area_total_val if area_total_val > 0 else 0
                 st.success(f"✅ Detección completada: {total} plantas detectadas")
                 col1, col2, col3, col4 = st.columns(4)
                 with col1: st.metric("Plantas detectadas", f"{total:,}")
                 with col2: st.metric("Densidad", f"{densidad:.0f} plantas/ha")
-                with col3: st.metric("Área promedio", f"{np.mean([p.get('area_m2',0) for p in palmas]):.1f} m²")
-                with col4: st.metric("Diámetro promedio", f"{np.mean([p.get('diametro_aprox',0) for p in palmas]):.1f} m")
+                with col3: st.metric("Área promedio", f"{np.mean([p.get('area_m2',0) for p in plantas]):.1f} m²")
+                with col4: st.metric("Diámetro promedio", f"{np.mean([p.get('diametro_aprox',0) for p in plantas]):.1f} m")
                 st.markdown("### 🗺️ Mapa de Distribución")
                 try:
                     centroide = gdf_completo.geometry.unary_union.centroid
-                    m_palmas = folium.Map(location=[centroide.y, centroide.x], zoom_start=16, tiles=None)
-                    folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr='Esri', name='Satélite').add_to(m_palmas)
-                    folium.GeoJson(gdf_completo.to_json(), style_function=lambda x: {'color':'blue','fillOpacity':0.1}).add_to(m_palmas)
-                    for i, palma in enumerate(palmas[:2000]):
-                        if 'centroide' in palma:
-                            lon, lat = palma['centroide']
+                    m_plantas = folium.Map(location=[centroide.y, centroide.x], zoom_start=16, tiles=None)
+                    folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr='Esri', name='Satélite').add_to(m_plantas)
+                    folium.GeoJson(gdf_completo.to_json(), style_function=lambda x: {'color':'blue','fillOpacity':0.1}).add_to(m_plantas)
+                    for i, planta in enumerate(plantas[:2000]):
+                        if 'centroide' in planta:
+                            lon, lat = planta['centroide']
                             folium.CircleMarker([lat, lon], radius=2, color='red', fill=True, 
                                                 fill_color='red', fill_opacity=0.8,
-                                                tooltip=f"Planta #{i+1}").add_to(m_palmas)
-                    folium.LayerControl().add_to(m_palmas); Fullscreen().add_to(m_palmas)
-                    folium_static(m_palmas, width=1000, height=600)
+                                                tooltip=f"Planta #{i+1}").add_to(m_plantas)
+                    folium.LayerControl().add_to(m_plantas); Fullscreen().add_to(m_plantas)
+                    folium_static(m_plantas, width=1000, height=600)
                 except Exception as e:
                     st.error(f"Error al mostrar mapa de plantas: {str(e)[:100]}")
-                if palmas:
+                if plantas:
                     try:
-                        df_palmas = pd.DataFrame([{
+                        df_plantas = pd.DataFrame([{
                             'id': i+1, 'longitud': p.get('centroide', (0,0))[0], 'latitud': p.get('centroide', (0,0))[1],
                             'area_m2': p.get('area_m2', 0), 'diametro_m': p.get('diametro_aprox', 0)
-                        } for i,p in enumerate(palmas)])
-                        gdf_palmas = gpd.GeoDataFrame(df_palmas, geometry=gpd.points_from_xy(df_palmas.longitud, df_palmas.latitud), crs='EPSG:4326')
-                        geojson_palmas = gdf_palmas.to_json(); csv_palmas = df_palmas.to_csv(index=False)
+                        } for i,p in enumerate(plantas)])
+                        gdf_plantas = gpd.GeoDataFrame(df_plantas, geometry=gpd.points_from_xy(df_plantas.longitud, df_plantas.latitud), crs='EPSG:4326')
+                        geojson_plantas = gdf_plantas.to_json(); csv_plantas = df_plantas.to_csv(index=False)
                         col_p1, col_p2 = st.columns(2)
-                        with col_p1: st.download_button("🗺️ GeoJSON", geojson_palmas, f"plantas_{datetime.now():%Y%m%d}.geojson", "application/geo+json")
-                        with col_p2: st.download_button("📊 CSV", csv_palmas, f"coordenadas_{datetime.now():%Y%m%d}.csv", "text/csv")
+                        with col_p1: st.download_button("🗺️ GeoJSON", geojson_plantas, f"plantas_{datetime.now():%Y%m%d}.geojson", "application/geo+json")
+                        with col_p2: st.download_button("📊 CSV", csv_plantas, f"coordenadas_{datetime.now():%Y%m%d}.csv", "text/csv")
                     except: st.info("No se pudieron exportar los datos")
             else:
                 st.info("La detección de plantas no se ha ejecutado aún.")
-                if st.button("🔍 EJECUTAR DETECCIÓN DE PLANTAS", key="detectar_palmas_tab5", use_container_width=True):
-                    ejecutar_deteccion_palmas()
+                if st.button("🔍 EJECUTAR DETECCIÓN DE PLANTAS", key="detectar_plantas_tab5", use_container_width=True):
+                    ejecutar_deteccion_plantas()
                     st.rerun()
         
         with tab6:
@@ -2646,6 +3053,8 @@ if st.session_state.analisis_completado:
         
         with tab8:
             st.subheader("🗺️ CURVAS DE NIVEL MEJORADAS")
+            if st.session_state.demo_mode:
+                st.info("ℹ️ En modo DEMO se muestran curvas de nivel simuladas. Para curvas reales, adquiere la suscripción PREMIUM.")
             st.markdown("""
             **Modelo de elevación:** SRTM 1 arc-seg (30 m) · Fuente: OpenTopography  
             Para datos reales, obtén una **API key gratuita** [aquí](https://opentopography.org/).  
@@ -2660,7 +3069,7 @@ if st.session_state.analisis_completado:
                     if gdf_original is None:
                         st.error("Primero debe cargar una plantación.")
                     else:
-                        if api_key:
+                        if not st.session_state.demo_mode and api_key:
                             dem, meta, transform = obtener_dem_opentopography(gdf_original, api_key if api_key else None)
                             if dem is not None:
                                 curvas = generar_curvas_nivel_reales(dem, transform, intervalo)
@@ -2693,78 +3102,81 @@ if st.session_state.analisis_completado:
         
         with tab9:
             st.subheader("🐛 Detección de Enfermedades y Plagas con YOLO")
-            if not YOLO_AVAILABLE or not CV2_AVAILABLE:
-                st.warning("⚠️ Esta función requiere las librerías 'ultralytics' y 'opencv-python'. Para instalarlas, ejecuta: `pip install ultralytics opencv-python`")
+            if st.session_state.demo_mode:
+                st.warning("⚠️ La detección YOLO solo está disponible en modo PREMIUM. Adquiere una suscripción para usar esta función.")
             else:
-                st.markdown("""
-                Esta herramienta utiliza modelos YOLO para detectar automáticamente signos de enfermedades o plagas en imágenes de vid u olivo.
-                - **Sube una imagen** (JPG, PNG) tomada con drone o cámara.
-                - **Carga un modelo YOLO** pre-entrenado (formato `.pt` de PyTorch o `.onnx`).
-                - Ajusta el **umbral de confianza** para filtrar detecciones débiles.
-                """)
-
-                col1, col2 = st.columns(2)
-                with col1:
-                    archivo_imagen = st.file_uploader("📸 Subir imagen (RGB)", type=['jpg', 'jpeg', 'png'], key="yolo_img")
-                with col2:
-                    archivo_modelo = st.file_uploader("🤖 Cargar modelo YOLO (.pt o .onnx)", type=['pt', 'onnx'], key="yolo_model")
-
-                umbral_confianza = st.slider("Umbral de confianza", min_value=0.1, max_value=0.9, value=0.25, step=0.05)
-
-                if archivo_imagen is not None and archivo_modelo is not None:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(archivo_modelo.name)[1]) as tmp_model:
-                        tmp_model.write(archivo_modelo.read())
-                        ruta_modelo_tmp = tmp_model.name
-
-                    imagen_bytes = archivo_imagen.read()
-                    imagen_pil = Image.open(io.BytesIO(imagen_bytes))
-                    imagen_cv = cv2.cvtColor(np.array(imagen_pil), cv2.COLOR_RGB2BGR)
-
-                    modelo = cargar_modelo_yolo(ruta_modelo_tmp)
-
-                    if modelo is not None:
-                        st.info("🔄 Ejecutando inferencia...")
-                        resultados_yolo = detectar_en_imagen(modelo, imagen_cv, conf_threshold=umbral_confianza)
-
-                        if resultados_yolo and len(resultados_yolo) > 0:
-                            img_anotada, detecciones = dibujar_detecciones_con_leyenda(imagen_cv, resultados_yolo)
-
-                            st.success(f"✅ Se detectaron {len(detecciones)} objetos.")
-
-                            img_rgb = cv2.cvtColor(img_anotada, cv2.COLOR_BGR2RGB)
-                            st.image(img_rgb, caption="Imagen con detecciones", use_container_width=True)
-
-                            leyenda_html = crear_leyenda_html(detecciones)
-                            st.markdown(leyenda_html, unsafe_allow_html=True)
-
-                            st.markdown("### 📥 Exportar resultados")
-                            img_pil_export = Image.fromarray(cv2.cvtColor(img_anotada, cv2.COLOR_BGR2RGB))
-                            buf = io.BytesIO()
-                            img_pil_export.save(buf, format='PNG')
-                            byte_im = buf.getvalue()
-
-                            df_detecciones = pd.DataFrame(detecciones)
-                            if 'color' in df_detecciones.columns:
-                                df_detecciones = df_detecciones.drop(columns=['color'])
-                            csv_detecciones = df_detecciones.to_csv(index=False)
-
-                            col_dl1, col_dl2 = st.columns(2)
-                            with col_dl1:
-                                st.download_button("📸 Imagen anotada (PNG)", byte_im,
-                                                   f"deteccion_yolo_{datetime.now():%Y%m%d_%H%M%S}.png",
-                                                   "image/png")
-                            with col_dl2:
-                                st.download_button("📊 CSV detecciones", csv_detecciones,
-                                                   f"detecciones_{datetime.now():%Y%m%d_%H%M%S}.csv",
-                                                   "text/csv")
-                        else:
-                            st.warning("No se detectaron objetos con el umbral de confianza actual.")
-                    else:
-                        st.error("No se pudo cargar el modelo. Asegúrate de que sea un archivo válido.")
-
-                    os.unlink(ruta_modelo_tmp)
+                if not YOLO_AVAILABLE or not CV2_AVAILABLE:
+                    st.error("⚠️ Las librerías 'ultralytics' u 'opencv-python' no están instaladas. Para usar esta función, ejecuta: `pip install ultralytics opencv-python`")
                 else:
-                    st.info("👆 Sube una imagen y un modelo YOLO para comenzar.")
+                    st.markdown("""
+                    Esta herramienta utiliza modelos YOLO para detectar automáticamente signos de enfermedades o plagas en imágenes de vid u olivo.
+                    - **Sube una imagen** (JPG, PNG) tomada con drone o cámara.
+                    - **Carga un modelo YOLO** pre-entrenado (formato `.pt` de PyTorch o `.onnx`).
+                    - Ajusta el **umbral de confianza** para filtrar detecciones débiles.
+                    """)
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        archivo_imagen = st.file_uploader("📸 Subir imagen (RGB)", type=['jpg', 'jpeg', 'png'], key="yolo_img")
+                    with col2:
+                        archivo_modelo = st.file_uploader("🤖 Cargar modelo YOLO (.pt o .onnx)", type=['pt', 'onnx'], key="yolo_model")
+
+                    umbral_confianza = st.slider("Umbral de confianza", min_value=0.1, max_value=0.9, value=0.25, step=0.05)
+
+                    if archivo_imagen is not None and archivo_modelo is not None:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(archivo_modelo.name)[1]) as tmp_model:
+                            tmp_model.write(archivo_modelo.read())
+                            ruta_modelo_tmp = tmp_model.name
+
+                        imagen_bytes = archivo_imagen.read()
+                        imagen_pil = Image.open(io.BytesIO(imagen_bytes))
+                        imagen_cv = cv2.cvtColor(np.array(imagen_pil), cv2.COLOR_RGB2BGR)
+
+                        modelo = cargar_modelo_yolo(ruta_modelo_tmp)
+
+                        if modelo is not None:
+                            st.info("🔄 Ejecutando inferencia...")
+                            resultados_yolo = detectar_en_imagen(modelo, imagen_cv, conf_threshold=umbral_confianza)
+
+                            if resultados_yolo and len(resultados_yolo) > 0:
+                                img_anotada, detecciones = dibujar_detecciones_con_leyenda(imagen_cv, resultados_yolo)
+
+                                st.success(f"✅ Se detectaron {len(detecciones)} objetos.")
+
+                                img_rgb = cv2.cvtColor(img_anotada, cv2.COLOR_BGR2RGB)
+                                st.image(img_rgb, caption="Imagen con detecciones", use_container_width=True)
+
+                                leyenda_html = crear_leyenda_html(detecciones)
+                                st.markdown(leyenda_html, unsafe_allow_html=True)
+
+                                st.markdown("### 📥 Exportar resultados")
+                                img_pil_export = Image.fromarray(cv2.cvtColor(img_anotada, cv2.COLOR_BGR2RGB))
+                                buf = io.BytesIO()
+                                img_pil_export.save(buf, format='PNG')
+                                byte_im = buf.getvalue()
+
+                                df_detecciones = pd.DataFrame(detecciones)
+                                if 'color' in df_detecciones.columns:
+                                    df_detecciones = df_detecciones.drop(columns=['color'])
+                                csv_detecciones = df_detecciones.to_csv(index=False)
+
+                                col_dl1, col_dl2 = st.columns(2)
+                                with col_dl1:
+                                    st.download_button("📸 Imagen anotada (PNG)", byte_im,
+                                                       f"deteccion_yolo_{datetime.now():%Y%m%d_%H%M%S}.png",
+                                                       "image/png")
+                                with col_dl2:
+                                    st.download_button("📊 CSV detecciones", csv_detecciones,
+                                                       f"detecciones_{datetime.now():%Y%m%d_%H%M%S}.csv",
+                                                       "text/csv")
+                            else:
+                                st.warning("No se detectaron objetos con el umbral de confianza actual.")
+                        else:
+                            st.error("No se pudo cargar el modelo. Asegúrate de que sea un archivo válido.")
+
+                        os.unlink(ruta_modelo_tmp)
+                    else:
+                        st.info("👆 Sube una imagen y un modelo YOLO para comenzar.")
 
 # ===== PIE DE PÁGINA =====
 st.markdown("---")
