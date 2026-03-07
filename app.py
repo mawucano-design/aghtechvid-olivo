@@ -87,40 +87,6 @@ EARTHDATA_PASSWORD = os.environ.get("EARTHDATA_PASSWORD")
 # ===== CONFIGURACIÓN DE PÁGINA =====
 st.set_page_config(page_title="Analizador de Vid y Olivo", page_icon="🍇", layout="wide", initial_sidebar_state="expanded")
 
-# ===== INICIALIZACIÓN DE SESIÓN =====
-def init_session_state():
-    defaults = {
-        'geojson_data': None,
-        'analisis_completado': False,
-        'resultados_todos': {},
-        'plantas_detectadas': [],
-        'archivo_cargado': False,
-        'gdf_original': None,
-        'datos_modis': {},
-        'datos_climaticos': {},
-        'deteccion_ejecutada': False,
-        'n_divisiones': 16,
-        'fecha_inicio': datetime.now() - timedelta(days=60),
-        'fecha_fin': datetime.now(),
-        'crop_type': 'Vid',
-        'variedad_seleccionada': 'Malbec',
-        'textura_suelo': {},
-        'textura_por_bloque': [],
-        'datos_fertilidad': [],
-        'analisis_suelo': True,
-        'curvas_nivel': None,
-        'demo_mode': False,
-        'payment_intent': False,
-    }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
-
-init_session_state()
-
-# Verificar suscripción antes de continuar
-check_subscription()
-
 # ===== CONFIGURACIONES =====
 VARIEDADES_VID = [
     'Malbec', 'Cabernet Sauvignon', 'Merlot', 'Syrah', 'Chardonnay',
