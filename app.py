@@ -793,7 +793,8 @@ def cargar_archivo_plantacion(uploaded_file):
         st.code(traceback.format_exc())
         return None
 
-# ===== FUNCIONES PARA DATOS SATELITALES CON EARTHDATA (SILENCIOSAS) =====
+# ===== FUNCIONES PARA DATOS SATELITALES CON EARTHDATA (CORREGIDAS) =====
+
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     """
     Obtiene NDVI real para cada bloque usando MOD13Q1.
@@ -838,12 +839,15 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-       hdf_files = [f for f in downloaded_files if str(f).endswith('.hdf')]
+        # Convertir a string para evitar problemas con objetos Path
+        downloaded_files = [str(f) for f in downloaded_files]
+
+        hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
         if not hdf_files:
             st.error("No se encontró archivo HDF en la descarga.")
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
-        download_path = hdf_files[0]
+        download_path = hdf_files[0]  # ahora es string
 
         # Verificar que no sea una página HTML de error
         file_size = os.path.getsize(download_path)
@@ -900,6 +904,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             gdf_dividido['ndvi_modis'] = ndvi_values
                             st.success("✅ NDVI calculado por bloque correctamente con rasterio.")
                             rasterio_success = True
+                            shutil.rmtree(temp_dir, ignore_errors=True)
                             return gdf_dividido
 
             except Exception:
@@ -918,6 +923,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         break
                 if ndvi_dataset is None:
                     st.error("No se encontró dataset NDVI en el archivo HDF.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
                 ndvi_data = hdf.select(ndvi_dataset).get()
@@ -991,17 +997,21 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
                             gdf_dividido['ndvi_modis'] = ndvi_values
                             st.success("✅ NDVI calculado por bloque correctamente con pyhdf.")
+                            shutil.rmtree(temp_dir, ignore_errors=True)
                             return gdf_dividido
 
                 except Exception as e_meta:
                     st.error(f"No se pudo extraer la geolocalización del archivo HDF: {str(e_meta)}")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
             except Exception as e_pyhdf:
                 st.error(f"Error al procesar con pyhdf: {str(e_pyhdf)}")
+                shutil.rmtree(temp_dir, ignore_errors=True)
                 return None
         elif not rasterio_success:
             st.error("No se pudo leer el archivo HDF: ni rasterio ni pyhdf están disponibles o funcionaron.")
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
     except Exception as e:
@@ -1009,6 +1019,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         return None
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     """
@@ -1054,7 +1065,10 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-        hdf_files = [f for f in downloaded_files if str(f).endswith('.hdf')]
+        # Convertir a string para evitar problemas con objetos Path
+        downloaded_files = [str(f) for f in downloaded_files]
+
+        hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
         if not hdf_files:
             st.error("No se encontró archivo HDF.")
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1125,6 +1139,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             gdf_dividido['ndwi_modis'] = ndwi_values
                             st.success("✅ NDWI calculado por bloque correctamente con rasterio.")
                             rasterio_success = True
+                            shutil.rmtree(temp_dir, ignore_errors=True)
                             return gdf_dividido
 
             except Exception:
@@ -1144,6 +1159,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         swir_data = hdf.select(name).get()
                 if nir_data is None or swir_data is None:
                     st.error("No se encontraron las bandas NIR o SWIR con pyhdf.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
                 nir = nir_data.astype(np.float32) * 0.0001
@@ -1219,17 +1235,21 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
                             gdf_dividido['ndwi_modis'] = ndwi_values
                             st.success("✅ NDWI calculado por bloque correctamente con pyhdf.")
+                            shutil.rmtree(temp_dir, ignore_errors=True)
                             return gdf_dividido
 
                 except Exception as e_meta:
                     st.error(f"No se pudo extraer la geolocalización del archivo HDF: {str(e_meta)}")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
             except Exception as e_pyhdf:
                 st.error(f"Error al procesar con pyhdf: {str(e_pyhdf)}")
+                shutil.rmtree(temp_dir, ignore_errors=True)
                 return None
         elif not rasterio_success:
             st.error("No se pudo leer el archivo HDF: ni rasterio ni pyhdf están disponibles o funcionaron.")
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
     except Exception as e:
@@ -1237,7 +1257,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         return None
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
-
 # ===== FUNCIONES CLIMÁTICAS =====
 def obtener_clima_openmeteo(gdf, fecha_inicio, fecha_fin):
     try:
