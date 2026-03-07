@@ -2835,8 +2835,8 @@ if st.session_state.analisis_completado:
                     except: st.info("No se pudieron exportar los datos")
             else:
                 st.info("La detección de palmas no se ha ejecutado aún.")
-                if st.button("🔍 EJECUTAR DETECCIÓN DE PALMAS", key="detectar_palmas_tab5", use_container_width=True):
-                    ejecutar_deteccion_palmas()
+                if st.button("🔍 EJECUTAR DETECCIÓN DE PLANTAS", key="detectar_plantas_tab5", use_container_width=True):
+                    ejecutar_deteccion_plantas()
                     st.rerun()
         
         with tab6:
