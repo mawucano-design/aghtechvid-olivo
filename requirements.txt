@@ -17,3 +17,4 @@ rioxarray
 rasterio==1.3.9
 statsmodels==0.14.1
 pyhdf
+pooch
