@@ -82,7 +82,6 @@ except ImportError:
 if not RASTERIO_OK and not PYHDF_OK:
     st.warning("⚠️ Ni rasterio ni pyhdf están instalados. No se podrán leer archivos HDF4. Instala al menos uno: pip install rasterio o pip install pyhdf")
 
-
 # ===== CREDENCIALES EARTHDATA (desde secrets) =====
 EARTHDATA_USERNAME = os.environ.get("EARTHDATA_USERNAME")
 EARTHDATA_PASSWORD = os.environ.get("EARTHDATA_PASSWORD")
@@ -1608,37 +1607,26 @@ with st.sidebar:
     st.markdown("## 🍇 CONFIGURACIÓN")
     
     # Selección de cultivo
-    crop_type = st.radio(
+    st.session_state.crop_type = st.radio(
         "Cultivo",
         ["Vid", "Olivo"],
         horizontal=True,
-        index=0 if st.session_state.crop_type == "Vid" else 1,
-        key="crop_selector"
+        index=0 if st.session_state.crop_type == "Vid" else 1
     )
-    st.session_state.crop_type = crop_type
 
     # Selección de variedad según cultivo
-    if crop_type == "Vid":
-        default_vid = 0
-        if st.session_state.variedad_seleccionada in VARIEDADES_VID:
-            default_vid = VARIEDADES_VID.index(st.session_state.variedad_seleccionada)
-        variedad = st.selectbox(
+    if st.session_state.crop_type == "Vid":
+        st.session_state.variedad_seleccionada = st.selectbox(
             "Variedad de Vid:",
             VARIEDADES_VID,
-            index=default_vid,
-            key="variedad_vid"
+            index=VARIEDADES_VID.index(st.session_state.variedad_seleccionada) if st.session_state.variedad_seleccionada in VARIEDADES_VID else 0
         )
     else:
-        default_olivo = 0
-        if st.session_state.variedad_seleccionada in VARIEDADES_OLIVO:
-            default_olivo = VARIEDADES_OLIVO.index(st.session_state.variedad_seleccionada)
-        variedad = st.selectbox(
+        st.session_state.variedad_seleccionada = st.selectbox(
             "Variedad de Olivo:",
             VARIEDADES_OLIVO,
-            index=default_olivo,
-            key="variedad_olivo"
+            index=VARIEDADES_OLIVO.index(st.session_state.variedad_seleccionada) if st.session_state.variedad_seleccionada in VARIEDADES_OLIVO else 0
         )
-    st.session_state.variedad_seleccionada = variedad
 
     st.markdown("---")
     st.markdown("### 📅 Rango Temporal")
@@ -1646,14 +1634,12 @@ with st.sidebar:
     with col1:
         fecha_inicio_widget = st.date_input(
             "Inicio",
-            value=st.session_state.fecha_inicio.date(),
-            key="fecha_inicio_widget"
+            value=st.session_state.fecha_inicio.date()
         )
     with col2:
         fecha_fin_widget = st.date_input(
             "Fin",
-            value=st.session_state.fecha_fin.date(),
-            key="fecha_fin_widget"
+            value=st.session_state.fecha_fin.date()
         )
     if fecha_inicio_widget is not None:
         st.session_state.fecha_inicio = datetime.combine(fecha_inicio_widget, datetime.min.time())
@@ -1662,36 +1648,30 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### 🎯 División")
-    n_divisiones_val = st.slider(
+    st.session_state.n_divisiones = st.slider(
         "Número de bloques:",
         min_value=8,
         max_value=32,
-        value=st.session_state.n_divisiones,
-        key="n_divisiones"
+        value=st.session_state.n_divisiones
     )
-    st.session_state.n_divisiones = n_divisiones_val
 
     st.markdown("---")
     st.markdown("### 🌱 Detección de Plantas")
-    deteccion_habilitada = st.checkbox("Activar detección de plantas", value=True, key="deteccion_checkbox")
+    deteccion_habilitada = st.checkbox("Activar detección de plantas", value=True)
     if deteccion_habilitada:
-        densidad_val = st.slider(
+        st.session_state.densidad_personalizada = st.slider(
             "Densidad objetivo (plantas/ha):",
             min_value=50,
             max_value=200,
-            value=st.session_state.densidad_personalizada,
-            key="densidad_slider"
+            value=st.session_state.densidad_personalizada
         )
-        st.session_state.densidad_personalizada = densidad_val
 
     st.markdown("---")
     st.markdown("### 🧪 Análisis de Suelo")
-    analisis_suelo_val = st.checkbox(
+    st.session_state.analisis_suelo = st.checkbox(
         "Activar análisis de suelo",
-        value=st.session_state.analisis_suelo,
-        key="suelo_checkbox"
+        value=st.session_state.analisis_suelo
     )
-    st.session_state.analisis_suelo = analisis_suelo_val
     if st.session_state.analisis_suelo:
         st.info("Incluye: Textura por bloque, fertilidad NPK, recomendaciones")
 
@@ -1700,13 +1680,12 @@ with st.sidebar:
     uploaded_file = st.file_uploader(
         "Subir archivo de plantación", 
         type=['zip', 'kml', 'kmz', 'geojson'],
-        help="Formatos: Shapefile (.zip), KML (.kmz), GeoJSON (.geojson)",
-        key="polygon_uploader"
+        help="Formatos: Shapefile (.zip), KML (.kmz), GeoJSON (.geojson)"
     )
     if uploaded_file is not None:
         st.info(f"📄 Archivo: {uploaded_file.name}")
         st.info(f"📊 Tamaño: {uploaded_file.size / 1024:.1f} KB")
-        if st.button("🔄 Cargar Polígono", key="load_polygon_btn"):
+        if st.button("🔄 Cargar Polígono"):
             with st.spinner("⏳ Procesando polígono..."):
                 gdf = cargar_archivo_plantacion(uploaded_file)
                 if gdf is not None:
@@ -1756,17 +1735,17 @@ if st.session_state.archivo_cargado and st.session_state.gdf_original is not Non
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             if not st.session_state.analisis_completado:
-                if st.button("🚀 EJECUTAR ANÁLISIS", use_container_width=True, key="ejecutar_analisis"):
+                if st.button("🚀 EJECUTAR ANÁLISIS", use_container_width=True):
                     ejecutar_analisis_completo()
                     st.rerun()
             else:
-                if st.button("🔄 RE-EJECUTAR", use_container_width=True, key="reejecutar_analisis"):
+                if st.button("🔄 RE-EJECUTAR", use_container_width=True):
                     st.session_state.analisis_completado = False
                     ejecutar_analisis_completo()
                     st.rerun()
         with col_btn2:
             if deteccion_habilitada:
-                if st.button("🔍 DETECTAR PLANTAS", use_container_width=True, key="detectar_plantas"):
+                if st.button("🔍 DETECTAR PLANTAS", use_container_width=True):
                     ejecutar_deteccion_plantas()
                     st.rerun()
 else:
@@ -1879,8 +1858,7 @@ if st.session_state.analisis_completado:
                     label="📥 Exportar tabla a CSV",
                     data=csv_tabla,
                     file_name=f"resumen_plantacion_{datetime.now():%Y%m%d}.csv",
-                    mime="text/csv",
-                    key="download_resumen"
+                    mime="text/csv"
                 )
             except Exception as e:
                 st.warning(f"No se pudo mostrar la tabla de bloques: {e}")
@@ -1937,8 +1915,8 @@ if st.session_state.analisis_completado:
                 geojson_indices = gdf_indices.to_json()
                 csv_indices = gdf_indices.drop(columns='geometry').to_csv(index=False)
                 col_dl1, col_dl2 = st.columns(2)
-                with col_dl1: st.download_button("🗺️ GeoJSON", geojson_indices, f"indices_{datetime.now():%Y%m%d}.geojson", "application/geo+json", key="download_geojson")
-                with col_dl2: st.download_button("📊 CSV", csv_indices, f"indices_{datetime.now():%Y%m%d}.csv", "text/csv", key="download_csv_indices")
+                with col_dl1: st.download_button("🗺️ GeoJSON", geojson_indices, f"indices_{datetime.now():%Y%m%d}.geojson", "application/geo+json")
+                with col_dl2: st.download_button("📊 CSV", csv_indices, f"indices_{datetime.now():%Y%m%d}.csv", "text/csv")
             except Exception as e:
                 st.info(f"No se pudieron exportar los datos: {e}")
         with tab4:
@@ -2000,12 +1978,12 @@ if st.session_state.analisis_completado:
                         gdf_plantas = gpd.GeoDataFrame(df_plantas, geometry=gpd.points_from_xy(df_plantas.longitud, df_plantas.latitud), crs='EPSG:4326')
                         geojson_plantas = gdf_plantas.to_json(); csv_plantas = df_plantas.to_csv(index=False)
                         col_p1, col_p2 = st.columns(2)
-                        with col_p1: st.download_button("🗺️ GeoJSON", geojson_plantas, f"plantas_{datetime.now():%Y%m%d}.geojson", "application/geo+json", key="download_plantas_geojson")
-                        with col_p2: st.download_button("📊 CSV", csv_plantas, f"coordenadas_{datetime.now():%Y%m%d}.csv", "text/csv", key="download_plantas_csv")
+                        with col_p1: st.download_button("🗺️ GeoJSON", geojson_plantas, f"plantas_{datetime.now():%Y%m%d}.geojson", "application/geo+json")
+                        with col_p2: st.download_button("📊 CSV", csv_plantas, f"coordenadas_{datetime.now():%Y%m%d}.csv", "text/csv")
                     except: st.info("No se pudieron exportar los datos")
             else:
                 st.info("La detección de plantas no se ha ejecutado aún.")
-                if st.button("🔍 EJECUTAR DETECCIÓN DE PLANTAS", key="detectar_plantas_tab5", use_container_width=True):
+                if st.button("🔍 EJECUTAR DETECCIÓN DE PLANTAS", use_container_width=True):
                     ejecutar_deteccion_plantas()
                     st.rerun()
         with tab6:
@@ -2032,8 +2010,7 @@ if st.session_state.analisis_completado:
                         'K_kg_ha': 'Potasio (K₂O) kg/ha',
                         'pH': 'pH del suelo',
                         'MO_porcentaje': 'Materia Orgánica (%)'
-                    }[x],
-                    key="fertilidad_var"
+                    }[x]
                 )
                 mapa_fertilidad = crear_mapa_fertilidad_interactivo(gdf_fertilidad, variable)
                 if mapa_fertilidad:
@@ -2047,7 +2024,7 @@ if st.session_state.analisis_completado:
                 st.dataframe(df_recom.head(15), use_container_width=True)
                 st.markdown("### 📥 EXPORTAR DATOS DE FERTILIDAD")
                 csv_data = df_fertilidad.drop(columns=['geometria']).to_csv(index=False)
-                st.download_button("📊 CSV completo", csv_data, f"fertilidad_{datetime.now():%Y%m%d}.csv", "text/csv", key="download_fertilidad")
+                st.download_button("📊 CSV completo", csv_data, f"fertilidad_{datetime.now():%Y%m%d}.csv", "text/csv")
             else:
                 st.info("Ejecute el análisis completo para ver los datos de fertilidad.")
         with tab7:
@@ -2100,7 +2077,7 @@ if st.session_state.analisis_completado:
                     fig_tri = crear_grafico_textural(row['arena'], row['limo'], row['arcilla'], row['tipo_suelo'])
                     st.plotly_chart(fig_tri, use_container_width=True)
                 csv_textura = df_textura.drop(columns=['geometria']).to_csv(index=False)
-                st.download_button("📊 Descargar CSV de textura", csv_textura, f"textura_suelo_{datetime.now():%Y%m%d}.csv", "text/csv", key="download_textura")
+                st.download_button("📊 Descargar CSV de textura", csv_textura, f"textura_suelo_{datetime.now():%Y%m%d}.csv", "text/csv")
             else:
                 st.info("Ejecute el análisis completo para ver el análisis de textura del suelo.")
         with tab8:
@@ -2111,9 +2088,9 @@ if st.session_state.analisis_completado:
             Si no se proporciona, se generará un relieve simulado.
             """)
             api_key = st.text_input("🔑 API Key de OpenTopography (opcional)", type="password",
-                                    help="Regístrate gratis en opentopography.org", key="api_key")
-            intervalo = st.slider("Intervalo entre curvas (metros)", 5, 50, 10, key="intervalo")
-            if st.button("🔄 Generar curvas de nivel", use_container_width=True, key="gen_curvas"):
+                                    help="Regístrate gratis en opentopography.org")
+            intervalo = st.slider("Intervalo entre curvas (metros)", 5, 50, 10)
+            if st.button("🔄 Generar curvas de nivel", use_container_width=True):
                 with st.spinner("Procesando DEM y generando isolíneas..."):
                     gdf_original = st.session_state.gdf_original
                     if gdf_original is None:
@@ -2141,8 +2118,8 @@ if st.session_state.analisis_completado:
                             geojson_curvas = gdf_curvas.to_json()
                             csv_curvas = gdf_curvas.drop(columns='geometry').to_csv(index=False)
                             col_exp1, col_exp2 = st.columns(2)
-                            with col_exp1: st.download_button("🗺️ GeoJSON", geojson_curvas, f"curvas_nivel_{datetime.now():%Y%m%d}.geojson", "application/geo+json", key="download_curvas_geojson")
-                            with col_exp2: st.download_button("📊 CSV", csv_curvas, f"curvas_nivel_{datetime.now():%Y%m%d}.csv", "text/csv", key="download_curvas_csv")
+                            with col_exp1: st.download_button("🗺️ GeoJSON", geojson_curvas, f"curvas_nivel_{datetime.now():%Y%m%d}.geojson", "application/geo+json")
+                            with col_exp2: st.download_button("📊 CSV", csv_curvas, f"curvas_nivel_{datetime.now():%Y%m%d}.csv", "text/csv")
                         else:
                             st.warning("No se encontraron curvas de nivel en el área.")
             else:
@@ -2161,10 +2138,10 @@ if st.session_state.analisis_completado:
                 """)
                 col1, col2 = st.columns(2)
                 with col1:
-                    archivo_imagen = st.file_uploader("📸 Subir imagen (RGB)", type=['jpg', 'jpeg', 'png'], key="yolo_img")
+                    archivo_imagen = st.file_uploader("📸 Subir imagen (RGB)", type=['jpg', 'jpeg', 'png'])
                 with col2:
-                    archivo_modelo = st.file_uploader("🤖 Cargar modelo YOLO (.pt o .onnx)", type=['pt', 'onnx'], key="yolo_model")
-                umbral_confianza = st.slider("Umbral de confianza", min_value=0.1, max_value=0.9, value=0.25, step=0.05, key="yolo_conf")
+                    archivo_modelo = st.file_uploader("🤖 Cargar modelo YOLO (.pt o .onnx)", type=['pt', 'onnx'])
+                umbral_confianza = st.slider("Umbral de confianza", min_value=0.1, max_value=0.9, value=0.25, step=0.05)
                 if archivo_imagen is not None and archivo_modelo is not None:
                     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(archivo_modelo.name)[1]) as tmp_model:
                         tmp_model.write(archivo_modelo.read())
@@ -2196,11 +2173,11 @@ if st.session_state.analisis_completado:
                             with col_dl1:
                                 st.download_button("📸 Imagen anotada (PNG)", byte_im,
                                                    f"deteccion_yolo_{datetime.now():%Y%m%d_%H%M%S}.png",
-                                                   "image/png", key="download_yolo_png")
+                                                   "image/png")
                             with col_dl2:
                                 st.download_button("📊 CSV detecciones", csv_detecciones,
                                                    f"detecciones_{datetime.now():%Y%m%d_%H%M%S}.csv",
-                                                   "text/csv", key="download_yolo_csv")
+                                                   "text/csv")
                         else:
                             st.warning("No se detectaron objetos con el umbral de confianza actual.")
                     else:
