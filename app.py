@@ -121,7 +121,7 @@ def init_session_state():
         'datos_fertilidad': [],
         'analisis_suelo': True,
         'curvas_nivel': None,
-        'modo_simulado': False,        # nuevo: controla si se usan datos simulados
+        'modo_simulado': False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -403,7 +403,7 @@ def cargar_archivo_plantacion(uploaded_file):
         st.error(f"❌ Error cargando archivo: {str(e)}")
         return None
 
-# ===== FUNCIONES PARA DATOS SATELITALES (CORREGIDAS CON RESHAPE) =====
+# ===== FUNCIONES PARA DATOS SATELITALES (CORREGIDAS CON DIMENSIONES REALES) =====
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
@@ -443,7 +443,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-        # Convertir posibles objetos Path a string
         downloaded_files = [str(f) for f in downloaded_files]
 
         hdf_files = [f for f in downloaded_files if f.lower().endswith('.hdf')]
@@ -454,7 +453,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
         download_path = hdf_files[0]
 
-        # Verificar que el archivo existe y tiene tamaño razonable
         if not os.path.isfile(download_path):
             st.error(f"El archivo descargado no existe: {download_path}")
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -469,7 +467,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-        # --- Intento con rasterio ---
         rasterio_success = False
         if RASTERIO_OK:
             try:
@@ -538,25 +535,57 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             except Exception as e:
                 st.warning(f"⚠️ Rasterio falló, intentando con pyhdf: {str(e)[:100]}")
 
-        # --- Fallback con pyhdf ---
         if not rasterio_success and PYHDF_OK and RASTERIO_OK:
             try:
                 hdf = SD(str(download_path), SDC.READ)
 
-                ndvi_dataset = None
+                # Buscar dataset NDVI
+                ndvi_ds = None
                 for name in hdf.datasets().keys():
                     if 'NDVI' in name.upper():
-                        ndvi_dataset = name
+                        ndvi_ds = hdf.select(name)
                         break
 
-                if ndvi_dataset is None:
+                if ndvi_ds is None:
                     st.error("No se encontró dataset NDVI en el archivo HDF.")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-                ndvi_data = hdf.select(ndvi_dataset).get()
+                # Obtener dimensiones reales del dataset
+                dims = ndvi_ds.dimensions()
+                # Intentar extraer YDim y XDim por nombres comunes
+                def get_dim_size(dims_dict, possible_names):
+                    for name in possible_names:
+                        if name in dims_dict:
+                            return dims_dict[name]
+                    # Si no, tomar el primer valor (asumiendo orden Y, X)
+                    return list(dims_dict.values())[0]
 
-                # Obtener metadata de geolocalización
+                ydim_band = get_dim_size(dims, ['YDim', 'DimY', 'Ydim'])
+                xdim_band = get_dim_size(dims, ['XDim', 'DimX', 'Xdim'])
+
+                ndvi_data = ndvi_ds.get()
+
+                # Reshape si es 1D
+                if ndvi_data.ndim == 1:
+                    if ndvi_data.size == ydim_band * xdim_band:
+                        ndvi_data = ndvi_data.reshape(ydim_band, xdim_band)
+                    else:
+                        st.error(f"El array NDVI tiene tamaño {ndvi_data.size} pero se esperaba {ydim_band * xdim_band} según sus dimensiones.")
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        return None
+                elif ndvi_data.ndim == 2:
+                    if ndvi_data.shape != (ydim_band, xdim_band):
+                        st.warning(f"Las dimensiones del array NDVI {ndvi_data.shape} no coinciden con las de la banda {ydim_band, xdim_band}. Se usarán las del array.")
+                        ydim_band, xdim_band = ndvi_data.shape
+                else:
+                    st.error(f"Array NDVI tiene {ndvi_data.ndim} dimensiones, no se puede procesar.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return None
+
+                ndvi_scaled = ndvi_data.astype(np.float32) * 0.0001
+
+                # Obtener coordenadas de esquina desde la metadata global
                 metadata = hdf.attributes()['StructMetadata.0']
                 xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
@@ -566,43 +595,22 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 if not (xdim_match and ydim_match and ul_match and lr_match):
                     raise ValueError("No se pudo extraer la geolocalización completa")
 
-                xdim = int(xdim_match.group(1))
-                ydim = int(ydim_match.group(1))
                 ulx = float(ul_match.group(1))
                 uly = float(ul_match.group(2))
                 lrx = float(lr_match.group(1))
                 lry = float(lr_match.group(2))
 
-                # Verificar dimensionalidad y hacer reshape si es necesario
-                if ndvi_data.ndim == 1:
-                    expected_size = ydim * xdim
-                    if ndvi_data.size == expected_size:
-                        ndvi_data = ndvi_data.reshape(ydim, xdim)
-                        st.info("ℹ️ Array NDVI era 1D, se aplicó reshape a 2D.")
-                    else:
-                        st.error(f"El array NDVI tiene tamaño {ndvi_data.size} pero se esperaba {expected_size} (ydim*xdim).")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        return None
-                elif ndvi_data.ndim != 2:
-                    st.error(f"El array NDVI tiene {ndvi_data.ndim} dimensiones, no se puede procesar.")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    return None
-
-                ndvi_scaled = ndvi_data.astype(np.float32) * 0.0001
-
-                if ndvi_scaled.shape != (ydim, xdim):
-                    ydim, xdim = ndvi_scaled.shape
-
-                res_x = (lrx - ulx) / xdim
-                res_y = (uly - lry) / ydim
+                # Usar las dimensiones reales de la banda para la transformación
+                res_x = (lrx - ulx) / xdim_band
+                res_y = (uly - lry) / ydim_band
                 transform = rasterio.Affine(res_x, 0, ulx, 0, -res_y, uly)
                 crs = rasterio.crs.CRS.from_proj4("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m +no_defs")
 
                 with rasterio.io.MemoryFile() as memfile:
                     with memfile.open(
                         driver='GTiff',
-                        height=ydim,
-                        width=xdim,
+                        height=ydim_band,
+                        width=xdim_band,
                         count=1,
                         dtype=ndvi_scaled.dtype,
                         crs=crs,
@@ -828,19 +836,76 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         if not rasterio_success and PYHDF_OK and RASTERIO_OK:
             try:
                 hdf = SD(str(download_path), SDC.READ)
-                nir_data = None
-                swir_data = None
+
+                nir_ds = None
+                swir_ds = None
                 for name in hdf.datasets().keys():
                     if 'sur_refl_b02' in name:
-                        nir_data = hdf.select(name).get()
+                        nir_ds = hdf.select(name)
                     elif 'sur_refl_b06' in name:
-                        swir_data = hdf.select(name).get()
-                if nir_data is None or swir_data is None:
+                        swir_ds = hdf.select(name)
+
+                if nir_ds is None or swir_ds is None:
                     st.error("No se encontraron las bandas NIR o SWIR con pyhdf.")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-                # Obtener metadata de geolocalización
+                # Obtener dimensiones reales de cada banda
+                def get_dim_size(dims_dict, possible_names):
+                    for name in possible_names:
+                        if name in dims_dict:
+                            return dims_dict[name]
+                    return list(dims_dict.values())[0]
+
+                nir_dims = nir_ds.dimensions()
+                swir_dims = swir_ds.dimensions()
+
+                ydim_nir = get_dim_size(nir_dims, ['YDim', 'DimY', 'Ydim'])
+                xdim_nir = get_dim_size(nir_dims, ['XDim', 'DimX', 'Xdim'])
+                ydim_swir = get_dim_size(swir_dims, ['YDim', 'DimY', 'Ydim'])
+                xdim_swir = get_dim_size(swir_dims, ['XDim', 'DimX', 'Xdim'])
+
+                nir_data = nir_ds.get()
+                swir_data = swir_ds.get()
+
+                # Reshape NIR si es 1D
+                if nir_data.ndim == 1:
+                    if nir_data.size == ydim_nir * xdim_nir:
+                        nir_data = nir_data.reshape(ydim_nir, xdim_nir)
+                    else:
+                        st.error(f"El array NIR tiene tamaño {nir_data.size} pero se esperaba {ydim_nir * xdim_nir} según sus dimensiones.")
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        return None
+                elif nir_data.ndim == 2:
+                    if nir_data.shape != (ydim_nir, xdim_nir):
+                        st.warning(f"Las dimensiones del array NIR {nir_data.shape} no coinciden con las de la banda {ydim_nir, xdim_nir}. Se usarán las del array.")
+                        ydim_nir, xdim_nir = nir_data.shape
+                else:
+                    st.error(f"Array NIR tiene {nir_data.ndim} dimensiones, no se puede procesar.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return None
+
+                # Reshape SWIR si es 1D
+                if swir_data.ndim == 1:
+                    if swir_data.size == ydim_swir * xdim_swir:
+                        swir_data = swir_data.reshape(ydim_swir, xdim_swir)
+                    else:
+                        st.error(f"El array SWIR tiene tamaño {swir_data.size} pero se esperaba {ydim_swir * xdim_swir} según sus dimensiones.")
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        return None
+                elif swir_data.ndim == 2:
+                    if swir_data.shape != (ydim_swir, xdim_swir):
+                        st.warning(f"Las dimensiones del array SWIR {swir_data.shape} no coinciden con las de la banda {ydim_swir, xdim_swir}. Se usarán las del array.")
+                        ydim_swir, xdim_swir = swir_data.shape
+                else:
+                    st.error(f"Array SWIR tiene {swir_data.ndim} dimensiones, no se puede procesar.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return None
+
+                nir = nir_data.astype(np.float32) * 0.0001
+                swir = swir_data.astype(np.float32) * 0.0001
+
+                # Obtener coordenadas de esquina desde la metadata global
                 metadata = hdf.attributes()['StructMetadata.0']
                 xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
@@ -850,50 +915,14 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 if not (xdim_match and ydim_match and ul_match and lr_match):
                     raise ValueError("No se pudo extraer la geolocalización completa")
 
-                xdim = int(xdim_match.group(1))
-                ydim = int(ydim_match.group(1))
-
-                # Verificar dimensionalidad y hacer reshape si es necesario para NIR
-                if nir_data.ndim == 1:
-                    expected_size = ydim * xdim
-                    if nir_data.size == expected_size:
-                        nir_data = nir_data.reshape(ydim, xdim)
-                        st.info("ℹ️ Array NIR era 1D, se aplicó reshape a 2D.")
-                    else:
-                        st.error(f"El array NIR tiene tamaño {nir_data.size} pero se esperaba {expected_size} (ydim*xdim).")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        return None
-                elif nir_data.ndim != 2:
-                    st.error(f"El array NIR tiene {nir_data.ndim} dimensiones, no se puede procesar.")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    return None
-
-                # Lo mismo para SWIR
-                if swir_data.ndim == 1:
-                    expected_size = ydim * xdim
-                    if swir_data.size == expected_size:
-                        swir_data = swir_data.reshape(ydim, xdim)
-                        st.info("ℹ️ Array SWIR era 1D, se aplicó reshape a 2D.")
-                    else:
-                        st.error(f"El array SWIR tiene tamaño {swir_data.size} pero se esperaba {expected_size}.")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        return None
-                elif swir_data.ndim != 2:
-                    st.error(f"El array SWIR tiene {swir_data.ndim} dimensiones, no se puede procesar.")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    return None
-
-                nir = nir_data.astype(np.float32) * 0.0001
-                swir = swir_data.astype(np.float32) * 0.0001
-
                 ulx = float(ul_match.group(1))
                 uly = float(ul_match.group(2))
                 lrx = float(lr_match.group(1))
                 lry = float(lr_match.group(2))
 
-                if nir.shape != (ydim, xdim):
-                    ydim, xdim = nir.shape
-
+                # Usar las dimensiones de la banda NIR para la transformación (asumimos que ambas bandas tienen la misma extensión)
+                ydim = ydim_nir
+                xdim = xdim_nir
                 res_x = (lrx - ulx) / xdim
                 res_y = (uly - lry) / ydim
                 transform = rasterio.Affine(res_x, 0, ulx, 0, -res_y, uly)
@@ -2033,7 +2062,6 @@ def ejecutar_analisis_completo():
                 'fuente': 'Datos simulados'
             }
         else:
-            # Modo real: obtener datos con Earthdata
             gdf_dividido = dividir_plantacion_en_bloques(gdf, n_divisiones)
             areas_ha = []
             for idx, row in gdf_dividido.iterrows():
@@ -2041,7 +2069,6 @@ def ejecutar_analisis_completo():
                 areas_ha.append(float(calcular_superficie(area_gdf)))
             gdf_dividido['area_ha'] = areas_ha
 
-            # 1. Obtener NDVI real
             st.info("🛰️ Obteniendo NDVI desde Earthdata (MOD13Q1)...")
             resultado_ndvi = obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
             if resultado_ndvi is None:
@@ -2050,7 +2077,6 @@ def ejecutar_analisis_completo():
             gdf_dividido = resultado_ndvi
             fuente_ndvi = "Earthdata MOD13Q1"
 
-            # 2. Obtener NDWI real
             st.info("💧 Obteniendo NDWI desde Earthdata (MOD09GA)...")
             resultado_ndwi = obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
             if resultado_ndwi is None:
@@ -2059,14 +2085,12 @@ def ejecutar_analisis_completo():
             gdf_dividido = resultado_ndwi
             fuente_ndwi = "Earthdata MOD09GA"
 
-            # 3. Datos climáticos (con fallback simulado si fallan)
             st.info("🌦️ Obteniendo datos climáticos de Open-Meteo ERA5...")
             datos_clima = obtener_clima_openmeteo(gdf, fecha_inicio, fecha_fin) or {}
             st.info("☀️ Obteniendo radiación y viento de NASA POWER...")
             datos_power = obtener_radiacion_viento_power(gdf, fecha_inicio, fecha_fin) or {}
             st.session_state.datos_climaticos = {**datos_clima, **datos_power}
 
-            # 4. Edad simulada
             edades = analizar_edad_plantacion(gdf_dividido)
             gdf_dividido['edad_anios'] = edades
 
@@ -2077,7 +2101,6 @@ def ejecutar_analisis_completo():
                 'fuente': f"NDVI: {fuente_ndvi}, NDWI: {fuente_ndwi}"
             }
 
-        # Clasificar salud
         def clasificar_salud(ndvi):
             if ndvi < 0.4: return 'Crítica'
             if ndvi < 0.6: return 'Baja'
@@ -2085,7 +2108,6 @@ def ejecutar_analisis_completo():
             return 'Buena'
         gdf_dividido['salud'] = gdf_dividido['ndvi_modis'].apply(clasificar_salud)
 
-        # Análisis de suelo (si activado)
         if st.session_state.get('analisis_suelo', True):
             st.session_state.textura_por_bloque = analizar_textura_suelo_venezuela_por_bloque(gdf_dividido)
             if st.session_state.textura_por_bloque:
@@ -2169,7 +2191,6 @@ st.markdown("""
 with st.sidebar:
     st.markdown("## 🫒 CONFIGURACIÓN")
     
-    # Modo simulado checkbox
     st.session_state.modo_simulado = st.checkbox(
         "🎮 Usar datos simulados", 
         value=st.session_state.modo_simulado,
@@ -2236,7 +2257,6 @@ with st.sidebar:
             area = calcular_superficie(st.session_state.gdf_original)
             st.metric("Área", f"{area:.2f} ha")
     
-    # Información de Earthdata
     if not st.session_state.modo_simulado:
         if not EARTHDATA_USERNAME or not EARTHDATA_PASSWORD:
             st.warning("⚠️ Credenciales Earthdata no configuradas. Active el modo simulado o configure las variables de entorno.")
