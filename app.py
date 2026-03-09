@@ -82,7 +82,22 @@ except ImportError:
 if not RASTERIO_OK and not PYHDF_OK:
     st.warning("⚠️ Ni rasterio ni pyhdf están instalados. No se podrán leer archivos HDF4. Instala al menos uno: pip install rasterio o pip install pyhdf")
 
-
+# ===== ESTILOS Y OCULTAMIENTO DE ELEMENTOS DE STREAMLIT =====
+st.markdown("""
+<style>
+/* Ocultar toolbar superior */
+div[data-testid="stToolbar"] { visibility: hidden; height: 0px; position: fixed; }
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+header { visibility: hidden; }
+.stAppDeployButton { display: none !important; }
+[data-testid="stAppDeployButton"] { display: none !important; }
+body { user-select: none; }
+</style>
+<script>
+document.addEventListener('contextmenu', event => event.preventDefault());
+</script>
+""", unsafe_allow_html=True)
 
 # ===== CREDENCIALES EARTHDATA (desde secrets) =====
 EARTHDATA_USERNAME = os.environ.get("EARTHDATA_USERNAME")
@@ -91,7 +106,35 @@ EARTHDATA_PASSWORD = os.environ.get("EARTHDATA_PASSWORD")
 # ===== CONFIGURACIÓN DE PÁGINA =====
 st.set_page_config(page_title="Analizador de Vid y Olivo Satelital", page_icon="🍇", layout="wide", initial_sidebar_state="expanded")
 
+# ===== INICIALIZACIÓN DE SESIÓN =====
+def init_session_state():
+    defaults = {
+        'geojson_data': None,
+        'analisis_completado': False,
+        'resultados_todos': {},
+        'plantas_detectadas': [],
+        'archivo_cargado': False,
+        'gdf_original': None,
+        'datos_modis': {},
+        'datos_climaticos': {},
+        'deteccion_ejecutada': False,
+        'n_divisiones': 16,
+        'fecha_inicio': datetime.now() - timedelta(days=60),
+        'fecha_fin': datetime.now(),
+        'crop_type': 'Vid',
+        'variedad_seleccionada': 'Tempranillo',
+        'textura_suelo': {},
+        'textura_por_bloque': [],
+        'datos_fertilidad': [],
+        'analisis_suelo': True,
+        'curvas_nivel': None,
+        'densidad_personalizada': 130,
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
+init_session_state()
 
 # ===== CONFIGURACIONES =====
 VARIEDADES_VID = [
@@ -1579,13 +1622,39 @@ st.markdown("""
 # Sidebar
 with st.sidebar:
     st.markdown("## 🍇 CONFIGURACIÓN")
-    crop_type = st.radio("Cultivo", ["Vid", "Olivo"], horizontal=True, key="crop_selector")
+    
+    # Selección de cultivo
+    crop_type = st.radio(
+        "Cultivo",
+        ["Vid", "Olivo"],
+        horizontal=True,
+        index=0 if st.session_state.crop_type == "Vid" else 1,
+        key="crop_selector"
+    )
     st.session_state.crop_type = crop_type
+
+    # Selección de variedad según cultivo
     if crop_type == "Vid":
-        variedad = st.selectbox("Variedad de Vid:", VARIEDADES_VID, index=0, key="variedad_vid")
+        default_vid = 0
+        if st.session_state.variedad_seleccionada in VARIEDADES_VID:
+            default_vid = VARIEDADES_VID.index(st.session_state.variedad_seleccionada)
+        variedad = st.selectbox(
+            "Variedad de Vid:",
+            VARIEDADES_VID,
+            index=default_vid,
+            key="variedad_vid"
+        )
     else:
-        variedad = st.selectbox("Variedad de Olivo:", VARIEDADES_OLIVO, index=0, key="variedad_olivo")
-    st.session_state.variedad_seleccionada = f"{crop_type} - {variedad}"
+        default_olivo = 0
+        if st.session_state.variedad_seleccionada in VARIEDADES_OLIVO:
+            default_olivo = VARIEDADES_OLIVO.index(st.session_state.variedad_seleccionada)
+        variedad = st.selectbox(
+            "Variedad de Olivo:",
+            VARIEDADES_OLIVO,
+            index=default_olivo,
+            key="variedad_olivo"
+        )
+    st.session_state.variedad_seleccionada = variedad
 
     st.markdown("---")
     st.markdown("### 📅 Rango Temporal")
@@ -1609,17 +1678,36 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### 🎯 División")
-    st.session_state.n_divisiones = st.slider("Número de bloques:", 8, 32, 16, key="n_divisiones")
+    n_divisiones_val = st.slider(
+        "Número de bloques:",
+        min_value=8,
+        max_value=32,
+        value=st.session_state.n_divisiones,
+        key="n_divisiones"
+    )
+    st.session_state.n_divisiones = n_divisiones_val
 
     st.markdown("---")
     st.markdown("### 🌱 Detección de Plantas")
     deteccion_habilitada = st.checkbox("Activar detección de plantas", value=True, key="deteccion_checkbox")
     if deteccion_habilitada:
-        st.session_state.densidad_personalizada = st.slider("Densidad objetivo (plantas/ha):", 50, 200, 130, key="densidad_slider")
+        densidad_val = st.slider(
+            "Densidad objetivo (plantas/ha):",
+            min_value=50,
+            max_value=200,
+            value=st.session_state.densidad_personalizada,
+            key="densidad_slider"
+        )
+        st.session_state.densidad_personalizada = densidad_val
 
     st.markdown("---")
     st.markdown("### 🧪 Análisis de Suelo")
-    st.session_state.analisis_suelo = st.checkbox("Activar análisis de suelo", value=True, key="suelo_checkbox")
+    analisis_suelo_val = st.checkbox(
+        "Activar análisis de suelo",
+        value=st.session_state.analisis_suelo,
+        key="suelo_checkbox"
+    )
+    st.session_state.analisis_suelo = analisis_suelo_val
     if st.session_state.analisis_suelo:
         st.info("Incluye: Textura por bloque, fertilidad NPK, recomendaciones")
 
@@ -2143,6 +2231,6 @@ st.markdown("""
 <div style="text-align: center; color: #94a3b8; padding: 20px;">
     <p><strong>© 2026 Analizador de Vid y Olivo Satelital</strong></p>
     <p>Datos satelitales: NASA Earthdata · Clima: Open-Meteo ERA5 · Radiación/Viento: NASA POWER · Curvas de nivel: OpenTopography SRTM</p>
-    <p>Desarrollado por: BioMap Consultora | Contacto: biomap.mp@gmail.com
+    <p>Desarrollado por: BioMap Consultora | Contacto: mawucano@gmail.com | +5493525 532313</p>
 </div>
 """, unsafe_allow_html=True)
