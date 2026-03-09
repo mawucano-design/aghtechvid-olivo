@@ -82,6 +82,23 @@ except ImportError:
 if not RASTERIO_OK and not PYHDF_OK:
     st.warning("⚠️ Ni rasterio ni pyhdf están instalados. No se podrán leer archivos HDF4. Instala al menos uno: pip install rasterio o pip install pyhdf")
 
+# ===== ESTILOS Y OCULTAMIENTO DE ELEMENTOS DE STREAMLIT =====
+st.markdown("""
+<style>
+/* Ocultar toolbar superior */
+div[data-testid="stToolbar"] { visibility: hidden; height: 0px; position: fixed; }
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+header { visibility: hidden; }
+.stAppDeployButton { display: none !important; }
+[data-testid="stAppDeployButton"] { display: none !important; }
+body { user-select: none; }
+</style>
+<script>
+document.addEventListener('contextmenu', event => event.preventDefault());
+</script>
+""", unsafe_allow_html=True)
+
 # ===== CREDENCIALES EARTHDATA (desde secrets) =====
 EARTHDATA_USERNAME = os.environ.get("EARTHDATA_USERNAME")
 EARTHDATA_PASSWORD = os.environ.get("EARTHDATA_PASSWORD")
@@ -1617,14 +1634,21 @@ with st.sidebar:
     st.markdown("### 📅 Rango Temporal")
     col1, col2 = st.columns(2)
     with col1:
-        fecha_inicio = st.date_input("Inicio", value=st.session_state.fecha_inicio, key="fecha_inicio")
+        fecha_inicio_widget = st.date_input(
+            "Inicio",
+            value=st.session_state.fecha_inicio.date(),
+            key="fecha_inicio_widget"
+        )
     with col2:
-        fecha_fin = st.date_input("Fin", value=st.session_state.fecha_fin, key="fecha_fin")
-    # Convertir a datetime
-    if fecha_inicio is not None:
-        st.session_state.fecha_inicio = datetime.combine(fecha_inicio, datetime.min.time())
-    if fecha_fin is not None:
-        st.session_state.fecha_fin = datetime.combine(fecha_fin, datetime.min.time())
+        fecha_fin_widget = st.date_input(
+            "Fin",
+            value=st.session_state.fecha_fin.date(),
+            key="fecha_fin_widget"
+        )
+    if fecha_inicio_widget is not None:
+        st.session_state.fecha_inicio = datetime.combine(fecha_inicio_widget, datetime.min.time())
+    if fecha_fin_widget is not None:
+        st.session_state.fecha_fin = datetime.combine(fecha_fin_widget, datetime.min.time())
 
     st.markdown("---")
     st.markdown("### 🎯 División")
