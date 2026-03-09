@@ -172,7 +172,7 @@ def get_user_by_email(email):
     return None
 
 # ===== FUNCIONES DE MERCADO PAGO =====
-def create_preference(email, amount=150.0, description="Suscripción mensual - Analizador de Palma Aceitera"):
+def create_preference(email, amount=150.0, description="Suscripción mensual - Analizador de Vid y Olivo"):
     try:
         base_url = os.environ.get("APP_BASE_URL")
         if not base_url:
@@ -428,7 +428,7 @@ def init_session_state():
         'geojson_data': None,
         'analisis_completado': False,
         'resultados_todos': {},
-        'palmas_detectadas': [],
+        'plantas_detectadas': [],  # Corregido: antes era palmas_detectadas
         'archivo_cargado': False,
         'gdf_original': None,
         'datos_modis': {},
@@ -437,7 +437,7 @@ def init_session_state():
         'n_divisiones': 16,
         'fecha_inicio': datetime.now() - timedelta(days=60),
         'fecha_fin': datetime.now(),
-        'variedad_seleccionada': 'Tenera (DxP)',
+        'variedad_seleccionada': 'Vid - Malbec',  # Valor por defecto ajustado
         'textura_suelo': {},
         'textura_por_bloque': [],
         'datos_fertilidad': [],
@@ -827,8 +827,8 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 st.warning(f"⚠️ Rasterio falló, intentando con pyhdf: {str(e)[:100]}")
                 pass
 
-        # --- FALLBACK CON PYHDF ---
-        if not rasterio_success and PYHDF_OK:
+        # --- FALLBACK CON PYHDF (requiere rasterio para el enmascaramiento) ---
+        if not rasterio_success and PYHDF_OK and RASTERIO_OK:
             try:
                 hdf = SD(download_path, SDC.READ)
                 
@@ -1091,7 +1091,8 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             except Exception:
                 pass
 
-        if not rasterio_success and PYHDF_OK:
+        # --- FALLBACK CON PYHDF (requiere rasterio para enmascaramiento) ---
+        if not rasterio_success and PYHDF_OK and RASTERIO_OK:
             try:
                 hdf = SD(download_path, SDC.READ)
                 nir_data = None
@@ -1678,7 +1679,7 @@ def analizar_textura_suelo_venezuela_por_bloque(gdf_dividido):
                 'arena': 35, 'limo': 25, 'arcilla': 30,
                 'textura': 'Media', 'drenaje': 'Moderado',
                 'CIC': 'Alto (15-25)', 'ret_agua': 'Alta',
-                'recomendacion': 'Ideal para palma'
+                'recomendacion': 'Ideal para vid/olivo'
             },
             'Franco Arcilloso Arenoso': {
                 'arena': 45, 'limo': 20, 'arcilla': 25,
@@ -2266,20 +2267,20 @@ if st.session_state.analisis_completado:
         
         with tab5:
             st.subheader("🌴 DETECCIÓN DE PLANTAS")
-            if st.session_state.deteccion_ejecutada and st.session_state.palmas_detectadas:
-                palmas = st.session_state.palmas_detectadas
-                total = len(palmas)
+            if st.session_state.deteccion_ejecutada and st.session_state.plantas_detectadas:
+                plantas = st.session_state.plantas_detectadas
+                total = len(plantas)
                 area_total_val = resultados.get('area_total', 0)
                 densidad = total / area_total_val if area_total_val > 0 else 0
                 st.success(f"✅ Detección completada: {total} plantas detectadas")
                 col1, col2, col3, col4 = st.columns(4)
                 with col1: st.metric("Plantas detectadas", f"{total:,}")
                 with col2: st.metric("Densidad", f"{densidad:.0f} plantas/ha")
-                with col3: st.metric("Área promedio", f"{np.mean([p.get('area_m2',0) for p in palmas]):.1f} m²")
-                with col4: st.metric("Diámetro promedio", f"{np.mean([p.get('diametro_aprox',0) for p in palmas]):.1f} m")
+                with col3: st.metric("Área promedio", f"{np.mean([p.get('area_m2',0) for p in plantas]):.1f} m²")
+                with col4: st.metric("Diámetro promedio", f"{np.mean([p.get('diametro_aprox',0) for p in plantas]):.1f} m")
             else:
                 st.info("La detección no se ha ejecutado aún.")
-                if st.button("🔍 EJECUTAR DETECCIÓN", key="detectar_palmas_tab5", use_container_width=True):
+                if st.button("🔍 EJECUTAR DETECCIÓN", key="detectar_plantas_tab5", use_container_width=True):
                     ejecutar_deteccion_plantas()
                     st.rerun()
         
@@ -2310,7 +2311,7 @@ if st.session_state.analisis_completado:
 # ===== PIE DE PÁGINA =====
 st.markdown("---")
 st.markdown("""
-© 2026 Analizador de Palma Aceitera Satelital
+© 2026 Analizador de Vid y Olivo Satelital
 Datos satelitales: NASA Earthdata · Clima: Open-Meteo ERA5 · Radiación/Viento: NASA POWER
 Desarrollado por: BioMap Consultora | Contacto: mawucano@gmail.com
 """, unsafe_allow_html=True)
