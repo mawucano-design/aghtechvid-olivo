@@ -856,31 +856,33 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-                # --- FUNCIÓN PARA OBTENER DIMENSIONES DE FORMA ROBUSTA ---
-                def get_band_dims(ds):
+                # --- FUNCIÓN AUXILIAR PARA OBTENER DIMENSIONES DE FORMA SEGURA ---
+                def get_band_dims_safe(ds):
+                    """Intenta obtener (ydim, xdim) de un dataset HDF.
+                    Retorna (None, None) si no se puede determinar."""
                     dims = ds.dimensions()
-                    # Si el diccionario tiene exactamente 2 entradas, asumimos que son Y y X
+                    # Caso 1: el diccionario tiene exactamente 2 claves -> asumimos Y, X
                     if len(dims) == 2:
-                        # Intentamos identificar claves que contengan 'y' o 'x'
-                        ykey = None
-                        xkey = None
-                        for k in dims.keys():
-                            if 'y' in k.lower():
-                                ykey = k
-                            elif 'x' in k.lower():
-                                xkey = k
+                        # Intentamos identificar claves con 'y' y 'x'
+                        ykey = next((k for k in dims if 'y' in k.lower()), None)
+                        xkey = next((k for k in dims if 'x' in k.lower()), None)
                         if ykey and xkey:
                             return dims[ykey], dims[xkey]
                         else:
-                            # Si no, devolvemos los dos primeros valores en el orden en que aparecen
+                            # Devolvemos en el orden del diccionario (puede ser Y, X o X, Y)
                             items = list(dims.items())
                             return items[0][1], items[1][1]
+                    # Caso 2: más de 2 dimensiones -> no podemos procesar
+                    elif len(dims) > 2:
+                        st.warning(f"El dataset tiene {len(dims)} dimensiones, se usará metadata global.")
+                        return None, None
+                    # Caso 3: menos de 2 dimensiones -> no podemos procesar
                     else:
-                        # No podemos determinar, devolvemos None
+                        st.warning(f"El dataset tiene {len(dims)} dimensiones, se usará metadata global.")
                         return None, None
 
                 # Intentar obtener dimensiones para NIR
-                ydim_nir, xdim_nir = get_band_dims(nir_ds)
+                ydim_nir, xdim_nir = get_band_dims_safe(nir_ds)
                 if ydim_nir is None or xdim_nir is None:
                     # Fallback: usar metadata global
                     metadata = hdf.attributes()['StructMetadata.0']
@@ -892,37 +894,42 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     else:
                         raise ValueError("No se pudo obtener dimensiones de la metadata global")
 
-                ydim_swir, xdim_swir = get_band_dims(swir_ds)
+                ydim_swir, xdim_swir = get_band_dims_safe(swir_ds)
                 if ydim_swir is None or xdim_swir is None:
-                    # Usar las mismas que NIR si no se pueden obtener
-                    ydim_swir, xdim_swir = ydim_nir, xdim_nir
+                    ydim_swir, xdim_swir = ydim_nir, xdim_nir  # asumimos mismas dimensiones
 
                 nir_data = nir_ds.get()
                 swir_data = swir_ds.get()
 
-                # --- FUNCIÓN PARA PROCESAR CADA BANDA ---
-                def process_band(data, ydim, xdim, band_name):
-                    if data.ndim == 1:
-                        expected = ydim * xdim
-                        if data.size == expected:
-                            return data.reshape(ydim, xdim)
+                # --- FUNCIÓN PARA PROCESAR CADA BANDA CON MÚLTIPLES FALLBACKS ---
+                def process_band(data, expected_ydim, expected_xdim, band_name):
+                    # Mostrar info para depuración
+                    st.write(f"Debug - {band_name}: shape={data.shape}, ndim={data.ndim}, size={data.size}, expected=({expected_ydim}, {expected_xdim})")
+
+                    if data.ndim == 2:
+                        # Ya es 2D, usar sus dimensiones reales
+                        if data.shape == (expected_ydim, expected_xdim):
+                            return data
                         else:
-                            # Si no coincide, intentamos deducir dimensiones de la forma del array
-                            # Puede ser que la banda ya esté en 2D pero aplanada? No, es 1D.
-                            # Mejor intentamos con la raíz cuadrada si es cuadrada
+                            st.warning(f"{band_name} tiene dimensiones {data.shape}, se usarán esas en lugar de las esperadas.")
+                            return data
+                    elif data.ndim == 1:
+                        # Intentar reshape a las dimensiones esperadas
+                        if data.size == expected_ydim * expected_xdim:
+                            return data.reshape(expected_ydim, expected_xdim)
+                        else:
+                            # Fallback: intentar deducir dimensiones a partir del tamaño
+                            # Si es cuadrado, usamos raíz cuadrada
                             sqrt_size = int(np.sqrt(data.size))
                             if sqrt_size * sqrt_size == data.size:
-                                st.warning(f"El array {band_name} tiene tamaño {data.size} pero se esperaba {expected}. Se asume forma cuadrada {sqrt_size}x{sqrt_size}.")
+                                st.warning(f"{band_name} es 1D con tamaño {data.size}, se asume forma cuadrada {sqrt_size}x{sqrt_size}.")
                                 return data.reshape(sqrt_size, sqrt_size)
                             else:
-                                raise ValueError(f"Tamaño inesperado para {band_name}: {data.size} vs esperado {expected}")
-                    elif data.ndim == 2:
-                        # Si las dimensiones no coinciden, usar las del array
-                        if data.shape != (ydim, xdim):
-                            st.warning(f"Las dimensiones del array {band_name} {data.shape} no coinciden con las esperadas {ydim, xdim}. Se usarán las del array.")
-                        return data
+                                # Último recurso: asumir que las dimensiones correctas son las de la metadata
+                                # pero si no coinciden, no podemos continuar
+                                raise ValueError(f"No se puede determinar la forma 2D para {band_name}: tamaño {data.size}, esperado {expected_ydim * expected_xdim}")
                     else:
-                        raise ValueError(f"Array {band_name} tiene {data.ndim} dimensiones, no se puede procesar.")
+                        raise ValueError(f"{band_name} tiene {data.ndim} dimensiones, no se puede procesar.")
 
                 nir = process_band(nir_data, ydim_nir, xdim_nir, "NIR").astype(np.float32) * 0.0001
                 swir = process_band(swir_data, ydim_swir, xdim_swir, "SWIR").astype(np.float32) * 0.0001
@@ -1017,6 +1024,8 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
             except Exception as e_pyhdf:
                 st.error(f"Error al procesar con pyhdf: {str(e_pyhdf)}")
+                # Mostrar información adicional para depuración
+                st.exception(e_pyhdf)
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 return None
 
