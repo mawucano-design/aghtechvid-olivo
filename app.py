@@ -415,7 +415,7 @@ def generar_clima_simulado():
         'fuente': 'Datos simulados (fallback)'
     }
 
-# ===== FUNCIONES PARA DATOS SATELITALES CON EARTHDATA (CORREGIDAS) =====
+# ===== FUNCIONES PARA DATOS SATELITALES CON EARTHDATA (CORREGIDAS Y ROBUSTAS) =====
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     if not EARTHDATA_OK:
         st.warning("Earthaccess no instalado. Usando datos simulados.")
@@ -523,7 +523,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             except Exception:
                 pass
 
-        # Fallback con pyhdf
+        # Fallback con pyhdf (mejorado)
         if not rasterio_success and PYHDF_OK:
             try:
                 hdf = SD(download_path, SDC.READ)
@@ -539,115 +539,118 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
                 ndvi_data = hdf.select(ndvi_dataset).get()
                 ndvi_scaled = ndvi_data.astype(np.float32) * 0.0001
+                metadata = hdf.attributes()['StructMetadata.0']
 
-                # Extraer geolocalización con regex mejorada
-                try:
-                    metadata = hdf.attributes()['StructMetadata.0']
-                    
-                    # Expresión regular mejorada que acepta notación científica y separadores flexibles
-                    xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
-                    ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
-                    ul_match = re.search(
-                        r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*[,;]?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*\)',
-                        metadata, re.IGNORECASE
-                    )
-                    lr_match = re.search(
-                        r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*[,;]?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*\)',
-                        metadata, re.IGNORECASE
-                    )
+                # Variables a extraer
+                xdim = None
+                ydim = None
+                ulx = None
+                uly = None
+                lrx = None
+                lry = None
 
-                    # Si falla, intentar con otro posible nombre (GRINGPOINT)
-                    if not (xdim_match and ydim_match and ul_match and lr_match):
-                        # Buscar GRINGPOINT (algunos productos usan esto)
-                        gring_match = re.search(
-                            r'GRINGPOINT[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)',
-                            metadata, re.IGNORECASE
-                        )
-                        if gring_match and len(gring_match.groups()) >= 2:
-                            # Asignar valores aproximados (no es exacto, pero mejor que nada)
-                            ulx = float(gring_match.group(1))
-                            uly = float(gring_match.group(2))
-                            lrx = ulx + 10  # Aproximación de 10 grados
-                            lry = uly - 10
-                            xdim = 1200  # Valores típicos MODIS
-                            ydim = 1200
-                            # Continuar con estos valores
-                        else:
-                            # Mostrar metadata en un expander para depuración (solo si hay error)
-                            with st.expander("🔍 Metadata del HDF (para depuración)", expanded=False):
-                                st.code(metadata[:2000])  # Primeros 2000 caracteres
-                            raise ValueError("No se pudo extraer la geolocalización completa del HDF")
+                # Intentar con expresiones regulares estándar
+                xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
+                ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
+                ul_match = re.search(
+                    r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*[,;]?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*\)',
+                    metadata, re.IGNORECASE
+                )
+                lr_match = re.search(
+                    r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*[,;]?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*\)',
+                    metadata, re.IGNORECASE
+                )
 
-                    if not (xdim_match and ydim_match and ul_match and lr_match):
-                        st.warning("No se pudo extraer la geolocalización completa del HDF. Usando datos simulados.")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        return None
-                    
-                    if len(ul_match.groups()) < 2 or len(lr_match.groups()) < 2:
-                        st.warning("Formato inesperado en coordenadas de geolocalización. Usando datos simulados.")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        return None
-
+                if xdim_match and ydim_match and ul_match and lr_match:
                     xdim = int(xdim_match.group(1))
                     ydim = int(ydim_match.group(1))
                     ulx = float(ul_match.group(1))
                     uly = float(ul_match.group(2))
                     lrx = float(lr_match.group(1))
                     lry = float(lr_match.group(2))
-
-                    if ndvi_scaled.shape != (ydim, xdim):
-                        ydim, xdim = ndvi_scaled.shape
-
-                    res_x = (lrx - ulx) / xdim
-                    res_y = (uly - lry) / ydim
-                    transform = rasterio.Affine(res_x, 0, ulx, 0, -res_y, uly)
-                    crs = rasterio.crs.CRS.from_proj4("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m +no_defs")
-
-                    with rasterio.io.MemoryFile() as memfile:
-                        with memfile.open(
-                            driver='GTiff',
-                            height=ydim,
-                            width=xdim,
-                            count=1,
-                            dtype=ndvi_scaled.dtype,
-                            crs=crs,
-                            transform=transform,
-                            nodata=-32768
-                        ) as dst:
-                            dst.write(ndvi_scaled, 1)
-
-                        with memfile.open() as src_ndvi:
-                            gdf_proj = gdf_dividido.to_crs(crs)
-                            ndvi_values = []
-                            progress_bar = st.progress(0, text="Procesando bloques para NDVI con pyhdf...")
-                            for idx, row in gdf_proj.iterrows():
-                                geom = [mapping(row.geometry)]
-                                try:
-                                    out_image, _ = mask(src_ndvi, geom, crop=True, nodata=-32768)
-                                    data = out_image[0]
-                                    mask_invalid = (data == -32768) | (data < -1) | (data > 1)
-                                    data_clean = np.ma.masked_where(mask_invalid, data)
-                                    mean_val = data_clean.mean()
-                                    if np.ma.is_masked(mean_val) or np.isnan(mean_val):
-                                        ndvi_values.append(np.nan)
-                                    else:
-                                        ndvi_values.append(round(float(mean_val), 3))
-                                except Exception:
-                                    ndvi_values.append(np.nan)
-                                progress_bar.progress((idx + 1) / len(gdf_proj))
-                            progress_bar.empty()
-                            gdf_dividido['ndvi_modis'] = ndvi_values
-                            st.success("✅ NDVI calculado con pyhdf.")
+                else:
+                    # Fallback: buscar GRINGPOINT
+                    gring_match = re.search(
+                        r'GRINGPOINT[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)',
+                        metadata, re.IGNORECASE
+                    )
+                    if gring_match and len(gring_match.groups()) >= 2:
+                        ulx = float(gring_match.group(1))
+                        uly = float(gring_match.group(2))
+                        lrx = ulx + 10.0
+                        lry = uly - 10.0
+                        xdim = 1200
+                        ydim = 1200
+                    else:
+                        # Fallback final: buscar cualquier par de números
+                        coords = re.findall(r'[-+]?\d*\.?\d+(?:[eE][+-]?\d+)?', metadata)
+                        if len(coords) >= 4:
+                            ulx = float(coords[0])
+                            uly = float(coords[1])
+                            lrx = float(coords[2])
+                            lry = float(coords[3])
+                            xdim = 1200
+                            ydim = 1200
+                        else:
+                            with st.expander("🔍 Metadata del HDF (para depuración)", expanded=False):
+                                st.code(metadata[:2000])
+                            st.warning("No se pudo extraer la geolocalización del HDF. Usando datos simulados.")
                             shutil.rmtree(temp_dir, ignore_errors=True)
-                            return gdf_dividido
+                            return None
 
-                except Exception as e_meta:
-                    st.warning(f"No se pudo extraer la geolocalización del archivo HDF: {str(e_meta)}. Usando datos simulados.")
+                if xdim is None or ydim is None or ulx is None or uly is None or lrx is None or lry is None:
+                    st.warning("No se pudo extraer la geolocalización completa del HDF. Usando datos simulados.")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
+                if ndvi_scaled.shape != (ydim, xdim):
+                    ydim, xdim = ndvi_scaled.shape
+
+                res_x = (lrx - ulx) / xdim
+                res_y = (uly - lry) / ydim
+                transform = rasterio.Affine(res_x, 0, ulx, 0, -res_y, uly)
+                crs = rasterio.crs.CRS.from_proj4("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m +no_defs")
+
+                with rasterio.io.MemoryFile() as memfile:
+                    with memfile.open(
+                        driver='GTiff',
+                        height=ydim,
+                        width=xdim,
+                        count=1,
+                        dtype=ndvi_scaled.dtype,
+                        crs=crs,
+                        transform=transform,
+                        nodata=-32768
+                    ) as dst:
+                        dst.write(ndvi_scaled, 1)
+
+                    with memfile.open() as src_ndvi:
+                        gdf_proj = gdf_dividido.to_crs(crs)
+                        ndvi_values = []
+                        progress_bar = st.progress(0, text="Procesando bloques para NDVI con pyhdf...")
+                        for idx, row in gdf_proj.iterrows():
+                            geom = [mapping(row.geometry)]
+                            try:
+                                out_image, _ = mask(src_ndvi, geom, crop=True, nodata=-32768)
+                                data = out_image[0]
+                                mask_invalid = (data == -32768) | (data < -1) | (data > 1)
+                                data_clean = np.ma.masked_where(mask_invalid, data)
+                                mean_val = data_clean.mean()
+                                if np.ma.is_masked(mean_val) or np.isnan(mean_val):
+                                    ndvi_values.append(np.nan)
+                                else:
+                                    ndvi_values.append(round(float(mean_val), 3))
+                            except Exception:
+                                ndvi_values.append(np.nan)
+                            progress_bar.progress((idx + 1) / len(gdf_proj))
+                        progress_bar.empty()
+                        gdf_dividido['ndvi_modis'] = ndvi_values
+                        st.success("✅ NDVI calculado con pyhdf.")
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        return gdf_dividido
+
             except Exception as e_pyhdf:
-                st.warning(f"Error al procesar con pyhdf: {str(e_pyhdf)}. Usando datos simulados.")
+                st.warning(f"Error con pyhdf: {str(e_pyhdf)}. Usando datos simulados.")
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 return None
         else:
@@ -785,10 +788,17 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
                 nir = nir_data.astype(np.float32) * 0.0001
                 swir = swir_data.astype(np.float32) * 0.0001
-
                 metadata = hdf.attributes()['StructMetadata.0']
-                
-                # Mismas expresiones mejoradas
+
+                # Variables a extraer
+                xdim = None
+                ydim = None
+                ulx = None
+                uly = None
+                lrx = None
+                lry = None
+
+                # Intentar con expresiones regulares estándar
                 xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ul_match = re.search(
@@ -800,8 +810,15 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     metadata, re.IGNORECASE
                 )
 
-                # Intentar con GRINGPOINT como fallback
-                if not (xdim_match and ydim_match and ul_match and lr_match):
+                if xdim_match and ydim_match and ul_match and lr_match:
+                    xdim = int(xdim_match.group(1))
+                    ydim = int(ydim_match.group(1))
+                    ulx = float(ul_match.group(1))
+                    uly = float(ul_match.group(2))
+                    lrx = float(lr_match.group(1))
+                    lry = float(lr_match.group(2))
+                else:
+                    # Fallback: buscar GRINGPOINT
                     gring_match = re.search(
                         r'GRINGPOINT[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)',
                         metadata, re.IGNORECASE
@@ -809,31 +826,31 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     if gring_match and len(gring_match.groups()) >= 2:
                         ulx = float(gring_match.group(1))
                         uly = float(gring_match.group(2))
-                        lrx = ulx + 10  # Aproximación
-                        lry = uly - 10
-                        xdim = 1200  # Típico MODIS
+                        lrx = ulx + 10.0
+                        lry = uly - 10.0
+                        xdim = 1200
                         ydim = 1200
                     else:
-                        with st.expander("🔍 Metadata del HDF (para depuración)", expanded=False):
-                            st.code(metadata[:2000])
-                        raise ValueError("No se pudo extraer la geolocalización completa del HDF")
+                        # Fallback final: buscar cualquier par de números
+                        coords = re.findall(r'[-+]?\d*\.?\d+(?:[eE][+-]?\d+)?', metadata)
+                        if len(coords) >= 4:
+                            ulx = float(coords[0])
+                            uly = float(coords[1])
+                            lrx = float(coords[2])
+                            lry = float(coords[3])
+                            xdim = 1200
+                            ydim = 1200
+                        else:
+                            with st.expander("🔍 Metadata del HDF (para depuración)", expanded=False):
+                                st.code(metadata[:2000])
+                            st.warning("No se pudo extraer la geolocalización del HDF. Usando datos simulados.")
+                            shutil.rmtree(temp_dir, ignore_errors=True)
+                            return None
 
-                if not (xdim_match and ydim_match and ul_match and lr_match):
+                if xdim is None or ydim is None or ulx is None or uly is None or lrx is None or lry is None:
                     st.warning("No se pudo extraer la geolocalización completa del HDF. Usando datos simulados.")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
-                
-                if len(ul_match.groups()) < 2 or len(lr_match.groups()) < 2:
-                    st.warning("Formato inesperado en coordenadas de geolocalización. Usando datos simulados.")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    return None
-
-                xdim = int(xdim_match.group(1))
-                ydim = int(ydim_match.group(1))
-                ulx = float(ul_match.group(1))
-                uly = float(ul_match.group(2))
-                lrx = float(lr_match.group(1))
-                lry = float(lr_match.group(2))
 
                 if nir.shape != (ydim, xdim):
                     ydim, xdim = nir.shape
