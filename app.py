@@ -403,7 +403,7 @@ def cargar_archivo_plantacion(uploaded_file):
         st.error(f"❌ Error cargando archivo: {str(e)}")
         return None
 
-# ===== FUNCIONES PARA DATOS SATELITALES (CORREGIDAS) =====
+# ===== FUNCIONES PARA DATOS SATELITALES (CORREGIDAS CON RESHAPE) =====
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
@@ -555,8 +555,8 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     return None
 
                 ndvi_data = hdf.select(ndvi_dataset).get()
-                ndvi_scaled = ndvi_data.astype(np.float32) * 0.0001
 
+                # Obtener metadata de geolocalización
                 metadata = hdf.attributes()['StructMetadata.0']
                 xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
@@ -573,11 +573,22 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 lrx = float(lr_match.group(1))
                 lry = float(lr_match.group(2))
 
-                # Verificar que el array tenga 2 dimensiones antes de desempaquetar
-                if ndvi_scaled.ndim != 2:
-                    st.error(f"El array NDVI tiene {ndvi_scaled.ndim} dimensiones, se esperaban 2.")
+                # Verificar dimensionalidad y hacer reshape si es necesario
+                if ndvi_data.ndim == 1:
+                    expected_size = ydim * xdim
+                    if ndvi_data.size == expected_size:
+                        ndvi_data = ndvi_data.reshape(ydim, xdim)
+                        st.info("ℹ️ Array NDVI era 1D, se aplicó reshape a 2D.")
+                    else:
+                        st.error(f"El array NDVI tiene tamaño {ndvi_data.size} pero se esperaba {expected_size} (ydim*xdim).")
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        return None
+                elif ndvi_data.ndim != 2:
+                    st.error(f"El array NDVI tiene {ndvi_data.ndim} dimensiones, no se puede procesar.")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
+
+                ndvi_scaled = ndvi_data.astype(np.float32) * 0.0001
 
                 if ndvi_scaled.shape != (ydim, xdim):
                     ydim, xdim = ndvi_scaled.shape
@@ -829,9 +840,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-                nir = nir_data.astype(np.float32) * 0.0001
-                swir = swir_data.astype(np.float32) * 0.0001
-
+                # Obtener metadata de geolocalización
                 metadata = hdf.attributes()['StructMetadata.0']
                 xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
@@ -843,20 +852,44 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
                 xdim = int(xdim_match.group(1))
                 ydim = int(ydim_match.group(1))
+
+                # Verificar dimensionalidad y hacer reshape si es necesario para NIR
+                if nir_data.ndim == 1:
+                    expected_size = ydim * xdim
+                    if nir_data.size == expected_size:
+                        nir_data = nir_data.reshape(ydim, xdim)
+                        st.info("ℹ️ Array NIR era 1D, se aplicó reshape a 2D.")
+                    else:
+                        st.error(f"El array NIR tiene tamaño {nir_data.size} pero se esperaba {expected_size} (ydim*xdim).")
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        return None
+                elif nir_data.ndim != 2:
+                    st.error(f"El array NIR tiene {nir_data.ndim} dimensiones, no se puede procesar.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return None
+
+                # Lo mismo para SWIR
+                if swir_data.ndim == 1:
+                    expected_size = ydim * xdim
+                    if swir_data.size == expected_size:
+                        swir_data = swir_data.reshape(ydim, xdim)
+                        st.info("ℹ️ Array SWIR era 1D, se aplicó reshape a 2D.")
+                    else:
+                        st.error(f"El array SWIR tiene tamaño {swir_data.size} pero se esperaba {expected_size}.")
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        return None
+                elif swir_data.ndim != 2:
+                    st.error(f"El array SWIR tiene {swir_data.ndim} dimensiones, no se puede procesar.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return None
+
+                nir = nir_data.astype(np.float32) * 0.0001
+                swir = swir_data.astype(np.float32) * 0.0001
+
                 ulx = float(ul_match.group(1))
                 uly = float(ul_match.group(2))
                 lrx = float(lr_match.group(1))
                 lry = float(lr_match.group(2))
-
-                # Verificar que los arrays tengan 2 dimensiones antes de desempaquetar
-                if nir.ndim != 2:
-                    st.error(f"La banda NIR tiene {nir.ndim} dimensiones, se esperaban 2.")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    return None
-                if swir.ndim != 2:
-                    st.error(f"La banda SWIR tiene {swir.ndim} dimensiones, se esperaban 2.")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    return None
 
                 if nir.shape != (ydim, xdim):
                     ydim, xdim = nir.shape
