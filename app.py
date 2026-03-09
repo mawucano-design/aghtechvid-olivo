@@ -856,74 +856,83 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-                # Obtener dimensiones de cada banda
+                # --- FUNCIÓN PARA OBTENER DIMENSIONES DE FORMA ROBUSTA ---
                 def get_band_dims(ds):
                     dims = ds.dimensions()
-                    # Buscar nombres comunes
-                    ydim = dims.get('YDim', dims.get('DimY', dims.get('Ydim', None)))
-                    xdim = dims.get('XDim', dims.get('DimX', dims.get('Xdim', None)))
-                    if ydim is None or xdim is None:
-                        # Si no se encuentran, asumir orden Y,X
-                        dim_values = list(dims.values())
-                        if len(dim_values) >= 2:
-                            ydim, xdim = dim_values[0], dim_values[1]
+                    # Si el diccionario tiene exactamente 2 entradas, asumimos que son Y y X
+                    if len(dims) == 2:
+                        # Intentamos identificar claves que contengan 'y' o 'x'
+                        ykey = None
+                        xkey = None
+                        for k in dims.keys():
+                            if 'y' in k.lower():
+                                ykey = k
+                            elif 'x' in k.lower():
+                                xkey = k
+                        if ykey and xkey:
+                            return dims[ykey], dims[xkey]
                         else:
-                            raise ValueError("No se pudieron determinar las dimensiones de la banda")
-                    return ydim, xdim
+                            # Si no, devolvemos los dos primeros valores en el orden en que aparecen
+                            items = list(dims.items())
+                            return items[0][1], items[1][1]
+                    else:
+                        # No podemos determinar, devolvemos None
+                        return None, None
 
+                # Intentar obtener dimensiones para NIR
                 ydim_nir, xdim_nir = get_band_dims(nir_ds)
+                if ydim_nir is None or xdim_nir is None:
+                    # Fallback: usar metadata global
+                    metadata = hdf.attributes()['StructMetadata.0']
+                    xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
+                    ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
+                    if xdim_match and ydim_match:
+                        xdim_nir = int(xdim_match.group(1))
+                        ydim_nir = int(ydim_match.group(1))
+                    else:
+                        raise ValueError("No se pudo obtener dimensiones de la metadata global")
+
                 ydim_swir, xdim_swir = get_band_dims(swir_ds)
+                if ydim_swir is None or xdim_swir is None:
+                    # Usar las mismas que NIR si no se pueden obtener
+                    ydim_swir, xdim_swir = ydim_nir, xdim_nir
 
                 nir_data = nir_ds.get()
                 swir_data = swir_ds.get()
 
-                # Procesar NIR
-                if nir_data.ndim == 1:
-                    expected_size_nir = ydim_nir * xdim_nir
-                    if nir_data.size == expected_size_nir:
-                        nir_data = nir_data.reshape(ydim_nir, xdim_nir)
+                # --- FUNCIÓN PARA PROCESAR CADA BANDA ---
+                def process_band(data, ydim, xdim, band_name):
+                    if data.ndim == 1:
+                        expected = ydim * xdim
+                        if data.size == expected:
+                            return data.reshape(ydim, xdim)
+                        else:
+                            # Si no coincide, intentamos deducir dimensiones de la forma del array
+                            # Puede ser que la banda ya esté en 2D pero aplanada? No, es 1D.
+                            # Mejor intentamos con la raíz cuadrada si es cuadrada
+                            sqrt_size = int(np.sqrt(data.size))
+                            if sqrt_size * sqrt_size == data.size:
+                                st.warning(f"El array {band_name} tiene tamaño {data.size} pero se esperaba {expected}. Se asume forma cuadrada {sqrt_size}x{sqrt_size}.")
+                                return data.reshape(sqrt_size, sqrt_size)
+                            else:
+                                raise ValueError(f"Tamaño inesperado para {band_name}: {data.size} vs esperado {expected}")
+                    elif data.ndim == 2:
+                        # Si las dimensiones no coinciden, usar las del array
+                        if data.shape != (ydim, xdim):
+                            st.warning(f"Las dimensiones del array {band_name} {data.shape} no coinciden con las esperadas {ydim, xdim}. Se usarán las del array.")
+                        return data
                     else:
-                        st.error(f"El array NIR tiene tamaño {nir_data.size} pero se esperaba {expected_size_nir} según sus dimensiones.")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        return None
-                elif nir_data.ndim == 2:
-                    if nir_data.shape != (ydim_nir, xdim_nir):
-                        st.warning(f"Las dimensiones del array NIR {nir_data.shape} no coinciden con las de la banda {ydim_nir, xdim_nir}. Se usarán las del array.")
-                        ydim_nir, xdim_nir = nir_data.shape
-                else:
-                    st.error(f"Array NIR tiene {nir_data.ndim} dimensiones, no se puede procesar.")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    return None
+                        raise ValueError(f"Array {band_name} tiene {data.ndim} dimensiones, no se puede procesar.")
 
-                # Procesar SWIR
-                if swir_data.ndim == 1:
-                    expected_size_swir = ydim_swir * xdim_swir
-                    if swir_data.size == expected_size_swir:
-                        swir_data = swir_data.reshape(ydim_swir, xdim_swir)
-                    else:
-                        st.error(f"El array SWIR tiene tamaño {swir_data.size} pero se esperaba {expected_size_swir} según sus dimensiones.")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        return None
-                elif swir_data.ndim == 2:
-                    if swir_data.shape != (ydim_swir, xdim_swir):
-                        st.warning(f"Las dimensiones del array SWIR {swir_data.shape} no coinciden con las de la banda {ydim_swir, xdim_swir}. Se usarán las del array.")
-                        ydim_swir, xdim_swir = swir_data.shape
-                else:
-                    st.error(f"Array SWIR tiene {swir_data.ndim} dimensiones, no se puede procesar.")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    return None
-
-                nir = nir_data.astype(np.float32) * 0.0001
-                swir = swir_data.astype(np.float32) * 0.0001
+                nir = process_band(nir_data, ydim_nir, xdim_nir, "NIR").astype(np.float32) * 0.0001
+                swir = process_band(swir_data, ydim_swir, xdim_swir, "SWIR").astype(np.float32) * 0.0001
 
                 # Obtener coordenadas de esquina desde la metadata global
                 metadata = hdf.attributes()['StructMetadata.0']
-                xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
-                ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ul_match = re.search(r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.IGNORECASE)
                 lr_match = re.search(r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.IGNORECASE)
 
-                if not (xdim_match and ydim_match and ul_match and lr_match):
+                if not (ul_match and lr_match):
                     raise ValueError("No se pudo extraer la geolocalización completa")
 
                 ulx = float(ul_match.group(1))
@@ -931,9 +940,8 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 lrx = float(lr_match.group(1))
                 lry = float(lr_match.group(2))
 
-                # Usar las dimensiones de la banda NIR para la transformación (asumimos que ambas bandas tienen la misma extensión)
-                ydim = ydim_nir
-                xdim = xdim_nir
+                # Usar las dimensiones de NIR para la transformación (asumimos que ambas bandas tienen la misma extensión geográfica)
+                ydim, xdim = nir.shape
                 res_x = (lrx - ulx) / xdim
                 res_y = (uly - lry) / ydim
                 transform = rasterio.Affine(res_x, 0, ulx, 0, -res_y, uly)
@@ -1027,7 +1035,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         except:
             pass
         return None
-
 # ===== FUNCIONES DE SIMULACIÓN =====
 def generar_datos_simulados_completos(gdf_original, n_divisiones):
     gdf_dividido = dividir_plantacion_en_bloques(gdf_original, n_divisiones)
