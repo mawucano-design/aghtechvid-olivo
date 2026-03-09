@@ -1,4 +1,4 @@
-# app_olivo.py - Analizador de Olivo Satelital
+# app.py - Analizador de Olivo Satelital
 # 
 # - Sin autenticación ni Mercado Pago (libre)
 # - Modo simulado opcional: cuando se activa, usa datos generados aleatoriamente.
@@ -106,7 +106,7 @@ def init_session_state():
         'geojson_data': None,
         'analisis_completado': False,
         'resultados_todos': {},
-        'plantas_detectadas': [],      # antes 'palmas_detectadas'
+        'plantas_detectadas': [],
         'archivo_cargado': False,
         'gdf_original': None,
         'datos_modis': {},
@@ -115,7 +115,7 @@ def init_session_state():
         'n_divisiones': 16,
         'fecha_inicio': datetime.now() - timedelta(days=60),
         'fecha_fin': datetime.now(),
-        'variedad_seleccionada': 'Arbequina',   # valor por defecto para olivo
+        'variedad_seleccionada': 'Arbequina',
         'textura_suelo': {},
         'textura_por_bloque': [],
         'datos_fertilidad': [],
@@ -140,7 +140,7 @@ VARIEDADES_OLIVO = [
 EARTHDATA_USERNAME = os.environ.get("EARTHDATA_USERNAME")
 EARTHDATA_PASSWORD = os.environ.get("EARTHDATA_PASSWORD")
 
-# ===== FUNCIONES DE UTILIDAD MEJORADAS =====
+# ===== FUNCIONES DE UTILIDAD =====
 def validar_y_corregir_crs(gdf):
     if gdf is None or len(gdf) == 0:
         return gdf
@@ -403,7 +403,7 @@ def cargar_archivo_plantacion(uploaded_file):
         st.error(f"❌ Error cargando archivo: {str(e)}")
         return None
 
-# ===== FUNCIONES PARA DATOS SATELITALES (adaptadas del archivo palmapp) =====
+# ===== FUNCIONES PARA DATOS SATELITALES (CORREGIDAS) =====
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
@@ -443,12 +443,22 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-        hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
+        # Convertir posibles objetos Path a string
+        downloaded_files = [str(f) for f in downloaded_files]
+
+        hdf_files = [f for f in downloaded_files if f.lower().endswith('.hdf')]
         if not hdf_files:
             st.error("No se encontró archivo HDF en la descarga.")
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
+
         download_path = hdf_files[0]
+
+        # Verificar que el archivo existe y tiene tamaño razonable
+        if not os.path.isfile(download_path):
+            st.error(f"El archivo descargado no existe: {download_path}")
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return None
 
         file_size = os.path.getsize(download_path)
         if file_size < 10240:
@@ -459,6 +469,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
+        # --- Intento con rasterio ---
         rasterio_success = False
         if RASTERIO_OK:
             try:
@@ -466,7 +477,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     subdatasets = src.subdatasets
                     ndvi_sub = None
                     for sd in subdatasets:
-                        if 'NDVI' in sd or 'ndvi' in sd.lower():
+                        if 'NDVI' in sd.upper():
                             ndvi_sub = sd
                             break
                     if ndvi_sub:
@@ -476,23 +487,40 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             gdf_proj = gdf_dividido.to_crs(raster_crs)
 
                             ndvi_values = []
+                            ndvi_std = []
+                            ndvi_min = []
+                            ndvi_max = []
+                            pixel_count = []
+
                             progress_bar = st.progress(0, text="Procesando bloques para NDVI...")
 
                             for idx, row in gdf_proj.iterrows():
                                 geom = [mapping(row.geometry)]
                                 try:
                                     out_image, _ = mask(src_ndvi, geom, crop=True, nodata=nodata)
-                                    data = out_image[0]
-                                    data_scaled = data.astype(np.float32) * 0.0001
+                                    data = out_image[0].astype(np.float32)
+                                    data_scaled = data * 0.0001
                                     mask_invalid = (data == nodata) | (data_scaled < -1) | (data_scaled > 1)
                                     data_clean = np.ma.masked_where(mask_invalid, data_scaled)
+
                                     mean_val = data_clean.mean()
-                                    if np.ma.is_masked(mean_val) or np.isnan(mean_val):
-                                        ndvi_values.append(np.nan)
-                                    else:
-                                        ndvi_values.append(round(float(mean_val), 3))
+                                    std_val = data_clean.std()
+                                    min_val = data_clean.min()
+                                    max_val = data_clean.max()
+                                    count_valid = np.count_nonzero(~data_clean.mask)
+
+                                    ndvi_values.append(round(float(mean_val), 4) if not np.ma.is_masked(mean_val) else np.nan)
+                                    ndvi_std.append(round(float(std_val), 4) if not np.ma.is_masked(std_val) else np.nan)
+                                    ndvi_min.append(round(float(min_val), 4) if not np.ma.is_masked(min_val) else np.nan)
+                                    ndvi_max.append(round(float(max_val), 4) if not np.ma.is_masked(max_val) else np.nan)
+                                    pixel_count.append(int(count_valid))
+
                                 except Exception:
                                     ndvi_values.append(np.nan)
+                                    ndvi_std.append(np.nan)
+                                    ndvi_min.append(np.nan)
+                                    ndvi_max.append(np.nan)
+                                    pixel_count.append(0)
 
                                 progress_bar.progress((idx + 1) / len(gdf_proj),
                                                       text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
@@ -500,29 +528,36 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             progress_bar.empty()
 
                             gdf_dividido['ndvi_modis'] = ndvi_values
+                            gdf_dividido['ndvi_std'] = ndvi_std
+                            gdf_dividido['ndvi_min'] = ndvi_min
+                            gdf_dividido['ndvi_max'] = ndvi_max
+                            gdf_dividido['ndvi_pixels'] = pixel_count
+
                             st.success("✅ NDVI calculado por bloque correctamente con rasterio.")
                             rasterio_success = True
-                            return gdf_dividido
-            except Exception:
-                pass
+            except Exception as e:
+                st.warning(f"⚠️ Rasterio falló, intentando con pyhdf: {str(e)[:100]}")
 
+        # --- Fallback con pyhdf ---
         if not rasterio_success and PYHDF_OK and RASTERIO_OK:
             try:
-                hdf = SD(download_path, SDC.READ)
+                hdf = SD(str(download_path), SDC.READ)
+
                 ndvi_dataset = None
                 for name in hdf.datasets().keys():
-                    if 'NDVI' in name:
+                    if 'NDVI' in name.upper():
                         ndvi_dataset = name
                         break
+
                 if ndvi_dataset is None:
                     st.error("No se encontró dataset NDVI en el archivo HDF.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
                 ndvi_data = hdf.select(ndvi_dataset).get()
                 ndvi_scaled = ndvi_data.astype(np.float32) * 0.0001
 
                 metadata = hdf.attributes()['StructMetadata.0']
-                import re
                 xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ul_match = re.search(r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.IGNORECASE)
@@ -563,6 +598,11 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         gdf_proj = gdf_dividido.to_crs(crs)
 
                         ndvi_values = []
+                        ndvi_std = []
+                        ndvi_min = []
+                        ndvi_max = []
+                        pixel_count = []
+
                         progress_bar = st.progress(0, text="Procesando bloques para NDVI con pyhdf...")
 
                         for idx, row in gdf_proj.iterrows():
@@ -572,13 +612,25 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 data = out_image[0]
                                 mask_invalid = (data == -32768) | (data < -1) | (data > 1)
                                 data_clean = np.ma.masked_where(mask_invalid, data)
+
                                 mean_val = data_clean.mean()
-                                if np.ma.is_masked(mean_val) or np.isnan(mean_val):
-                                    ndvi_values.append(np.nan)
-                                else:
-                                    ndvi_values.append(round(float(mean_val), 3))
+                                std_val = data_clean.std()
+                                min_val = data_clean.min()
+                                max_val = data_clean.max()
+                                count_valid = np.count_nonzero(~data_clean.mask)
+
+                                ndvi_values.append(round(float(mean_val), 4) if not np.ma.is_masked(mean_val) else np.nan)
+                                ndvi_std.append(round(float(std_val), 4) if not np.ma.is_masked(std_val) else np.nan)
+                                ndvi_min.append(round(float(min_val), 4) if not np.ma.is_masked(min_val) else np.nan)
+                                ndvi_max.append(round(float(max_val), 4) if not np.ma.is_masked(max_val) else np.nan)
+                                pixel_count.append(int(count_valid))
+
                             except Exception:
                                 ndvi_values.append(np.nan)
+                                ndvi_std.append(np.nan)
+                                ndvi_min.append(np.nan)
+                                ndvi_max.append(np.nan)
+                                pixel_count.append(0)
 
                             progress_bar.progress((idx + 1) / len(gdf_proj),
                                                   text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
@@ -586,21 +638,34 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         progress_bar.empty()
 
                         gdf_dividido['ndvi_modis'] = ndvi_values
+                        gdf_dividido['ndvi_std'] = ndvi_std
+                        gdf_dividido['ndvi_min'] = ndvi_min
+                        gdf_dividido['ndvi_max'] = ndvi_max
+                        gdf_dividido['ndvi_pixels'] = pixel_count
+
                         st.success("✅ NDVI calculado por bloque correctamente con pyhdf.")
-                        return gdf_dividido
+                        rasterio_success = True
+
             except Exception as e_pyhdf:
                 st.error(f"Error al procesar con pyhdf: {str(e_pyhdf)}")
+                shutil.rmtree(temp_dir, ignore_errors=True)
                 return None
 
         if not rasterio_success:
-            st.error("No se pudo leer el archivo HDF.")
+            st.error("No se pudo leer el archivo HDF: ni rasterio ni pyhdf funcionaron.")
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return None
+
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return gdf_dividido
 
     except Exception as e:
         st.error(f"Error en obtención de NDVI: {str(e)}")
+        try:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except:
+            pass
         return None
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
 
 def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     if not EARTHDATA_OK:
@@ -641,12 +706,19 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-        hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
+        downloaded_files = [str(f) for f in downloaded_files]
+
+        hdf_files = [f for f in downloaded_files if f.lower().endswith('.hdf')]
         if not hdf_files:
             st.error("No se encontró archivo HDF.")
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
         download_path = hdf_files[0]
+
+        if not os.path.isfile(download_path):
+            st.error(f"El archivo descargado no existe: {download_path}")
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return None
 
         file_size = os.path.getsize(download_path)
         if file_size < 10240:
@@ -678,6 +750,11 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             gdf_proj = gdf_dividido.to_crs(raster_crs)
 
                             ndwi_values = []
+                            ndwi_std = []
+                            ndwi_min = []
+                            ndwi_max = []
+                            pixel_count = []
+
                             progress_bar = st.progress(0, text="Procesando bloques para NDWI...")
 
                             for idx, row in gdf_proj.iterrows():
@@ -695,13 +772,25 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
                                     with np.errstate(divide='ignore', invalid='ignore'):
                                         ndwi = (nir_valid - swir_valid) / (nir_valid + swir_valid)
+
                                     mean_val = ndwi.mean()
-                                    if np.ma.is_masked(mean_val) or np.isnan(mean_val):
-                                        ndwi_values.append(np.nan)
-                                    else:
-                                        ndwi_values.append(round(float(mean_val), 3))
+                                    std_val = ndwi.std()
+                                    min_val = ndwi.min()
+                                    max_val = ndwi.max()
+                                    count_valid = np.count_nonzero(~ndwi.mask) if hasattr(ndwi, 'mask') else len(ndwi.flatten())
+
+                                    ndwi_values.append(round(float(mean_val), 4) if not np.ma.is_masked(mean_val) else np.nan)
+                                    ndwi_std.append(round(float(std_val), 4) if not np.ma.is_masked(std_val) else np.nan)
+                                    ndwi_min.append(round(float(min_val), 4) if not np.ma.is_masked(min_val) else np.nan)
+                                    ndwi_max.append(round(float(max_val), 4) if not np.ma.is_masked(max_val) else np.nan)
+                                    pixel_count.append(int(count_valid))
+
                                 except Exception:
                                     ndwi_values.append(np.nan)
+                                    ndwi_std.append(np.nan)
+                                    ndwi_min.append(np.nan)
+                                    ndwi_max.append(np.nan)
+                                    pixel_count.append(0)
 
                                 progress_bar.progress((idx + 1) / len(gdf_proj),
                                                       text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
@@ -709,15 +798,19 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             progress_bar.empty()
 
                             gdf_dividido['ndwi_modis'] = ndwi_values
+                            gdf_dividido['ndwi_std'] = ndwi_std
+                            gdf_dividido['ndwi_min'] = ndwi_min
+                            gdf_dividido['ndwi_max'] = ndwi_max
+                            gdf_dividido['ndwi_pixels'] = pixel_count
+
                             st.success("✅ NDWI calculado por bloque correctamente con rasterio.")
                             rasterio_success = True
-                            return gdf_dividido
             except Exception:
                 pass
 
         if not rasterio_success and PYHDF_OK and RASTERIO_OK:
             try:
-                hdf = SD(download_path, SDC.READ)
+                hdf = SD(str(download_path), SDC.READ)
                 nir_data = None
                 swir_data = None
                 for name in hdf.datasets().keys():
@@ -727,6 +820,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         swir_data = hdf.select(name).get()
                 if nir_data is None or swir_data is None:
                     st.error("No se encontraron las bandas NIR o SWIR con pyhdf.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
                 nir = nir_data.astype(np.float32) * 0.0001
@@ -768,6 +862,11 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         gdf_proj = gdf_dividido.to_crs(crs)
 
                         ndwi_values = []
+                        ndwi_std = []
+                        ndwi_min = []
+                        ndwi_max = []
+                        pixel_count = []
+
                         progress_bar = st.progress(0, text="Procesando bloques para NDWI con pyhdf...")
 
                         for idx, row in gdf_proj.iterrows():
@@ -785,13 +884,25 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
                                 with np.errstate(divide='ignore', invalid='ignore'):
                                     ndwi = (nir_valid - swir_valid) / (nir_valid + swir_valid)
+
                                 mean_val = ndwi.mean()
-                                if np.ma.is_masked(mean_val) or np.isnan(mean_val):
-                                    ndwi_values.append(np.nan)
-                                else:
-                                    ndwi_values.append(round(float(mean_val), 3))
+                                std_val = ndwi.std()
+                                min_val = ndwi.min()
+                                max_val = ndwi.max()
+                                count_valid = np.count_nonzero(~ndwi.mask) if hasattr(ndwi, 'mask') else len(ndwi.flatten())
+
+                                ndwi_values.append(round(float(mean_val), 4) if not np.ma.is_masked(mean_val) else np.nan)
+                                ndwi_std.append(round(float(std_val), 4) if not np.ma.is_masked(std_val) else np.nan)
+                                ndwi_min.append(round(float(min_val), 4) if not np.ma.is_masked(min_val) else np.nan)
+                                ndwi_max.append(round(float(max_val), 4) if not np.ma.is_masked(max_val) else np.nan)
+                                pixel_count.append(int(count_valid))
+
                             except Exception:
                                 ndwi_values.append(np.nan)
+                                ndwi_std.append(np.nan)
+                                ndwi_min.append(np.nan)
+                                ndwi_max.append(np.nan)
+                                pixel_count.append(0)
 
                             progress_bar.progress((idx + 1) / len(gdf_proj),
                                                   text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
@@ -799,21 +910,34 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         progress_bar.empty()
 
                         gdf_dividido['ndwi_modis'] = ndwi_values
+                        gdf_dividido['ndwi_std'] = ndwi_std
+                        gdf_dividido['ndwi_min'] = ndwi_min
+                        gdf_dividido['ndwi_max'] = ndwi_max
+                        gdf_dividido['ndwi_pixels'] = pixel_count
+
                         st.success("✅ NDWI calculado por bloque correctamente con pyhdf.")
-                        return gdf_dividido
+                        rasterio_success = True
+
             except Exception as e_pyhdf:
                 st.error(f"Error al procesar con pyhdf: {str(e_pyhdf)}")
+                shutil.rmtree(temp_dir, ignore_errors=True)
                 return None
 
         if not rasterio_success:
             st.error("No se pudo leer el archivo HDF.")
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return None
+
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return gdf_dividido
 
     except Exception as e:
         st.error(f"Error en obtención de NDWI: {str(e)}")
+        try:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except:
+            pass
         return None
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
 
 # ===== FUNCIONES DE SIMULACIÓN =====
 def generar_datos_simulados_completos(gdf_original, n_divisiones):
@@ -1052,7 +1176,7 @@ def analizar_edad_plantacion(gdf_dividido):
             edades.append(10.0)
     return edades
 
-# ===== DETECCIÓN DE PLANTAS (antes palmas) =====
+# ===== DETECCIÓN DE PLANTAS =====
 def verificar_puntos_en_poligono(puntos, gdf):
     puntos_dentro = []
     plantacion_union = gdf.unary_union
@@ -1238,7 +1362,7 @@ def crear_graficos_climaticos_completos(datos_climaticos):
     plt.tight_layout()
     return fig
 
-# ===== ANÁLISIS DE TEXTURA DE SUELO (adaptado para olivo) =====
+# ===== ANÁLISIS DE TEXTURA DE SUELO =====
 def analizar_textura_suelo_venezuela_por_bloque(gdf_dividido):
     resultados = []
     try:
@@ -1860,7 +1984,7 @@ def ejecutar_analisis_completo():
                 'fuente': 'Datos simulados'
             }
         else:
-            # Modo real: obtener datos con Earthdata (si credenciales existen, sino error)
+            # Modo real: obtener datos con Earthdata
             gdf_dividido = dividir_plantacion_en_bloques(gdf, n_divisiones)
             areas_ha = []
             for idx, row in gdf_dividido.iterrows():
@@ -2135,12 +2259,6 @@ if st.session_state.analisis_completado:
             "🌱 Textura Suelo", "🗺️ Curvas de Nivel", "🐛 Detección YOLO"
         ])
         
-        # (Las pestañas mantienen el mismo contenido, pero con textos adaptados)
-        # A continuación se mantiene el código original de las pestañas, 
-        # solo se cambian las referencias a 'palmas' por 'plantas'.
-        # Para ahorrar espacio, se incluye un resumen de las pestañas con los cambios mínimos.
-        
-        # Pestaña 1: Resumen (igual, pero con textos de olivo)
         with tab1:
             st.subheader("📊 DASHBOARD DE RESUMEN")
             area_total = resultados.get('area_total', 0)
@@ -2254,7 +2372,6 @@ if st.session_state.analisis_completado:
             except Exception as e:
                 st.warning(f"No se pudo mostrar la tabla de bloques: {e}")
         
-        # Pestaña 2: Mapas (igual)
         with tab2:
             st.subheader("🗺️ MAPAS INTERACTIVOS")
             st.markdown("### 🌍 Mapa Interactivo con Plantas Detectadas")
@@ -2283,7 +2400,6 @@ if st.session_state.analisis_completado:
             except Exception as e:
                 st.error(f"Error al mostrar mapa interactivo: {str(e)[:100]}")
         
-        # Pestaña 3: Índices (igual)
         with tab3:
             st.subheader("🛰️ ÍNDICES DE VEGETACIÓN")
             st.caption(f"Fuente: {st.session_state.datos_modis.get('fuente', 'Earthdata')}")
@@ -2317,7 +2433,6 @@ if st.session_state.analisis_completado:
             except Exception as e:
                 st.info(f"No se pudieron exportar los datos: {e}")
         
-        # Pestaña 4: Clima (igual)
         with tab4:
             st.subheader("🌤️ DATOS CLIMÁTICOS")
             datos_climaticos = st.session_state.datos_climaticos
@@ -2340,7 +2455,6 @@ if st.session_state.analisis_completado:
             else:
                 st.info("No hay datos climáticos disponibles")
         
-        # Pestaña 5: Detección de plantas (antes palmas)
         with tab5:
             st.subheader("🌱 DETECCIÓN DE PLANTAS INDIVIDUALES")
             if st.session_state.deteccion_ejecutada and st.session_state.plantas_detectadas:
@@ -2388,7 +2502,6 @@ if st.session_state.analisis_completado:
                     ejecutar_deteccion_plantas()
                     st.rerun()
         
-        # Pestaña 6: Fertilidad NPK (igual)
         with tab6:
             st.subheader("🧪 FERTILIDAD DEL SUELO Y RECOMENDACIONES NPK")
             st.caption("Basado en NDVI real y modelos de fertilidad típicos para olivo.")
@@ -2437,7 +2550,6 @@ if st.session_state.analisis_completado:
             else:
                 st.info("Ejecute el análisis completo para ver los datos de fertilidad.")
         
-        # Pestaña 7: Textura Suelo (igual)
         with tab7:
             st.subheader("🌱 ANÁLISIS DE TEXTURA DE SUELO")
             textura_por_bloque = st.session_state.get('textura_por_bloque', [])
@@ -2490,7 +2602,6 @@ if st.session_state.analisis_completado:
             else:
                 st.info("Ejecute el análisis completo para ver el análisis de textura del suelo.")
         
-        # Pestaña 8: Curvas de Nivel (igual, sin cambios)
         with tab8:
             st.subheader("🗺️ CURVAS DE NIVEL")
             st.markdown("""
@@ -2538,7 +2649,6 @@ if st.session_state.analisis_completado:
                 if st.session_state.get('curvas_nivel'):
                     st.info("Ya hay curvas de nivel generadas. Presiona el botón para regenerarlas.")
         
-        # Pestaña 9: YOLO (igual, sin cambios)
         with tab9:
             st.subheader("🐛 Detección de Enfermedades y Plagas con YOLO")
             st.markdown("""
