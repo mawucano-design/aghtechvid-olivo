@@ -403,7 +403,7 @@ def cargar_archivo_plantacion(uploaded_file):
         st.error(f"❌ Error cargando archivo: {str(e)}")
         return None
 
-# ===== FUNCIONES PARA DATOS SATELITALES (CORREGIDAS CON DIMENSIONES REALES) =====
+# ===== FUNCIONES PARA DATOS SATELITALES (CORREGIDAS Y SILENCIOSAS) =====
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
@@ -467,6 +467,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
+        # --- Intento con rasterio ---
         rasterio_success = False
         if RASTERIO_OK:
             try:
@@ -532,8 +533,9 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
                             st.success("✅ NDVI calculado por bloque correctamente con rasterio.")
                             rasterio_success = True
-            except Exception as e:
-                st.warning(f"⚠️ Rasterio falló, intentando con pyhdf: {str(e)[:100]}")
+            except Exception:
+                # Fallo silencioso de rasterio, no mostramos advertencia
+                pass
 
         if not rasterio_success and PYHDF_OK and RASTERIO_OK:
             try:
@@ -553,25 +555,28 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
 
                 # Obtener dimensiones reales del dataset
                 dims = ndvi_ds.dimensions()
-                # Intentar extraer YDim y XDim por nombres comunes
-                def get_dim_size(dims_dict, possible_names):
-                    for name in possible_names:
-                        if name in dims_dict:
-                            return dims_dict[name]
-                    # Si no, tomar el primer valor (asumiendo orden Y, X)
-                    return list(dims_dict.values())[0]
-
-                ydim_band = get_dim_size(dims, ['YDim', 'DimY', 'Ydim'])
-                xdim_band = get_dim_size(dims, ['XDim', 'DimX', 'Xdim'])
+                # Extraer YDim y XDim explícitamente
+                ydim_band = dims.get('YDim', dims.get('DimY', dims.get('Ydim', None)))
+                xdim_band = dims.get('XDim', dims.get('DimX', dims.get('Xdim', None)))
+                if ydim_band is None or xdim_band is None:
+                    # Si no se encuentran por nombre, asumir que el diccionario tiene dos entradas en orden Y, X
+                    dim_values = list(dims.values())
+                    if len(dim_values) >= 2:
+                        ydim_band, xdim_band = dim_values[0], dim_values[1]
+                    else:
+                        st.error("No se pudieron determinar las dimensiones de la banda NDVI.")
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        return None
 
                 ndvi_data = ndvi_ds.get()
 
-                # Reshape si es 1D
+                # Verificar dimensionalidad y hacer reshape si es necesario
                 if ndvi_data.ndim == 1:
-                    if ndvi_data.size == ydim_band * xdim_band:
+                    expected_size = ydim_band * xdim_band
+                    if ndvi_data.size == expected_size:
                         ndvi_data = ndvi_data.reshape(ydim_band, xdim_band)
                     else:
-                        st.error(f"El array NDVI tiene tamaño {ndvi_data.size} pero se esperaba {ydim_band * xdim_band} según sus dimensiones.")
+                        st.error(f"El array NDVI tiene tamaño {ndvi_data.size} pero se esperaba {expected_size} según sus dimensiones.")
                         shutil.rmtree(temp_dir, ignore_errors=True)
                         return None
                 elif ndvi_data.ndim == 2:
@@ -831,6 +836,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             st.success("✅ NDWI calculado por bloque correctamente con rasterio.")
                             rasterio_success = True
             except Exception:
+                # Fallo silencioso de rasterio
                 pass
 
         if not rasterio_success and PYHDF_OK and RASTERIO_OK:
@@ -850,30 +856,34 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-                # Obtener dimensiones reales de cada banda
-                def get_dim_size(dims_dict, possible_names):
-                    for name in possible_names:
-                        if name in dims_dict:
-                            return dims_dict[name]
-                    return list(dims_dict.values())[0]
+                # Obtener dimensiones de cada banda
+                def get_band_dims(ds):
+                    dims = ds.dimensions()
+                    # Buscar nombres comunes
+                    ydim = dims.get('YDim', dims.get('DimY', dims.get('Ydim', None)))
+                    xdim = dims.get('XDim', dims.get('DimX', dims.get('Xdim', None)))
+                    if ydim is None or xdim is None:
+                        # Si no se encuentran, asumir orden Y,X
+                        dim_values = list(dims.values())
+                        if len(dim_values) >= 2:
+                            ydim, xdim = dim_values[0], dim_values[1]
+                        else:
+                            raise ValueError("No se pudieron determinar las dimensiones de la banda")
+                    return ydim, xdim
 
-                nir_dims = nir_ds.dimensions()
-                swir_dims = swir_ds.dimensions()
-
-                ydim_nir = get_dim_size(nir_dims, ['YDim', 'DimY', 'Ydim'])
-                xdim_nir = get_dim_size(nir_dims, ['XDim', 'DimX', 'Xdim'])
-                ydim_swir = get_dim_size(swir_dims, ['YDim', 'DimY', 'Ydim'])
-                xdim_swir = get_dim_size(swir_dims, ['XDim', 'DimX', 'Xdim'])
+                ydim_nir, xdim_nir = get_band_dims(nir_ds)
+                ydim_swir, xdim_swir = get_band_dims(swir_ds)
 
                 nir_data = nir_ds.get()
                 swir_data = swir_ds.get()
 
-                # Reshape NIR si es 1D
+                # Procesar NIR
                 if nir_data.ndim == 1:
-                    if nir_data.size == ydim_nir * xdim_nir:
+                    expected_size_nir = ydim_nir * xdim_nir
+                    if nir_data.size == expected_size_nir:
                         nir_data = nir_data.reshape(ydim_nir, xdim_nir)
                     else:
-                        st.error(f"El array NIR tiene tamaño {nir_data.size} pero se esperaba {ydim_nir * xdim_nir} según sus dimensiones.")
+                        st.error(f"El array NIR tiene tamaño {nir_data.size} pero se esperaba {expected_size_nir} según sus dimensiones.")
                         shutil.rmtree(temp_dir, ignore_errors=True)
                         return None
                 elif nir_data.ndim == 2:
@@ -885,12 +895,13 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-                # Reshape SWIR si es 1D
+                # Procesar SWIR
                 if swir_data.ndim == 1:
-                    if swir_data.size == ydim_swir * xdim_swir:
+                    expected_size_swir = ydim_swir * xdim_swir
+                    if swir_data.size == expected_size_swir:
                         swir_data = swir_data.reshape(ydim_swir, xdim_swir)
                     else:
-                        st.error(f"El array SWIR tiene tamaño {swir_data.size} pero se esperaba {ydim_swir * xdim_swir} según sus dimensiones.")
+                        st.error(f"El array SWIR tiene tamaño {swir_data.size} pero se esperaba {expected_size_swir} según sus dimensiones.")
                         shutil.rmtree(temp_dir, ignore_errors=True)
                         return None
                 elif swir_data.ndim == 2:
