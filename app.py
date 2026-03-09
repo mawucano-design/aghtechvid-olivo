@@ -543,21 +543,46 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 # Extraer geolocalización con regex mejorada
                 try:
                     metadata = hdf.attributes()['StructMetadata.0']
+                    
+                    # Expresión regular mejorada que acepta notación científica y separadores flexibles
                     xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                     ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                     ul_match = re.search(
-                        r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*[,]?\s*([+-]?\d+\.?\d*)\s*\)',
+                        r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*[,;]?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*\)',
                         metadata, re.IGNORECASE
                     )
                     lr_match = re.search(
-                        r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*[,]?\s*([+-]?\d+\.?\d*)\s*\)',
+                        r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*[,;]?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*\)',
                         metadata, re.IGNORECASE
                     )
+
+                    # Si falla, intentar con otro posible nombre (GRINGPOINT)
+                    if not (xdim_match and ydim_match and ul_match and lr_match):
+                        # Buscar GRINGPOINT (algunos productos usan esto)
+                        gring_match = re.search(
+                            r'GRINGPOINT[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)',
+                            metadata, re.IGNORECASE
+                        )
+                        if gring_match and len(gring_match.groups()) >= 2:
+                            # Asignar valores aproximados (no es exacto, pero mejor que nada)
+                            ulx = float(gring_match.group(1))
+                            uly = float(gring_match.group(2))
+                            lrx = ulx + 10  # Aproximación de 10 grados
+                            lry = uly - 10
+                            xdim = 1200  # Valores típicos MODIS
+                            ydim = 1200
+                            # Continuar con estos valores
+                        else:
+                            # Mostrar metadata en un expander para depuración (solo si hay error)
+                            with st.expander("🔍 Metadata del HDF (para depuración)", expanded=False):
+                                st.code(metadata[:2000])  # Primeros 2000 caracteres
+                            raise ValueError("No se pudo extraer la geolocalización completa del HDF")
 
                     if not (xdim_match and ydim_match and ul_match and lr_match):
                         st.warning("No se pudo extraer la geolocalización completa del HDF. Usando datos simulados.")
                         shutil.rmtree(temp_dir, ignore_errors=True)
                         return None
+                    
                     if len(ul_match.groups()) < 2 or len(lr_match.groups()) < 2:
                         st.warning("Formato inesperado en coordenadas de geolocalización. Usando datos simulados.")
                         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -762,21 +787,42 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 swir = swir_data.astype(np.float32) * 0.0001
 
                 metadata = hdf.attributes()['StructMetadata.0']
+                
+                # Mismas expresiones mejoradas
                 xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ul_match = re.search(
-                    r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*[,]?\s*([+-]?\d+\.?\d*)\s*\)',
+                    r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*[,;]?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*\)',
                     metadata, re.IGNORECASE
                 )
                 lr_match = re.search(
-                    r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*[,]?\s*([+-]?\d+\.?\d*)\s*\)',
+                    r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*[,;]?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*\)',
                     metadata, re.IGNORECASE
                 )
+
+                # Intentar con GRINGPOINT como fallback
+                if not (xdim_match and ydim_match and ul_match and lr_match):
+                    gring_match = re.search(
+                        r'GRINGPOINT[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)',
+                        metadata, re.IGNORECASE
+                    )
+                    if gring_match and len(gring_match.groups()) >= 2:
+                        ulx = float(gring_match.group(1))
+                        uly = float(gring_match.group(2))
+                        lrx = ulx + 10  # Aproximación
+                        lry = uly - 10
+                        xdim = 1200  # Típico MODIS
+                        ydim = 1200
+                    else:
+                        with st.expander("🔍 Metadata del HDF (para depuración)", expanded=False):
+                            st.code(metadata[:2000])
+                        raise ValueError("No se pudo extraer la geolocalización completa del HDF")
 
                 if not (xdim_match and ydim_match and ul_match and lr_match):
                     st.warning("No se pudo extraer la geolocalización completa del HDF. Usando datos simulados.")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
+                
                 if len(ul_match.groups()) < 2 or len(lr_match.groups()) < 2:
                     st.warning("Formato inesperado en coordenadas de geolocalización. Usando datos simulados.")
                     shutil.rmtree(temp_dir, ignore_errors=True)
