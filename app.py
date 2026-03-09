@@ -573,6 +573,12 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 lrx = float(lr_match.group(1))
                 lry = float(lr_match.group(2))
 
+                # Verificar que el array tenga 2 dimensiones antes de desempaquetar
+                if ndvi_scaled.ndim != 2:
+                    st.error(f"El array NDVI tiene {ndvi_scaled.ndim} dimensiones, se esperaban 2.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return None
+
                 if ndvi_scaled.shape != (ydim, xdim):
                     ydim, xdim = ndvi_scaled.shape
 
@@ -841,6 +847,16 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 uly = float(ul_match.group(2))
                 lrx = float(lr_match.group(1))
                 lry = float(lr_match.group(2))
+
+                # Verificar que los arrays tengan 2 dimensiones antes de desempaquetar
+                if nir.ndim != 2:
+                    st.error(f"La banda NIR tiene {nir.ndim} dimensiones, se esperaban 2.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return None
+                if swir.ndim != 2:
+                    st.error(f"La banda SWIR tiene {swir.ndim} dimensiones, se esperaban 2.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return None
 
                 if nir.shape != (ydim, xdim):
                     ydim, xdim = nir.shape
