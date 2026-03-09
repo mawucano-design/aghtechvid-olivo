@@ -8,7 +8,7 @@
 #
 # IMPORTANTE: 
 # - Configurar variables de entorno EARTHDATA_USERNAME y EARTHDATA_PASSWORD para datos reales (opcional).
-# - Instalar dependencias: pip install earthaccess xarray rioxarray rasterio pyhdf ultralytics opencv-python
+# - Instalar dependencias: pip install earthaccess xarray rioxarray rasterio ultralytics opencv-python
 
 import streamlit as st
 import geopandas as gpd
@@ -64,7 +64,7 @@ try:
 except ImportError:
     EARTHDATA_OK = False
 
-# ===== LIBRERÍAS PARA PROCESAMIENTO RASTER (rasterio y pyhdf) =====
+# ===== LIBRERÍAS PARA PROCESAMIENTO RASTER (solo rasterio) =====
 try:
     import rasterio
     from rasterio.mask import mask
@@ -73,14 +73,8 @@ try:
 except ImportError:
     RASTERIO_OK = False
 
-try:
-    from pyhdf.SD import SD, SDC
-    PYHDF_OK = True
-except ImportError:
-    PYHDF_OK = False
-
-if not RASTERIO_OK and not PYHDF_OK:
-    st.warning("⚠️ Ni rasterio ni pyhdf están instalados. No se podrán leer archivos HDF4. Instala al menos uno: pip install rasterio o pip install pyhdf")
+if not RASTERIO_OK:
+    st.warning("⚠️ rasterio no está instalado. No se podrán leer archivos HDF. Instálalo con: pip install rasterio")
 
 # ===== CREDENCIALES EARTHDATA (desde secrets) =====
 EARTHDATA_USERNAME = os.environ.get("EARTHDATA_USERNAME")
@@ -415,13 +409,21 @@ def generar_clima_simulado():
         'fuente': 'Datos simulados (fallback)'
     }
 
-# ===== FUNCIONES PARA DATOS SATELITALES CON EARTHDATA (CORREGIDAS Y ROBUSTAS) =====
+# ===== FUNCIONES PARA DATOS SATELITALES CON EARTHDATA (SOLO RASTERIO) =====
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
+    """
+    Obtiene NDVI real para cada bloque usando MOD13Q1.
+    Utiliza rasterio para leer el subdataset NDVI y extraer los valores por bloque.
+    Si falla, retorna None y se usan datos simulados.
+    """
     if not EARTHDATA_OK:
         st.warning("Earthaccess no instalado. Usando datos simulados.")
         return None
     if not EARTHDATA_USERNAME or not EARTHDATA_PASSWORD:
         st.warning("Credenciales de Earthdata no configuradas. Usando datos simulados.")
+        return None
+    if not RASTERIO_OK:
+        st.warning("rasterio no está instalado. Usando datos simulados.")
         return None
 
     try:
@@ -480,181 +482,55 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-        # Intento con rasterio
-        rasterio_success = False
-        if RASTERIO_OK:
-            try:
-                with rasterio.open(download_path) as src:
-                    subdatasets = src.subdatasets
-                    ndvi_sub = None
-                    for sd in subdatasets:
-                        if 'NDVI' in sd or 'ndvi' in sd.lower():
-                            ndvi_sub = sd
-                            break
-                    if ndvi_sub:
-                        with rasterio.open(ndvi_sub) as src_ndvi:
-                            raster_crs = src_ndvi.crs
-                            nodata = src_ndvi.nodata
-                            gdf_proj = gdf_dividido.to_crs(raster_crs)
-                            ndvi_values = []
-                            progress_bar = st.progress(0, text="Procesando bloques para NDVI...")
-                            for idx, row in gdf_proj.iterrows():
-                                geom = [mapping(row.geometry)]
-                                try:
-                                    out_image, _ = mask(src_ndvi, geom, crop=True, nodata=nodata)
-                                    data = out_image[0]
-                                    data_scaled = data.astype(np.float32) * 0.0001
-                                    mask_invalid = (data == nodata) | (data_scaled < -1) | (data_scaled > 1)
-                                    data_clean = np.ma.masked_where(mask_invalid, data_scaled)
-                                    mean_val = data_clean.mean()
-                                    if np.ma.is_masked(mean_val) or np.isnan(mean_val):
-                                        ndvi_values.append(np.nan)
-                                    else:
-                                        ndvi_values.append(round(float(mean_val), 3))
-                                except Exception:
-                                    ndvi_values.append(np.nan)
-                                progress_bar.progress((idx + 1) / len(gdf_proj))
-                            progress_bar.empty()
-                            gdf_dividido['ndvi_modis'] = ndvi_values
-                            st.success("✅ NDVI calculado con rasterio.")
-                            rasterio_success = True
-                            shutil.rmtree(temp_dir, ignore_errors=True)
-                            return gdf_dividido
-            except Exception:
-                pass
-
-        # Fallback con pyhdf (mejorado)
-        if not rasterio_success and PYHDF_OK:
-            try:
-                hdf = SD(download_path, SDC.READ)
-                ndvi_dataset = None
-                for name in hdf.datasets().keys():
-                    if 'NDVI' in name:
-                        ndvi_dataset = name
+        # Abrir el archivo HDF con rasterio y buscar el subdataset NDVI
+        try:
+            with rasterio.open(download_path) as src:
+                subdatasets = src.subdatasets
+                ndvi_sub = None
+                for sd in subdatasets:
+                    if 'NDVI' in sd or 'ndvi' in sd.lower():
+                        ndvi_sub = sd
                         break
-                if ndvi_dataset is None:
-                    st.warning("No se encontró dataset NDVI. Usando datos simulados.")
+                if ndvi_sub is None:
+                    st.warning("No se encontró subdataset NDVI en el archivo HDF. Usando datos simulados.")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-                ndvi_data = hdf.select(ndvi_dataset).get()
-                ndvi_scaled = ndvi_data.astype(np.float32) * 0.0001
-                metadata = hdf.attributes()['StructMetadata.0']
-
-                # Variables a extraer
-                xdim = None
-                ydim = None
-                ulx = None
-                uly = None
-                lrx = None
-                lry = None
-
-                # Intentar con expresiones regulares estándar
-                xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
-                ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
-                ul_match = re.search(
-                    r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*[,;]?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*\)',
-                    metadata, re.IGNORECASE
-                )
-                lr_match = re.search(
-                    r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*[,;]?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*\)',
-                    metadata, re.IGNORECASE
-                )
-
-                if xdim_match and ydim_match and ul_match and lr_match:
-                    xdim = int(xdim_match.group(1))
-                    ydim = int(ydim_match.group(1))
-                    ulx = float(ul_match.group(1))
-                    uly = float(ul_match.group(2))
-                    lrx = float(lr_match.group(1))
-                    lry = float(lr_match.group(2))
-                else:
-                    # Fallback: buscar GRINGPOINT
-                    gring_match = re.search(
-                        r'GRINGPOINT[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)',
-                        metadata, re.IGNORECASE
-                    )
-                    if gring_match and len(gring_match.groups()) >= 2:
-                        ulx = float(gring_match.group(1))
-                        uly = float(gring_match.group(2))
-                        lrx = ulx + 10.0
-                        lry = uly - 10.0
-                        xdim = 1200
-                        ydim = 1200
-                    else:
-                        # Fallback final: buscar cualquier par de números
-                        coords = re.findall(r'[-+]?\d*\.?\d+(?:[eE][+-]?\d+)?', metadata)
-                        if len(coords) >= 4:
-                            ulx = float(coords[0])
-                            uly = float(coords[1])
-                            lrx = float(coords[2])
-                            lry = float(coords[3])
-                            xdim = 1200
-                            ydim = 1200
-                        else:
-                            with st.expander("🔍 Metadata del HDF (para depuración)", expanded=False):
-                                st.code(metadata[:2000])
-                            st.warning("No se pudo extraer la geolocalización del HDF. Usando datos simulados.")
-                            shutil.rmtree(temp_dir, ignore_errors=True)
-                            return None
-
-                if xdim is None or ydim is None or ulx is None or uly is None or lrx is None or lry is None:
-                    st.warning("No se pudo extraer la geolocalización completa del HDF. Usando datos simulados.")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    return None
-
-                if ndvi_scaled.shape != (ydim, xdim):
-                    ydim, xdim = ndvi_scaled.shape
-
-                res_x = (lrx - ulx) / xdim
-                res_y = (uly - lry) / ydim
-                transform = rasterio.Affine(res_x, 0, ulx, 0, -res_y, uly)
-                crs = rasterio.crs.CRS.from_proj4("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m +no_defs")
-
-                with rasterio.io.MemoryFile() as memfile:
-                    with memfile.open(
-                        driver='GTiff',
-                        height=ydim,
-                        width=xdim,
-                        count=1,
-                        dtype=ndvi_scaled.dtype,
-                        crs=crs,
-                        transform=transform,
-                        nodata=-32768
-                    ) as dst:
-                        dst.write(ndvi_scaled, 1)
-
-                    with memfile.open() as src_ndvi:
-                        gdf_proj = gdf_dividido.to_crs(crs)
-                        ndvi_values = []
-                        progress_bar = st.progress(0, text="Procesando bloques para NDVI con pyhdf...")
-                        for idx, row in gdf_proj.iterrows():
-                            geom = [mapping(row.geometry)]
-                            try:
-                                out_image, _ = mask(src_ndvi, geom, crop=True, nodata=-32768)
-                                data = out_image[0]
-                                mask_invalid = (data == -32768) | (data < -1) | (data > 1)
-                                data_clean = np.ma.masked_where(mask_invalid, data)
-                                mean_val = data_clean.mean()
-                                if np.ma.is_masked(mean_val) or np.isnan(mean_val):
-                                    ndvi_values.append(np.nan)
-                                else:
-                                    ndvi_values.append(round(float(mean_val), 3))
-                            except Exception:
+                # Abrir el subdataset NDVI
+                with rasterio.open(ndvi_sub) as src_ndvi:
+                    raster_crs = src_ndvi.crs
+                    nodata = src_ndvi.nodata
+                    # Proyectar los bloques al CRS del raster
+                    gdf_proj = gdf_dividido.to_crs(raster_crs)
+                    ndvi_values = []
+                    progress_bar = st.progress(0, text="Procesando bloques para NDVI...")
+                    for idx, row in gdf_proj.iterrows():
+                        geom = [mapping(row.geometry)]
+                        try:
+                            out_image, _ = mask(src_ndvi, geom, crop=True, nodata=nodata)
+                            data = out_image[0]
+                            # Escalar (MOD13Q1 tiene factor 0.0001)
+                            data_scaled = data.astype(np.float32) * 0.0001
+                            # Enmascarar valores inválidos (nodos y fuera de rango)
+                            mask_invalid = (data == nodata) | (data_scaled < -1) | (data_scaled > 1)
+                            data_clean = np.ma.masked_where(mask_invalid, data_scaled)
+                            mean_val = data_clean.mean()
+                            if np.ma.is_masked(mean_val) or np.isnan(mean_val):
                                 ndvi_values.append(np.nan)
-                            progress_bar.progress((idx + 1) / len(gdf_proj))
-                        progress_bar.empty()
-                        gdf_dividido['ndvi_modis'] = ndvi_values
-                        st.success("✅ NDVI calculado con pyhdf.")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        return gdf_dividido
+                            else:
+                                ndvi_values.append(round(float(mean_val), 3))
+                        except Exception as e:
+                            # Si falla la máscara, asignar NaN
+                            ndvi_values.append(np.nan)
+                        progress_bar.progress((idx + 1) / len(gdf_proj), text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
+                    progress_bar.empty()
+                    gdf_dividido['ndvi_modis'] = ndvi_values
+                    st.success("✅ NDVI calculado por bloque correctamente con rasterio.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return gdf_dividido
 
-            except Exception as e_pyhdf:
-                st.warning(f"Error con pyhdf: {str(e_pyhdf)}. Usando datos simulados.")
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                return None
-        else:
-            st.warning("No se pudo leer el archivo HDF (ni rasterio ni pyhdf disponibles). Usando datos simulados.")
+        except Exception as e:
+            st.warning(f"Error al procesar con rasterio: {str(e)}. Usando datos simulados.")
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
@@ -663,11 +539,19 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         return None
 
 def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
+    """
+    Obtiene NDWI real para cada bloque usando MOD09GA (bandas NIR y SWIR).
+    Utiliza rasterio para leer los subdatasets y calcular NDWI = (NIR - SWIR)/(NIR + SWIR).
+    Si falla, retorna None y se usan datos simulados.
+    """
     if not EARTHDATA_OK:
         st.warning("Earthaccess no instalado. Usando datos simulados.")
         return None
     if not EARTHDATA_USERNAME or not EARTHDATA_PASSWORD:
         st.warning("Credenciales de Earthdata no configuradas. Usando datos simulados.")
+        return None
+    if not RASTERIO_OK:
+        st.warning("rasterio no está instalado. Usando datos simulados.")
         return None
 
     try:
@@ -724,186 +608,60 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-        rasterio_success = False
-        if RASTERIO_OK:
-            try:
-                with rasterio.open(download_path) as src:
-                    subdatasets = src.subdatasets
-                    nir_sub = swir_sub = None
-                    for sd in subdatasets:
-                        if 'sur_refl_b02' in sd:
-                            nir_sub = sd
-                        elif 'sur_refl_b06' in sd:
-                            swir_sub = sd
-                    if nir_sub and swir_sub:
-                        with rasterio.open(nir_sub) as src_nir, rasterio.open(swir_sub) as src_swir:
-                            raster_crs = src_nir.crs
-                            nodata_nir = src_nir.nodata
-                            nodata_swir = src_swir.nodata
-                            gdf_proj = gdf_dividido.to_crs(raster_crs)
-                            ndwi_values = []
-                            progress_bar = st.progress(0, text="Procesando bloques para NDWI...")
-                            for idx, row in gdf_proj.iterrows():
-                                geom = [mapping(row.geometry)]
-                                try:
-                                    out_nir, _ = mask(src_nir, geom, crop=True, nodata=nodata_nir)
-                                    nir_band = out_nir[0].astype(np.float32) * 0.0001
-                                    out_swir, _ = mask(src_swir, geom, crop=True, nodata=nodata_swir)
-                                    swir_band = out_swir[0].astype(np.float32) * 0.0001
-                                    valid = (nir_band != nodata_nir * 0.0001) & (swir_band != nodata_swir * 0.0001) & (nir_band + swir_band != 0)
-                                    nir_valid = np.ma.masked_where(~valid, nir_band)
-                                    swir_valid = np.ma.masked_where(~valid, swir_band)
-                                    with np.errstate(divide='ignore', invalid='ignore'):
-                                        ndwi = (nir_valid - swir_valid) / (nir_valid + swir_valid)
-                                    mean_val = ndwi.mean()
-                                    if np.ma.is_masked(mean_val) or np.isnan(mean_val):
-                                        ndwi_values.append(np.nan)
-                                    else:
-                                        ndwi_values.append(round(float(mean_val), 3))
-                                except Exception:
-                                    ndwi_values.append(np.nan)
-                                progress_bar.progress((idx + 1) / len(gdf_proj))
-                            progress_bar.empty()
-                            gdf_dividido['ndwi_modis'] = ndwi_values
-                            st.success("✅ NDWI calculado con rasterio.")
-                            rasterio_success = True
-                            shutil.rmtree(temp_dir, ignore_errors=True)
-                            return gdf_dividido
-            except Exception:
-                pass
-
-        if not rasterio_success and PYHDF_OK:
-            try:
-                hdf = SD(download_path, SDC.READ)
-                nir_data = swir_data = None
-                for name in hdf.datasets().keys():
-                    if 'sur_refl_b02' in name:
-                        nir_data = hdf.select(name).get()
-                    elif 'sur_refl_b06' in name:
-                        swir_data = hdf.select(name).get()
-                if nir_data is None or swir_data is None:
-                    st.warning("No se encontraron bandas NIR/SWIR. Usando datos simulados.")
+        # Abrir el archivo HDF con rasterio y buscar los subdatasets NIR y SWIR
+        try:
+            with rasterio.open(download_path) as src:
+                subdatasets = src.subdatasets
+                nir_sub = None
+                swir_sub = None
+                for sd in subdatasets:
+                    if 'sur_refl_b02' in sd:  # Banda 2 (NIR)
+                        nir_sub = sd
+                    elif 'sur_refl_b06' in sd:  # Banda 6 (SWIR)
+                        swir_sub = sd
+                if nir_sub is None or swir_sub is None:
+                    st.warning("No se encontraron las bandas NIR o SWIR. Usando datos simulados.")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-                nir = nir_data.astype(np.float32) * 0.0001
-                swir = swir_data.astype(np.float32) * 0.0001
-                metadata = hdf.attributes()['StructMetadata.0']
+                with rasterio.open(nir_sub) as src_nir, rasterio.open(swir_sub) as src_swir:
+                    raster_crs = src_nir.crs
+                    nodata_nir = src_nir.nodata
+                    nodata_swir = src_swir.nodata
+                    gdf_proj = gdf_dividido.to_crs(raster_crs)
+                    ndwi_values = []
+                    progress_bar = st.progress(0, text="Procesando bloques para NDWI...")
+                    for idx, row in gdf_proj.iterrows():
+                        geom = [mapping(row.geometry)]
+                        try:
+                            out_nir, _ = mask(src_nir, geom, crop=True, nodata=nodata_nir)
+                            nir_band = out_nir[0].astype(np.float32) * 0.0001  # factor de escala
+                            out_swir, _ = mask(src_swir, geom, crop=True, nodata=nodata_swir)
+                            swir_band = out_swir[0].astype(np.float32) * 0.0001
 
-                # Variables a extraer
-                xdim = None
-                ydim = None
-                ulx = None
-                uly = None
-                lrx = None
-                lry = None
+                            # Máscara de píxeles válidos
+                            valid = (nir_band != nodata_nir * 0.0001) & (swir_band != nodata_swir * 0.0001) & (nir_band + swir_band != 0)
+                            nir_valid = np.ma.masked_where(~valid, nir_band)
+                            swir_valid = np.ma.masked_where(~valid, swir_band)
 
-                # Intentar con expresiones regulares estándar
-                xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
-                ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
-                ul_match = re.search(
-                    r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*[,;]?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*\)',
-                    metadata, re.IGNORECASE
-                )
-                lr_match = re.search(
-                    r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*[,;]?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*\)',
-                    metadata, re.IGNORECASE
-                )
-
-                if xdim_match and ydim_match and ul_match and lr_match:
-                    xdim = int(xdim_match.group(1))
-                    ydim = int(ydim_match.group(1))
-                    ulx = float(ul_match.group(1))
-                    uly = float(ul_match.group(2))
-                    lrx = float(lr_match.group(1))
-                    lry = float(lr_match.group(2))
-                else:
-                    # Fallback: buscar GRINGPOINT
-                    gring_match = re.search(
-                        r'GRINGPOINT[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)[^\d]*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)',
-                        metadata, re.IGNORECASE
-                    )
-                    if gring_match and len(gring_match.groups()) >= 2:
-                        ulx = float(gring_match.group(1))
-                        uly = float(gring_match.group(2))
-                        lrx = ulx + 10.0
-                        lry = uly - 10.0
-                        xdim = 1200
-                        ydim = 1200
-                    else:
-                        # Fallback final: buscar cualquier par de números
-                        coords = re.findall(r'[-+]?\d*\.?\d+(?:[eE][+-]?\d+)?', metadata)
-                        if len(coords) >= 4:
-                            ulx = float(coords[0])
-                            uly = float(coords[1])
-                            lrx = float(coords[2])
-                            lry = float(coords[3])
-                            xdim = 1200
-                            ydim = 1200
-                        else:
-                            with st.expander("🔍 Metadata del HDF (para depuración)", expanded=False):
-                                st.code(metadata[:2000])
-                            st.warning("No se pudo extraer la geolocalización del HDF. Usando datos simulados.")
-                            shutil.rmtree(temp_dir, ignore_errors=True)
-                            return None
-
-                if xdim is None or ydim is None or ulx is None or uly is None or lrx is None or lry is None:
-                    st.warning("No se pudo extraer la geolocalización completa del HDF. Usando datos simulados.")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    return None
-
-                if nir.shape != (ydim, xdim):
-                    ydim, xdim = nir.shape
-
-                res_x = (lrx - ulx) / xdim
-                res_y = (uly - lry) / ydim
-                transform = rasterio.Affine(res_x, 0, ulx, 0, -res_y, uly)
-                crs = rasterio.crs.CRS.from_proj4("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m +no_defs")
-
-                with rasterio.io.MemoryFile() as memfile_nir, rasterio.io.MemoryFile() as memfile_swir:
-                    with memfile_nir.open(driver='GTiff', height=ydim, width=xdim, count=1,
-                                          dtype=nir.dtype, crs=crs, transform=transform, nodata=-32768) as dst_nir:
-                        dst_nir.write(nir, 1)
-                    with memfile_swir.open(driver='GTiff', height=ydim, width=xdim, count=1,
-                                          dtype=swir.dtype, crs=crs, transform=transform, nodata=-32768) as dst_swir:
-                        dst_swir.write(swir, 1)
-
-                    with memfile_nir.open() as src_nir, memfile_swir.open() as src_swir:
-                        gdf_proj = gdf_dividido.to_crs(crs)
-                        ndwi_values = []
-                        progress_bar = st.progress(0, text="Procesando bloques para NDWI con pyhdf...")
-                        for idx, row in gdf_proj.iterrows():
-                            geom = [mapping(row.geometry)]
-                            try:
-                                out_nir, _ = mask(src_nir, geom, crop=True, nodata=-32768)
-                                nir_band = out_nir[0]
-                                out_swir, _ = mask(src_swir, geom, crop=True, nodata=-32768)
-                                swir_band = out_swir[0]
-                                valid = (nir_band != -32768) & (swir_band != -32768) & (nir_band + swir_band != 0)
-                                nir_valid = np.ma.masked_where(~valid, nir_band)
-                                swir_valid = np.ma.masked_where(~valid, swir_band)
-                                with np.errstate(divide='ignore', invalid='ignore'):
-                                    ndwi = (nir_valid - swir_valid) / (nir_valid + swir_valid)
-                                mean_val = ndwi.mean()
-                                if np.ma.is_masked(mean_val) or np.isnan(mean_val):
-                                    ndwi_values.append(np.nan)
-                                else:
-                                    ndwi_values.append(round(float(mean_val), 3))
-                            except Exception:
+                            with np.errstate(divide='ignore', invalid='ignore'):
+                                ndwi = (nir_valid - swir_valid) / (nir_valid + swir_valid)
+                            mean_val = ndwi.mean()
+                            if np.ma.is_masked(mean_val) or np.isnan(mean_val):
                                 ndwi_values.append(np.nan)
-                            progress_bar.progress((idx + 1) / len(gdf_proj))
-                        progress_bar.empty()
-                        gdf_dividido['ndwi_modis'] = ndwi_values
-                        st.success("✅ NDWI calculado con pyhdf.")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        return gdf_dividido
+                            else:
+                                ndwi_values.append(round(float(mean_val), 3))
+                        except Exception:
+                            ndwi_values.append(np.nan)
+                        progress_bar.progress((idx + 1) / len(gdf_proj), text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
+                    progress_bar.empty()
+                    gdf_dividido['ndwi_modis'] = ndwi_values
+                    st.success("✅ NDWI calculado por bloque correctamente con rasterio.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return gdf_dividido
 
-            except Exception as e_pyhdf:
-                st.warning(f"Error con pyhdf: {str(e_pyhdf)}. Usando datos simulados.")
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                return None
-        else:
-            st.warning("No se pudo leer el archivo HDF. Usando datos simulados.")
+        except Exception as e:
+            st.warning(f"Error al procesar con rasterio: {str(e)}. Usando datos simulados.")
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
