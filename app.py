@@ -82,22 +82,7 @@ except ImportError:
 if not RASTERIO_OK and not PYHDF_OK:
     st.warning("⚠️ Ni rasterio ni pyhdf están instalados. No se podrán leer archivos HDF4. Instala al menos uno: pip install rasterio o pip install pyhdf")
 
-# ===== ESTILOS Y OCULTAMIENTO DE ELEMENTOS DE STREAMLIT =====
-st.markdown("""
-<style>
-/* Ocultar toolbar superior */
-div[data-testid="stToolbar"] { visibility: hidden; height: 0px; position: fixed; }
-#MainMenu { visibility: hidden; }
-footer { visibility: hidden; }
-header { visibility: hidden; }
-.stAppDeployButton { display: none !important; }
-[data-testid="stAppDeployButton"] { display: none !important; }
-body { user-select: none; }
-</style>
-<script>
-document.addEventListener('contextmenu', event => event.preventDefault());
-</script>
-""", unsafe_allow_html=True)
+
 
 # ===== CREDENCIALES EARTHDATA (desde secrets) =====
 EARTHDATA_USERNAME = os.environ.get("EARTHDATA_USERNAME")
