@@ -1,4 +1,4 @@
-# app.py - Analizador de Olivo Satelital (basado en versión funcional con pyhdf)
+# app.py - Analizador de Olivo Satelital (basado en versión funcional de palma)
 # 
 # - Sin autenticación ni pagos (gratuito)
 # - Modo simulado opcional (checkbox) que genera datos aleatorios
@@ -80,6 +80,25 @@ except ImportError:
 if not RASTERIO_OK and not PYHDF_OK:
     st.warning("⚠️ Ni rasterio ni pyhdf están instalados. No se podrán leer archivos HDF4. Instala al menos uno: pip install rasterio o pip install pyhdf")
 
+# ===== ESTILOS Y OCULTAMIENTO DE ELEMENTOS DE STREAMLIT =====
+st.markdown("""
+<style>
+/* Ocultar toolbar superior */
+div[data-testid="stToolbar"] { visibility: hidden; height: 0; }
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+header { visibility: hidden; }
+a[href*="streamlit.io"] { display: none !important; }
+a[href*="streamlitapp"] { display: none !important; }
+div[data-testid="stDeployButton"] { display: none; }
+div[data-testid="stDecoration"] { display: none; }
+div[data-testid="stAppViewContainer"] > div:first-child { display: none; }
+body { user-select: none; }
+</style>
+<script>
+document.addEventListener('contextmenu', event => event.preventDefault());
+</script>
+""", unsafe_allow_html=True)
 
 # ===== CONFIGURACIÓN DE PÁGINA =====
 st.set_page_config(page_title="Analizador de Olivo Satelital", page_icon="🫒", layout="wide", initial_sidebar_state="expanded")
@@ -105,7 +124,7 @@ def init_session_state():
         'datos_fertilidad': [],
         'analisis_suelo': True,
         'curvas_nivel': None,
-        'modo_simulado': False,        # nuevo: controla si se usan datos simulados
+        'demo_mode': False,        # modo simulado (antes controlado por suscripción)
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -387,7 +406,7 @@ def cargar_archivo_plantacion(uploaded_file):
         st.error(f"❌ Error cargando archivo: {str(e)}")
         return None
 
-# ===== FUNCIONES PARA DATOS SATELITALES (basadas en versión funcional con pyhdf) =====
+# ===== FUNCIONES PARA DATOS SATELITALES (idénticas a la versión funcional de palma) =====
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess/xarray/rioxarray no instaladas.")
@@ -427,6 +446,9 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
+        # Convertir a string para evitar problemas con Path
+        downloaded_files = [str(f) for f in downloaded_files]
+
         hdf_files = [f for f in downloaded_files if f.lower().endswith('.hdf')]
         if not hdf_files:
             st.error("No se encontró archivo HDF en la descarga.")
@@ -443,7 +465,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-        # --- Intento con rasterio (extracción por bloque) sin mostrar errores ---
+        # --- Intento con rasterio ---
         rasterio_success = False
         if RASTERIO_OK:
             try:
@@ -489,12 +511,13 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             rasterio_success = True
                             return gdf_dividido
             except Exception:
+                # Fallo silencioso de rasterio
                 pass
 
         # --- Fallback con pyhdf ---
         if not rasterio_success and PYHDF_OK:
             try:
-                hdf = SD(str(download_path), SDC.READ)
+                hdf = SD(download_path, SDC.READ)
                 ndvi_dataset = None
                 for name in hdf.datasets().keys():
                     if 'NDVI' in name:
@@ -629,6 +652,9 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
+        # Convertir a string para evitar problemas con Path
+        downloaded_files = [str(f) for f in downloaded_files]
+
         hdf_files = [f for f in downloaded_files if f.lower().endswith('.hdf')]
         if not hdf_files:
             st.error("No se encontró archivo HDF.")
@@ -645,7 +671,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-        # --- Intento con rasterio (extracción por bloque) sin mostrar errores ---
+        # --- Intento con rasterio ---
         rasterio_success = False
         if RASTERIO_OK:
             try:
@@ -702,12 +728,13 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             rasterio_success = True
                             return gdf_dividido
             except Exception:
+                # Fallo silencioso de rasterio
                 pass
 
         # --- Fallback con pyhdf ---
         if not rasterio_success and PYHDF_OK:
             try:
-                hdf = SD(str(download_path), SDC.READ)
+                hdf = SD(download_path, SDC.READ)
                 nir_data = None
                 swir_data = None
                 for name in hdf.datasets().keys():
@@ -1842,7 +1869,7 @@ def ejecutar_analisis_completo():
         fecha_fin = st.session_state.get('fecha_fin', datetime.now())
         gdf = st.session_state.gdf_original.copy()
         
-        if st.session_state.modo_simulado:
+        if st.session_state.demo_mode:
             st.info("🎮 Modo simulado activo: usando datos generados aleatoriamente.")
             gdf_dividido = generar_datos_simulados_completos(gdf, n_divisiones)
             st.session_state.datos_climaticos = generar_clima_simulado()
@@ -1990,9 +2017,9 @@ with st.sidebar:
     st.markdown("## 🫒 CONFIGURACIÓN")
     
     # Modo simulado checkbox
-    st.session_state.modo_simulado = st.checkbox(
+    st.session_state.demo_mode = st.checkbox(
         "🎮 Usar datos simulados", 
-        value=st.session_state.modo_simulado,
+        value=st.session_state.demo_mode,
         help="Activa esta opción para usar datos generados aleatoriamente (no requiere Earthdata)."
     )
     
@@ -2057,7 +2084,7 @@ with st.sidebar:
             st.metric("Área", f"{area:.2f} ha")
     
     # Información de Earthdata
-    if not st.session_state.modo_simulado:
+    if not st.session_state.demo_mode:
         if not EARTHDATA_USERNAME or not EARTHDATA_PASSWORD:
             st.warning("⚠️ Credenciales Earthdata no configuradas. Active el modo simulado o configure las variables de entorno.")
         elif not EARTHDATA_OK:
@@ -2113,7 +2140,7 @@ else:
     2. Configura los parámetros de análisis.
     3. Haz clic en **EJECUTAR ANÁLISIS** para obtener resultados.
     """)
-    if st.session_state.modo_simulado:
+    if st.session_state.demo_mode:
         st.info("🎮 Modo simulado activo: los datos serán generados aleatoriamente.")
 
 # ===== PESTAÑAS DE RESULTADOS =====
@@ -2127,7 +2154,7 @@ if st.session_state.analisis_completado:
             "🌤️ Clima", "🌱 Detección", "🧪 Fertilidad NPK", 
             "🌱 Textura Suelo", "🗺️ Curvas de Nivel", "🐛 Detección YOLO"
         ])
-        
+                
         with tab1:
             st.subheader("📊 DASHBOARD DE RESUMEN")
             area_total = resultados.get('area_total', 0)
