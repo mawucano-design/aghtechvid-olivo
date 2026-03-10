@@ -80,25 +80,6 @@ except ImportError:
 if not RASTERIO_OK and not PYHDF_OK:
     st.warning("⚠️ Ni rasterio ni pyhdf están instalados. No se podrán leer archivos HDF4. Instala al menos uno: pip install rasterio o pip install pyhdf")
 
-# ===== ESTILOS Y OCULTAMIENTO DE ELEMENTOS DE STREAMLIT =====
-st.markdown("""
-<style>
-/* Ocultar toolbar superior */
-div[data-testid="stToolbar"] { visibility: hidden; height: 0; }
-#MainMenu { visibility: hidden; }
-footer { visibility: hidden; }
-header { visibility: hidden; }
-a[href*="streamlit.io"] { display: none !important; }
-a[href*="streamlitapp"] { display: none !important; }
-div[data-testid="stDeployButton"] { display: none; }
-div[data-testid="stDecoration"] { display: none; }
-div[data-testid="stAppViewContainer"] > div:first-child { display: none; }
-body { user-select: none; }
-</style>
-<script>
-document.addEventListener('contextmenu', event => event.preventDefault());
-</script>
-""", unsafe_allow_html=True)
 
 # ===== CONFIGURACIÓN DE PÁGINA =====
 st.set_page_config(page_title="Analizador de Olivo Satelital", page_icon="🫒", layout="wide", initial_sidebar_state="expanded")
