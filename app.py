@@ -1,14 +1,19 @@
-# app.py - Analizador de Olivo Satelital (corregido)
+# app.py - Analizador de Olivo Satelital (basado en versión funcional de palma)
 # 
 # - Sin autenticación ni pagos (gratuito)
 # - Modo simulado opcional (checkbox) que genera datos aleatorios
 # - Modo real: obtiene NDVI (MOD13Q1) y NDWI (MOD09GA) desde Earthdata si las credenciales están configuradas
 # - Datos climáticos: Open-Meteo ERA5 y NASA POWER (con fallback simulado)
-# - Análisis por bloques, detección de plantas, fertilidad NPK, textura de suelo, curvas de nivel y YOLO.
+# - Análisis por bloques, detección de plantas (muestreo aleatorio), fertilidad NPK, textura de suelo, curvas de nivel y YOLO.
 #
 # Requiere variables de entorno (opcionales para datos reales):
 #   EARTHDATA_USERNAME, EARTHDATA_PASSWORD
 #   OPENTOPOGRAPHY_API_KEY (opcional para curvas de nivel reales)
+#
+# Instalación de dependencias:
+#   pip install streamlit geopandas pandas numpy shapely folium streamlit-folium branca plotly
+#   pip install earthaccess xarray rioxarray rasterio pyhdf  # para datos reales
+#   pip install ultralytics opencv-python scikit-image      # para YOLO y curvas de nivel
 
 import streamlit as st
 import geopandas as gpd
@@ -43,6 +48,7 @@ from scipy.interpolate import Rbf
 import base64
 import time
 import shutil
+import random
 
 # Suprimir advertencias
 warnings.filterwarnings('ignore', category=UserWarning, module='rasterio')
@@ -75,7 +81,25 @@ except ImportError:
 if not RASTERIO_OK and not PYHDF_OK:
     st.warning("⚠️ Ni rasterio ni pyhdf están instalados. No se podrán leer archivos HDF4. Instala al menos uno: pip install rasterio o pip install pyhdf")
 
-
+# ===== ESTILOS Y OCULTAMIENTO DE ELEMENTOS DE STREAMLIT =====
+st.markdown("""
+<style>
+/* Ocultar toolbar superior */
+div[data-testid="stToolbar"] { visibility: hidden; height: 0; }
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+header { visibility: hidden; }
+a[href*="streamlit.io"] { display: none !important; }
+a[href*="streamlitapp"] { display: none !important; }
+div[data-testid="stDeployButton"] { display: none; }
+div[data-testid="stDecoration"] { display: none; }
+div[data-testid="stAppViewContainer"] > div:first-child { display: none; }
+body { user-select: none; }
+</style>
+<script>
+document.addEventListener('contextmenu', event => event.preventDefault());
+</script>
+""", unsafe_allow_html=True)
 
 # ===== CONFIGURACIÓN DE PÁGINA =====
 st.set_page_config(page_title="Analizador de Olivo Satelital", page_icon="🫒", layout="wide", initial_sidebar_state="expanded")
@@ -101,7 +125,7 @@ def init_session_state():
         'datos_fertilidad': [],
         'analisis_suelo': True,
         'curvas_nivel': None,
-        'demo_mode': False,        # modo simulado
+        'demo_mode': False,        # modo simulado (antes controlado por suscripción)
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -383,7 +407,7 @@ def cargar_archivo_plantacion(uploaded_file):
         st.error(f"❌ Error cargando archivo: {str(e)}")
         return None
 
-# ===== FUNCIÓN NDVI (igual que el original, con conversión a string) =====
+# ===== FUNCIONES PARA DATOS SATELITALES (idénticas a la versión funcional de palma) =====
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess/xarray/rioxarray no instaladas.")
@@ -423,7 +447,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-        # Convertir a string
+        # Convertir a string para evitar problemas con Path
         downloaded_files = [str(f) for f in downloaded_files]
 
         hdf_files = [f for f in downloaded_files if f.lower().endswith('.hdf')]
@@ -442,7 +466,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-        # Intento con rasterio
+        # --- Intento con rasterio ---
         rasterio_success = False
         if RASTERIO_OK:
             try:
@@ -488,9 +512,10 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             rasterio_success = True
                             return gdf_dividido
             except Exception:
+                # Fallo silencioso de rasterio
                 pass
 
-        # Fallback con pyhdf
+        # --- Fallback con pyhdf ---
         if not rasterio_success and PYHDF_OK:
             try:
                 hdf = SD(download_path, SDC.READ)
@@ -589,7 +614,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-# ===== FUNCIÓN NDWI MEJORADA (maneja arrays 1D con reshape inteligente) =====
 def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
@@ -629,7 +653,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-        # Convertir a string
+        # Convertir a string para evitar problemas con Path
         downloaded_files = [str(f) for f in downloaded_files]
 
         hdf_files = [f for f in downloaded_files if f.lower().endswith('.hdf')]
@@ -648,7 +672,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-        # Intento con rasterio
+        # --- Intento con rasterio ---
         rasterio_success = False
         if RASTERIO_OK:
             try:
@@ -705,98 +729,47 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             rasterio_success = True
                             return gdf_dividido
             except Exception:
+                # Fallo silencioso de rasterio
                 pass
 
-        # Fallback con pyhdf (mejorado)
+        # --- Fallback con pyhdf ---
         if not rasterio_success and PYHDF_OK:
             try:
                 hdf = SD(download_path, SDC.READ)
-                nir_ds = None
-                swir_ds = None
+                nir_data = None
+                swir_data = None
                 for name in hdf.datasets().keys():
                     if 'sur_refl_b02' in name:
-                        nir_ds = hdf.select(name)
+                        nir_data = hdf.select(name).get()
                     elif 'sur_refl_b06' in name:
-                        swir_ds = hdf.select(name)
-                if nir_ds is None or swir_ds is None:
+                        swir_data = hdf.select(name).get()
+                if nir_data is None or swir_data is None:
                     st.error("No se encontraron las bandas NIR o SWIR con pyhdf.")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-                # Obtener dimensiones de cada banda desde el propio dataset
-                def get_dims_from_ds(ds):
-                    dims = ds.dimensions()
-                    # Si tiene exactamente 2 dimensiones, asumimos Y y X
-                    if len(dims) == 2:
-                        # Intentar identificar claves con 'y' y 'x'
-                        keys = list(dims.keys())
-                        # Por convención, la primera suele ser Y, la segunda X
-                        return dims[keys[0]], dims[keys[1]]
-                    else:
-                        # Si no, devolvemos None
-                        return None, None
+                nir = nir_data.astype(np.float32) * 0.0001
+                swir = swir_data.astype(np.float32) * 0.0001
 
-                ydim_nir, xdim_nir = get_dims_from_ds(nir_ds)
-                ydim_swir, xdim_swir = get_dims_from_ds(swir_ds)
-
-                nir_data = nir_ds.get()
-                swir_data = swir_ds.get()
-
-                # Función para intentar reshape inteligente
-                def reshape_band(data, expected_ydim, expected_xdim, band_name):
-                    if data.ndim == 2:
-                        # Ya es 2D, usar sus dimensiones
-                        return data
-                    elif data.ndim == 1:
-                        size = data.size
-                        # Si tenemos dimensiones esperadas de la metadata, intentar ese reshape
-                        if expected_ydim is not None and expected_xdim is not None:
-                            if size == expected_ydim * expected_xdim:
-                                return data.reshape(expected_ydim, expected_xdim)
-                            else:
-                                # Si no coincide, intentar buscar factores
-                                # Primero, ver si es cuadrado
-                                sqrt_size = int(np.sqrt(size))
-                                if sqrt_size * sqrt_size == size:
-                                    st.warning(f"{band_name} es 1D con tamaño {size}, se asume forma cuadrada {sqrt_size}x{sqrt_size}.")
-                                    return data.reshape(sqrt_size, sqrt_size)
-                                # Si no es cuadrado, buscar divisores que puedan ser típicos de MODIS
-                                # Las resoluciones típicas de MOD09GA son 2400x2400, 1200x1200, 4800x4800, etc.
-                                posibles = [2400, 1200, 4800, 9600]
-                                for dim in posibles:
-                                    if size % dim == 0:
-                                        other = size // dim
-                                        st.warning(f"{band_name} se reshapea a ({dim}, {other})")
-                                        return data.reshape(dim, other)
-                                # Último recurso: usar la raíz cuadrada aproximada
-                                approx = int(np.sqrt(size))
-                                if approx * (size // approx) == size:
-                                    return data.reshape(approx, size // approx)
-                                else:
-                                    raise ValueError(f"No se pudo determinar forma 2D para {band_name} (tamaño {size})")
-                    else:
-                        raise ValueError(f"{band_name} tiene {data.ndim} dimensiones, no se puede procesar.")
-
-                nir = reshape_band(nir_data, ydim_nir, xdim_nir, "NIR").astype(np.float32) * 0.0001
-                swir = reshape_band(swir_data, ydim_swir, xdim_swir, "SWIR").astype(np.float32) * 0.0001
-
-                # Obtener coordenadas de esquina desde metadata global
                 metadata = hdf.attributes()['StructMetadata.0']
                 xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                 ul_match = re.search(r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.IGNORECASE)
                 lr_match = re.search(r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.IGNORECASE)
 
-                if not (ul_match and lr_match):
+                if not (xdim_match and ydim_match and ul_match and lr_match):
                     raise ValueError("No se pudo extraer la geolocalización completa")
 
+                xdim = int(xdim_match.group(1))
+                ydim = int(ydim_match.group(1))
                 ulx = float(ul_match.group(1))
                 uly = float(ul_match.group(2))
                 lrx = float(lr_match.group(1))
                 lry = float(lr_match.group(2))
 
-                # Usar las dimensiones reales de NIR
-                ydim, xdim = nir.shape
+                if nir.shape != (ydim, xdim):
+                    ydim, xdim = nir.shape
+
                 res_x = (lrx - ulx) / xdim
                 res_y = (uly - lry) / ydim
                 transform = rasterio.Affine(res_x, 0, ulx, 0, -res_y, uly)
@@ -863,7 +836,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-# ===== FUNCIÓN DE SIMULACIÓN (igual) =====
+# ===== FUNCIONES DE SIMULACIÓN =====
 def generar_datos_simulados_completos(gdf_original, n_divisiones):
     gdf_dividido = dividir_plantacion_en_bloques(gdf_original, n_divisiones)
     areas_ha = []
@@ -932,7 +905,7 @@ def generar_clima_simulado():
         'fuente': 'Datos simulados'
     }
 
-# ===== FUNCIONES CLIMÁTICAS REALES (igual) =====
+# ===== FUNCIONES CLIMÁTICAS REALES (con fallback simulado) =====
 def obtener_clima_openmeteo(gdf, fecha_inicio, fecha_fin):
     try:
         centroide = gdf.geometry.unary_union.centroid
@@ -1100,94 +1073,47 @@ def analizar_edad_plantacion(gdf_dividido):
             edades.append(10.0)
     return edades
 
-# ===== DETECCIÓN DE PLANTAS MEJORADA =====
-def verificar_puntos_en_poligono(puntos, gdf):
-    puntos_dentro = []
-    plantacion_union = gdf.unary_union
-    for punto in puntos:
-        if 'centroide' in punto:
-            lon, lat = punto['centroide']
-            point = Point(lon, lat)
-            # Usar un buffer pequeño para evitar problemas de precisión
-            if plantacion_union.buffer(1e-9).contains(point):
-                puntos_dentro.append(punto)
-    return puntos_dentro
+# ===== DETECCIÓN DE PLANTAS (MEJORADA: PUNTOS ALEATORIOS DENTRO DEL POLÍGONO) =====
+def generar_puntos_aleatorios_en_poligono(gdf, n_puntos):
+    """
+    Genera puntos aleatorios dentro del polígono usando el método de rechazo.
+    """
+    polygon = gdf.unary_union
+    minx, miny, maxx, maxy = polygon.bounds
+    puntos = []
+    max_intentos = n_puntos * 10  # Evitar bucles infinitos
+    intentos = 0
+    while len(puntos) < n_puntos and intentos < max_intentos:
+        point = Point(random.uniform(minx, maxx), random.uniform(miny, maxy))
+        if polygon.contains(point):
+            puntos.append({
+                'centroide': (point.x, point.y),
+                'area_m2': np.random.uniform(18, 24),
+                'circularidad': np.random.uniform(0.85, 0.98),
+                'diametro_aprox': np.random.uniform(5, 7),
+                'simulado': True
+            })
+        intentos += 1
+    return puntos
 
 def mejorar_deteccion_plantas(gdf, densidad=130):
     try:
-        # Asegurar CRS en grados
-        gdf = validar_y_corregir_crs(gdf)
-        bounds = gdf.total_bounds
-        min_lon, min_lat, max_lon, max_lat = bounds
-        
-        # Calcular área en hectáreas (ya en grados, aproximación)
         area_ha = calcular_superficie(gdf)
         if area_ha <= 0:
             return {'detectadas': [], 'total': 0}
-        
         num_plantas_objetivo = int(area_ha * densidad)
-        
-        # Generar cuadrícula hexagonal (más realista que cuadrícula cuadrada)
-        # Espaciado aproximado en grados para una densidad dada
-        # Densidad plantas/ha => plantas/m2, luego espaciado en metros, convertir a grados
-        # Aproximación: 1 grado ~ 111000 m en latitud, en longitud depende de la latitud
-        # Usamos latitud media para estimar
-        lat_media = (min_lat + max_lat) / 2
-        metros_por_grado_lon = 111000 * np.cos(np.radians(lat_media))
-        metros_por_grado_lat = 111000
-        
-        # Área por planta en m2
-        area_por_planta_m2 = 10000 / densidad  # ha a m2
-        espaciado_m = np.sqrt(area_por_planta_m2)  # espaciado aproximado en metros
-        
-        espaciado_grados_lon = espaciado_m / metros_por_grado_lon
-        espaciado_grados_lat = espaciado_m / metros_por_grado_lat
-        
-        # Generar puntos en una cuadrícula hexagonal
-        x_coords = []
-        y_coords = []
-        x = min_lon
-        fila = 0
-        while x <= max_lon:
-            y = min_lat
-            while y <= max_lat:
-                # Desplazar filas pares e impares para formar hexagonal
-                if fila % 2 == 0:
-                    x_coords.append(x)
-                else:
-                    x_coords.append(x + espaciado_grados_lon / 2)
-                y_coords.append(y)
-                y += espaciado_grados_lat
-            x += espaciado_grados_lon
-            fila += 1
-        
-        plantacion_union = gdf.unary_union
-        plantas = []
-        for i in range(len(x_coords)):
-            if len(plantas) >= num_plantas_objetivo:
-                break
-            point = Point(x_coords[i], y_coords[i])
-            # Usar buffer para tolerancia
-            if plantacion_union.buffer(1e-9).contains(point):
-                # Añadir pequeña variación aleatoria para simular distribución real
-                lon = x_coords[i] + np.random.normal(0, espaciado_grados_lon * 0.1)
-                lat = y_coords[i] + np.random.normal(0, espaciado_grados_lat * 0.1)
-                plantas.append({
-                    'centroide': (lon, lat),
-                    'area_m2': np.random.uniform(18, 24),
-                    'circularidad': np.random.uniform(0.85, 0.98),
-                    'diametro_aprox': np.random.uniform(5, 7),
-                    'simulado': True
-                })
+        # Limitar a 5000 puntos para no saturar la memoria/rendimiento
+        num_plantas_objetivo = min(num_plantas_objetivo, 5000)
+        plantas = generar_puntos_aleatorios_en_poligono(gdf, num_plantas_objetivo)
         return {
             'detectadas': plantas,
             'total': len(plantas),
-            'patron': 'hexagonal adaptativo',
-            'densidad_calculada': len(plantas) / area_ha,
+            'patron': 'aleatorio',
+            'densidad_calculada': len(plantas) / area_ha if area_ha > 0 else 0,
             'area_ha': area_ha
         }
     except Exception as e:
-        print(f"Error en detección mejorada: {e}")
+        st.error(f"Error en detección: {e}")
         return {'detectadas': [], 'total': 0}
 
 def ejecutar_deteccion_plantas():
@@ -1198,16 +1124,721 @@ def ejecutar_deteccion_plantas():
         gdf = st.session_state.gdf_original
         densidad = st.session_state.get('densidad_personalizada', 130)
         resultados = mejorar_deteccion_plantas(gdf, densidad)
-        plantas_verificadas = verificar_puntos_en_poligono(resultados['detectadas'], gdf)
-        st.session_state.plantas_detectadas = plantas_verificadas
+        st.session_state.plantas_detectadas = resultados['detectadas']
         st.session_state.deteccion_ejecutada = True
-        st.success(f"✅ Detección completada: {len(plantas_verificadas)} plantas detectadas")
+        st.success(f"✅ Detección completada: {len(resultados['detectadas'])} plantas detectadas")
 
-# ===== FUNCIONES DE VISUALIZACIÓN (igual que antes) =====
-# ... (se mantienen igual, por brevedad no se repiten aquí, pero deben incluirse)
-# ... (crear_mapa_interactivo_base, mostrar_estadisticas_indice, etc.)
+def crear_graficos_climaticos_completos(datos_climaticos):
+    longitudes = []
+    if 'precipitacion' in datos_climaticos and 'diaria' in datos_climaticos['precipitacion']:
+        longitudes.append(len(datos_climaticos['precipitacion']['diaria']))
+    if 'temperatura' in datos_climaticos and 'diaria' in datos_climaticos['temperatura']:
+        longitudes.append(len(datos_climaticos['temperatura']['diaria']))
+    if 'radiacion' in datos_climaticos and 'diaria' in datos_climaticos['radiacion']:
+        longitudes.append(len(datos_climaticos['radiacion']['diaria']))
+    if 'viento' in datos_climaticos and 'diaria' in datos_climaticos['viento']:
+        longitudes.append(len(datos_climaticos['viento']['diaria']))
+    
+    if not longitudes:
+        st.warning("No hay datos climáticos suficientes para graficar.")
+        return None
+    
+    n_dias = min(longitudes)
+    dias = list(range(1, n_dias + 1))
+    
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    
+    if 'radiacion' in datos_climaticos and datos_climaticos['radiacion'].get('diaria'):
+        rad = np.array(datos_climaticos['radiacion']['diaria'][:n_dias], dtype=np.float64)
+        mask_nan = np.isnan(rad)
+        if np.any(mask_nan):
+            rad_filled = rad.copy()
+            rad_filled[mask_nan] = np.nanmean(rad)
+        else:
+            rad_filled = rad
+        ax1 = axes[0, 0]
+        ax1.plot(dias, rad_filled, 'o-', color='orange', linewidth=2, markersize=4)
+        ax1.fill_between(dias, rad_filled, alpha=0.3, color='orange')
+        if 'promedio' in datos_climaticos['radiacion']:
+            prom_rad = datos_climaticos['radiacion']['promedio']
+            ax1.axhline(y=prom_rad, color='red', linestyle='--', 
+                       label=f"Promedio: {prom_rad} MJ/m²")
+        ax1.set_xlabel('Día')
+        ax1.set_ylabel('Radiación (MJ/m²/día)')
+        ax1.set_title('Radiación Solar', fontweight='bold')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+    else:
+        axes[0, 0].text(0.5, 0.5, "Datos no disponibles", ha='center', va='center')
+        axes[0, 0].set_title('Radiación', fontweight='bold')
+    
+    if 'precipitacion' in datos_climaticos and datos_climaticos['precipitacion'].get('diaria'):
+        precip = np.array(datos_climaticos['precipitacion']['diaria'][:n_dias], dtype=np.float64)
+        ax2 = axes[0, 1]
+        ax2.bar(dias, precip, color='blue', alpha=0.7)
+        ax2.set_xlabel('Día')
+        ax2.set_ylabel('Precipitación (mm)')
+        total_precip = datos_climaticos['precipitacion'].get('total', np.sum(precip))
+        ax2.set_title(f"Precipitación (Total: {total_precip:.1f} mm)", fontweight='bold')
+        ax2.grid(True, alpha=0.3, axis='y')
+    else:
+        axes[0, 1].text(0.5, 0.5, "Datos no disponibles", ha='center', va='center')
+        axes[0, 1].set_title('Precipitación', fontweight='bold')
+    
+    if 'viento' in datos_climaticos and datos_climaticos['viento'].get('diaria'):
+        wind = np.array(datos_climaticos['viento']['diaria'][:n_dias], dtype=np.float64)
+        mask_nan = np.isnan(wind)
+        if np.any(mask_nan):
+            wind_filled = wind.copy()
+            wind_filled[mask_nan] = np.nanmean(wind)
+        else:
+            wind_filled = wind
+        ax3 = axes[1, 0]
+        ax3.plot(dias, wind_filled, 's-', color='green', linewidth=2, markersize=4)
+        ax3.fill_between(dias, wind_filled, alpha=0.3, color='green')
+        if 'promedio' in datos_climaticos['viento']:
+            prom_wind = datos_climaticos['viento']['promedio']
+            ax3.axhline(y=prom_wind, color='red', linestyle='--',
+                       label=f"Promedio: {prom_wind} m/s")
+        ax3.set_xlabel('Día')
+        ax3.set_ylabel('Viento (m/s)')
+        ax3.set_title('Velocidad del Viento', fontweight='bold')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+    else:
+        axes[1, 0].text(0.5, 0.5, "Datos no disponibles", ha='center', va='center')
+        axes[1, 0].set_title('Viento', fontweight='bold')
+    
+    if 'temperatura' in datos_climaticos and datos_climaticos['temperatura'].get('diaria'):
+        temp = np.array(datos_climaticos['temperatura']['diaria'][:n_dias], dtype=np.float64)
+        mask_nan = np.isnan(temp)
+        if np.any(mask_nan):
+            temp_filled = temp.copy()
+            temp_filled[mask_nan] = np.nanmean(temp)
+        else:
+            temp_filled = temp
+        ax4 = axes[1, 1]
+        ax4.plot(dias, temp_filled, '^-', color='red', linewidth=2, markersize=4)
+        ax4.fill_between(dias, temp_filled, alpha=0.3, color='red')
+        if 'promedio' in datos_climaticos['temperatura']:
+            prom_temp = datos_climaticos['temperatura']['promedio']
+            ax4.axhline(y=prom_temp, color='blue', linestyle='--',
+                       label=f"Promedio: {prom_temp}°C")
+        ax4.set_xlabel('Día')
+        ax4.set_ylabel('Temperatura (°C)')
+        ax4.set_title('Temperatura Diaria', fontweight='bold')
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
+    else:
+        axes[1, 1].text(0.5, 0.5, "Datos no disponibles", ha='center', va='center')
+        axes[1, 1].set_title('Temperatura', fontweight='bold')
+    
+    fuente = datos_climaticos.get('fuente', 'Desconocido')
+    plt.suptitle(f"Datos Climáticos - {fuente}", fontsize=16, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    return fig
 
-# ===== FUNCIÓN PRINCIPAL DE ANÁLISIS (igual) =====
+# ===== ANÁLISIS DE TEXTURA DE SUELO =====
+def analizar_textura_suelo_venezuela_por_bloque(gdf_dividido):
+    resultados = []
+    try:
+        centroide_global = gdf_dividido.geometry.unary_union.centroid
+        lat_base = centroide_global.y
+        if lat_base > 10:
+            base = 'Franco Arcilloso'
+            alt_base = 'Arcilloso'
+        elif lat_base > 7:
+            base = 'Franco Arcilloso Arenoso'
+            alt_base = 'Franco'
+        elif lat_base > 4:
+            base = 'Arenoso Franco'
+            alt_base = 'Arenoso'
+        else:
+            base = 'Franco Arcilloso'
+            alt_base = 'Arcilloso Pesado'
+        
+        caracteristicas = {
+            'Franco Arcilloso': {
+                'arena': 35, 'limo': 25, 'arcilla': 30,
+                'textura': 'Media', 'drenaje': 'Moderado',
+                'CIC': 'Alto (15-25)', 'ret_agua': 'Alta',
+                'recomendacion': 'Ideal para olivo'
+            },
+            'Franco Arcilloso Arenoso': {
+                'arena': 45, 'limo': 20, 'arcilla': 25,
+                'textura': 'Media-ligera', 'drenaje': 'Bueno',
+                'CIC': 'Medio (10-15)', 'ret_agua': 'Moderada',
+                'recomendacion': 'Requiere riego'
+            },
+            'Arenoso Franco': {
+                'arena': 55, 'limo': 15, 'arcilla': 20,
+                'textura': 'Ligera', 'drenaje': 'Excelente',
+                'CIC': 'Bajo (5-10)', 'ret_agua': 'Baja',
+                'recomendacion': 'Fertilización fraccionada'
+            },
+            'Arcilloso': {
+                'arena': 25, 'limo': 20, 'arcilla': 40,
+                'textura': 'Pesada', 'drenaje': 'Limitado',
+                'CIC': 'Muy alto (25-35)', 'ret_agua': 'Muy alta',
+                'recomendacion': 'Drenaje y labranza'
+            },
+            'Arcilloso Pesado': {
+                'arena': 20, 'limo': 15, 'arcilla': 50,
+                'textura': 'Muy pesada', 'drenaje': 'Muy limitado',
+                'CIC': 'Extremo (>35)', 'ret_agua': 'Extrema',
+                'recomendacion': 'Drenaje intensivo'
+            },
+            'Franco': {
+                'arena': 40, 'limo': 40, 'arcilla': 20,
+                'textura': 'Media', 'drenaje': 'Bueno',
+                'CIC': 'Medio (10-20)', 'ret_agua': 'Media',
+                'recomendacion': 'Manejo estándar'
+            },
+            'Arenoso': {
+                'arena': 70, 'limo': 15, 'arcilla': 15,
+                'textura': 'Ligera', 'drenaje': 'Excelente',
+                'CIC': 'Muy bajo (<5)', 'ret_agua': 'Muy baja',
+                'recomendacion': 'Riego frecuente'
+            }
+        }
+        
+        for idx, row in gdf_dividido.iterrows():
+            centroid = row.geometry.centroid
+            semilla = abs(int(centroid.x * 1000 + centroid.y * 1000)) % (2**32)
+            np.random.seed(semilla)
+            r = np.random.random()
+            if r < 0.7:
+                tipo = base
+            else:
+                tipo = alt_base
+            carac = caracteristicas.get(tipo, caracteristicas['Franco Arcilloso'])
+            arena = carac['arena'] + np.random.randint(-5, 6)
+            limo = carac['limo'] + np.random.randint(-5, 6)
+            arcilla = carac['arcilla'] + np.random.randint(-5, 6)
+            total = arena + limo + arcilla
+            arena = int(arena / total * 100)
+            limo = int(limo / total * 100)
+            arcilla = 100 - arena - limo
+            resultados.append({
+                'id_bloque': row.get('id_bloque', idx+1),
+                'tipo_suelo': tipo,
+                'arena': arena,
+                'limo': limo,
+                'arcilla': arcilla,
+                'textura': carac['textura'],
+                'drenaje': carac['drenaje'],
+                'CIC': carac['CIC'],
+                'ret_agua': carac['ret_agua'],
+                'recomendacion': carac['recomendacion'],
+                'geometria': row.geometry
+            })
+        return resultados
+    except Exception as e:
+        st.error(f"Error en análisis de textura: {e}")
+        return []
+
+# ===== FERTILIDAD NPK =====
+def generar_mapa_fertilidad(gdf):
+    try:
+        fertilidad_data = []
+        for idx, row in gdf.iterrows():
+            ndvi = row.get('ndvi_modis', 0.65)
+            if ndvi > 0.75:
+                N = np.random.uniform(120, 180)
+                P = np.random.uniform(40, 70)
+                K = np.random.uniform(180, 250)
+                pH = np.random.uniform(5.8, 6.5)
+                MO = np.random.uniform(3.5, 5.0)
+            elif ndvi > 0.6:
+                N = np.random.uniform(80, 120)
+                P = np.random.uniform(25, 40)
+                K = np.random.uniform(120, 180)
+                pH = np.random.uniform(5.2, 5.8)
+                MO = np.random.uniform(2.5, 3.5)
+            else:
+                N = np.random.uniform(40, 80)
+                P = np.random.uniform(15, 25)
+                K = np.random.uniform(80, 120)
+                pH = np.random.uniform(4.8, 5.2)
+                MO = np.random.uniform(1.5, 2.5)
+            
+            if N < 100:
+                rec_N = f"Aplicar {max(0, 120-N):.0f} kg/ha N (Urea: {max(0, (120-N)/0.46):.0f} kg/ha)"
+            else:
+                rec_N = "Mantener dosis actual"
+            if P < 30:
+                rec_P = f"Aplicar {max(0, 50-P):.0f} kg/ha P2O5 (DAP: {max(0, (50-P)/0.46):.0f} kg/ha)"
+            else:
+                rec_P = "Mantener dosis actual"
+            if K < 150:
+                rec_K = f"Aplicar {max(0, 200-K):.0f} kg/ha K2O (KCl: {max(0, (200-K)/0.6):.0f} kg/ha)"
+            else:
+                rec_K = "Mantener dosis actual"
+            
+            fertilidad_data.append({
+                'id_bloque': row.get('id_bloque', idx+1),
+                'N_kg_ha': round(N, 1),
+                'P_kg_ha': round(P, 1),
+                'K_kg_ha': round(K, 1),
+                'pH': round(pH, 2),
+                'MO_porcentaje': round(MO, 2),
+                'recomendacion_N': rec_N,
+                'recomendacion_P': rec_P,
+                'recomendacion_K': rec_K,
+                'geometria': row.geometry
+            })
+        return fertilidad_data
+    except Exception:
+        return []
+
+# ===== FUNCIONES DE VISUALIZACIÓN =====
+def crear_mapa_interactivo_base(gdf, columna_color=None, colormap=None, tooltip_fields=None, tooltip_aliases=None):
+    if gdf is None or len(gdf) == 0:
+        return None
+    centroide = gdf.geometry.unary_union.centroid
+    m = folium.Map(location=[centroide.y, centroide.x], zoom_start=16, tiles=None, control_scale=True)
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri, Maxar, Earthstar Geographics',
+        name='Satélite Esri',
+        overlay=False,
+        control=True
+    ).add_to(m)
+    folium.TileLayer(
+        tiles='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attr='OpenStreetMap',
+        name='OpenStreetMap',
+        overlay=False,
+        control=True
+    ).add_to(m)
+    
+    if columna_color and colormap:
+        def style_function(feature):
+            valor = feature['properties'].get(columna_color, 0)
+            if isinstance(valor, (int, float)):
+                if np.isnan(valor):
+                    valor = 0
+            else:
+                try:
+                    valor = float(valor) if valor is not None else 0
+                except:
+                    valor = 0
+            color = colormap(valor) if hasattr(colormap, '__call__') else '#3388ff'
+            return {
+                'fillColor': color,
+                'color': 'black',
+                'weight': 0.5,
+                'fillOpacity': 0.7
+            }
+    else:
+        def style_function(feature):
+            return {'fillColor': '#3388ff', 'color': 'black', 'weight': 0.5, 'fillOpacity': 0.4}
+    
+    if tooltip_fields and tooltip_aliases:
+        tooltip = folium.GeoJsonTooltip(fields=tooltip_fields, aliases=tooltip_aliases, localize=True)
+    else:
+        tooltip = None
+    
+    folium.GeoJson(
+        gdf.to_json(),
+        name='Polígonos',
+        style_function=style_function,
+        tooltip=tooltip
+    ).add_to(m)
+    
+    folium.LayerControl(collapsed=False).add_to(m)
+    Fullscreen(position='topright').add_to(m)
+    MeasureControl(position='topright').add_to(m)
+    MiniMap(toggle_display=True).add_to(m)
+    return m
+
+def mostrar_estadisticas_indice(gdf, columna, titulo, vmin, vmax, colormap_list):
+    if columna not in gdf.columns:
+        st.error(f"La columna {columna} no está disponible.")
+        return
+    valores = gdf[columna].dropna()
+    if len(valores) == 0:
+        st.warning(f"No hay datos válidos para {titulo}.")
+        return
+
+    colormap = LinearColormap(colors=colormap_list, vmin=vmin, vmax=vmax, caption=titulo)
+
+    mapa = crear_mapa_interactivo_base(
+        gdf,
+        columna_color=columna,
+        colormap=colormap,
+        tooltip_fields=['id_bloque', columna],
+        tooltip_aliases=['Bloque', titulo]
+    )
+ 
+    if mapa:
+        colormap.add_to(mapa)
+        folium_static(mapa, width=1000, height=600)
+    else:
+        st.warning("No se pudo generar el mapa. Mostrando gráfico de barras.")
+        fig, ax = plt.subplots(figsize=(10,4))
+        ax.bar(range(len(gdf)), gdf[columna].values, color='steelblue')
+        ax.set_xlabel('Bloque')
+        ax.set_ylabel(titulo)
+        ax.set_title(f'Valores de {titulo} por bloque')
+        st.pyplot(fig)
+        plt.close(fig)
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        st.metric("Media", f"{valores.mean():.3f}")
+    with col2:
+        st.metric("Mediana", f"{valores.median():.3f}")
+    with col3:
+        st.metric("Desv. estándar", f"{valores.std():.3f}")
+    with col4:
+        st.metric("Mínimo", f"{valores.min():.3f}")
+    with col5:
+        st.metric("Máximo", f"{valores.max():.3f}")
+
+    st.markdown("#### Valores por bloque")
+    df_tabla = gdf[['id_bloque', columna]].copy()
+    df_tabla.columns = ['Bloque', titulo]
+    st.dataframe(df_tabla.style.format({titulo: '{:.3f}'}), use_container_width=True)
+
+def mostrar_comparacion_ndvi_ndwi(gdf):
+    if gdf is None or len(gdf) == 0:
+        st.warning("No hay datos para la comparación.")
+        return
+    df = gdf[['id_bloque', 'ndvi_modis', 'ndwi_modis', 'salud', 'area_ha']].copy()
+    df = df.dropna()
+
+    if len(df) == 0:
+        st.warning("Datos insuficientes para la comparación.")
+        return
+
+    st.markdown("### 🔍 Comparación NDVI vs NDWI")
+
+    try:
+        import statsmodels.api as sm
+        statsmodels_ok = True
+    except ImportError:
+        statsmodels_ok = False
+        st.info("ℹ️ Para ver la línea de tendencia, instala 'statsmodels' con: pip install statsmodels")
+
+    fig = px.scatter(
+        df, x='ndvi_modis', y='ndwi_modis', color='salud',
+        size='area_ha', hover_data=['id_bloque'],
+        labels={'ndvi_modis': 'NDVI', 'ndwi_modis': 'NDWI', 'salud': 'Salud'},
+        title='Relación entre NDVI y NDWI por bloque',
+        color_discrete_map={
+            'Crítica': '#d73027',
+            'Baja': '#fee08b',
+            'Moderada': '#91cf60',
+            'Buena': '#1a9850'
+        },
+        trendline='ols' if statsmodels_ok else None,
+        trendline_color_override='gray'
+    )
+    fig.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
+    fig.update_layout(height=500)
+    st.plotly_chart(fig, use_container_width=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("#### Top 5 NDVI")
+        top_ndvi = df.nlargest(5, 'ndvi_modis')[['id_bloque', 'ndvi_modis', 'salud']]
+        top_ndvi.columns = ['Bloque', 'NDVI', 'Salud']
+        st.dataframe(top_ndvi.style.format({'NDVI': '{:.3f}'}), use_container_width=True)
+        
+        st.markdown("#### Bottom 5 NDVI")
+        bottom_ndvi = df.nsmallest(5, 'ndvi_modis')[['id_bloque', 'ndvi_modis', 'salud']]
+        bottom_ndvi.columns = ['Bloque', 'NDVI', 'Salud']
+        st.dataframe(bottom_ndvi.style.format({'NDVI': '{:.3f}'}), use_container_width=True)
+
+    with col2:
+        st.markdown("#### Top 5 NDWI")
+        top_ndwi = df.nlargest(5, 'ndwi_modis')[['id_bloque', 'ndwi_modis', 'salud']]
+        top_ndwi.columns = ['Bloque', 'NDWI', 'Salud']
+        st.dataframe(top_ndwi.style.format({'NDWI': '{:.3f}'}), use_container_width=True)
+        
+        st.markdown("#### Bottom 5 NDWI")
+        bottom_ndwi = df.nsmallest(5, 'ndwi_modis')[['id_bloque', 'ndwi_modis', 'salud']]
+        bottom_ndwi.columns = ['Bloque', 'NDWI', 'Salud']
+        st.dataframe(bottom_ndwi.style.format({'NDWI': '{:.3f}'}), use_container_width=True)
+
+def crear_mapa_fertilidad_interactivo(gdf_fertilidad, variable, colormap_nombre='YlOrRd'):
+    info_var = {
+        'N_kg_ha': {'titulo': 'Nitrógeno (N)', 'unidad': 'kg/ha', 'vmin': 40, 'vmax': 180, 'cmap': 'YlGnBu'},
+        'P_kg_ha': {'titulo': 'Fósforo (P₂O₅)', 'unidad': 'kg/ha', 'vmin': 15, 'vmax': 70, 'cmap': 'YlOrRd'},
+        'K_kg_ha': {'titulo': 'Potasio (K₂O)', 'unidad': 'kg/ha', 'vmin': 80, 'vmax': 250, 'cmap': 'YlGn'},
+        'pH': {'titulo': 'pH del suelo', 'unidad': '', 'vmin': 4.5, 'vmax': 6.5, 'cmap': 'RdYlGn_r'},
+        'MO_porcentaje': {'titulo': 'Materia Orgánica', 'unidad': '%', 'vmin': 1.0, 'vmax': 5.0, 'cmap': 'BrBG'}
+    }
+    info = info_var.get(variable, {'titulo': variable, 'unidad': '', 'vmin': None, 'vmax': None, 'cmap': 'YlOrRd'})
+    
+    colormap = LinearColormap(
+        colors=['#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026'] if info['cmap'] == 'YlOrRd' else
+                ['#c7e9c0','#74c476','#31a354','#006d2c'] if info['cmap'] == 'YlGn' else
+                ['#4575b4','#91bfdb','#e0f3f8','#fee090','#fc8d59','#d73027'] if info['cmap'] == 'RdYlGn_r' else
+                ['#8c510a','#bf812d','#dfc27d','#f6e8c3','#c7eae5','#80cdc1','#35978f','#01665e'],
+        vmin=info['vmin'] if info['vmin'] else gdf_fertilidad[variable].min(),
+        vmax=info['vmax'] if info['vmax'] else gdf_fertilidad[variable].max(),
+        caption=f"{info['titulo']} ({info['unidad']})"
+    )
+    
+    m = crear_mapa_interactivo_base(
+        gdf_fertilidad,
+        columna_color=variable,
+        colormap=colormap,
+        tooltip_fields=['id_bloque', variable, 'recomendacion_N', 'recomendacion_P', 'recomendacion_K'],
+        tooltip_aliases=['Bloque', f'{info["titulo"]} ({info["unidad"]})', 'Recom. N', 'Recom. P', 'Recom. K']
+    )
+    if m:
+        colormap.add_to(m)
+    return m
+
+def crear_grafico_textural(arena, limo, arcilla, tipo_suelo):
+    fig = go.Figure()
+    fig.add_trace(go.Scatterternary(
+        a=[arcilla], b=[limo], c=[arena],
+        mode='markers+text',
+        marker=dict(size=14, color='red'),
+        text=[tipo_suelo],
+        textposition='top center',
+        name='Suelo actual'
+    ))
+    fig.update_layout(
+        title='Triángulo Textural',
+        ternary=dict(
+            sum=100,
+            aaxis=dict(title='% Arcilla', min=0, linewidth=2),
+            baxis=dict(title='% Limo', min=0, linewidth=2),
+            caxis=dict(title='% Arena', min=0, linewidth=2)
+        ),
+        height=500, width=600
+    )
+    return fig
+
+# ===== FUNCIONES YOLO =====
+def cargar_modelo_yolo(ruta_modelo):
+    try:
+        from ultralytics import YOLO
+        modelo = YOLO(ruta_modelo)
+        return modelo
+    except Exception as e:
+        st.error(f"Error al cargar el modelo YOLO: {str(e)}")
+        return None
+
+def detectar_en_imagen(modelo, imagen_cv, conf_threshold=0.25):
+    if modelo is None:
+        return None
+    try:
+        resultados = modelo(imagen_cv, conf=conf_threshold)
+        return resultados
+    except Exception as e:
+        st.error(f"Error en la inferencia YOLO: {str(e)}")
+        return None
+
+def dibujar_detecciones_con_leyenda(imagen_cv, resultados, colores_aleatorios=True):
+    if resultados is None or len(resultados) == 0:
+        return imagen_cv, []
+
+    img_anotada = imagen_cv.copy()
+    detecciones_info = []
+    names = resultados[0].names
+
+    for r in resultados:
+        for box in r.boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            conf = float(box.conf[0])
+            cls_id = int(box.cls[0])
+            label = names[cls_id]
+
+            if colores_aleatorios:
+                color = tuple(np.random.randint(0, 255, 3).tolist())
+            else:
+                np.random.seed(cls_id)
+                color = tuple(np.random.randint(0, 255, 3).tolist())
+                np.random.seed(None)
+
+            cv2.rectangle(img_anotada, (x1, y1), (x2, y2), color, 3)
+            etiqueta = f"{label} {conf:.2f}"
+            (w, h), _ = cv2.getTextSize(etiqueta, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+            cv2.rectangle(img_anotada, (x1, y1 - h - 10), (x1 + w, y1), color, -1)
+            cv2.putText(img_anotada, etiqueta, (x1, y1 - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+            detecciones_info.append({
+                'clase': label,
+                'confianza': round(conf, 3),
+                'bbox': [x1, y1, x2, y2],
+                'color': color
+            })
+
+    return img_anotada, detecciones_info
+
+def crear_leyenda_html(detecciones_info):
+    if not detecciones_info:
+        return "<p>No se detectaron objetos.</p>"
+
+    clases_vistas = {}
+    for d in detecciones_info:
+        if d['clase'] not in clases_vistas:
+            clases_vistas[d['clase']] = d['color']
+
+    from collections import Counter
+    conteo_clases = Counter([d['clase'] for d in detecciones_info])
+
+    html = "<div style='background: rgba(30, 30, 30, 0.9); padding: 15px; border-radius: 10px; margin-top: 20px;'>"
+    html += "<h4 style='color: white; margin-bottom: 10px;'>📋 Leyenda de detecciones</h4>"
+    html += "<table style='width: 100%; color: white; border-collapse: collapse;'>"
+    html += "<tr><th>Color</th><th>Clase</th><th>Conteo</th></tr>"
+
+    for clase, color in clases_vistas.items():
+        color_hex = '#{:02x}{:02x}{:02x}'.format(color[0], color[1], color[2])
+        html += f"<tr style='border-bottom: 1px solid #444;'>"
+        html += f"<td style='padding: 8px;'><span style='display: inline-block; width: 20px; height: 20px; background-color: {color_hex}; border-radius: 4px;'></span></td>"
+        html += f"<td style='padding: 8px;'>{clase}</td>"
+        html += f"<td style='padding: 8px; text-align: center;'>{conteo_clases[clase]}</td>"
+        html += f"</tr>"
+
+    html += "</table></div>"
+    return html
+
+# ===== CURVAS DE NIVEL =====
+def obtener_dem_opentopography(gdf, api_key=None):
+    try:
+        import rasterio
+        from rasterio.mask import mask
+    except ImportError:
+        st.warning("Para curvas de nivel reales instala rasterio y scikit-image")
+        return None, None, None
+    if api_key is None:
+        api_key = os.environ.get("OPENTOPOGRAPHY_API_KEY", None)
+    if not api_key:
+        return None, None, None
+    try:
+        bounds = gdf.total_bounds
+        west, south, east, north = bounds
+        lon_span = east - west
+        lat_span = north - south
+        west -= lon_span * 0.05
+        east += lon_span * 0.05
+        south -= lat_span * 0.05
+        north += lat_span * 0.05
+        url = "https://portal.opentopography.org/API/globaldem"
+        params = {
+            "demtype": "SRTMGL1",
+            "south": south,
+            "north": north,
+            "west": west,
+            "east": east,
+            "outputFormat": "GTiff",
+            "API_Key": api_key
+        }
+        response = requests.get(url, params=params, timeout=60)
+        response.raise_for_status()
+        dem_bytes = BytesIO(response.content)
+        with rasterio.open(dem_bytes) as src:
+            geom = [mapping(gdf.unary_union)]
+            out_image, out_transform = mask(src, geom, crop=True, nodata=-32768)
+            out_meta = src.meta.copy()
+            out_meta.update({
+                "driver": "GTiff",
+                "height": out_image.shape[1],
+                "width": out_image.shape[2],
+                "transform": out_transform,
+                "nodata": -32768
+            })
+        return out_image.squeeze(), out_meta, out_transform
+    except Exception as e:
+        st.error(f"Error descargando DEM: {str(e)[:200]}")
+        return None, None, None
+
+def generar_curvas_nivel_simuladas(gdf):
+    try:
+        from skimage import measure
+    except ImportError:
+        return []
+    bounds = gdf.total_bounds
+    minx, miny, maxx, maxy = bounds
+    n = 100
+    x = np.linspace(minx, maxx, n)
+    y = np.linspace(miny, maxy, n)
+    X, Y = np.meshgrid(x, y)
+    np.random.seed(42)
+    Z = np.random.randn(n, n) * 20
+    from scipy.ndimage import gaussian_filter
+    Z = gaussian_filter(Z, sigma=5)
+    Z = 50 + (Z - Z.min()) / (Z.max() - Z.min()) * 150
+    contours = []
+    niveles = np.arange(50, 200, 10)
+    for nivel in niveles:
+        try:
+            for contour in measure.find_contours(Z, nivel):
+                coords = []
+                for row, col in contour:
+                    lat = miny + (row / n) * (maxy - miny)
+                    lon = minx + (col / n) * (maxx - minx)
+                    coords.append((lon, lat))
+                if len(coords) > 2:
+                    line = LineString(coords)
+                    if line.length > 0.01:
+                        contours.append((line, nivel))
+        except:
+            continue
+    return contours
+
+def generar_curvas_nivel_reales(dem_array, transform, intervalo=10):
+    try:
+        from skimage import measure
+    except ImportError:
+        return []
+    if dem_array is None:
+        return []
+    dem_array = np.ma.masked_where(dem_array <= -999, dem_array)
+    vmin = dem_array.min()
+    vmax = dem_array.max()
+    if vmin is np.ma.masked or vmax is np.ma.masked:
+        return []
+    niveles = np.arange(np.floor(vmin / intervalo) * intervalo,
+                        np.ceil(vmax / intervalo) * intervalo + intervalo,
+                        intervalo)
+    contours = []
+    for nivel in niveles:
+        try:
+            for contour in measure.find_contours(dem_array.filled(fill_value=-999), nivel):
+                coords = []
+                for row, col in contour:
+                    x, y = transform * (col, row)
+                    coords.append((x, y))
+                if len(coords) > 2:
+                    line = LineString(coords)
+                    if line.length > 0.01:
+                        contours.append((line, nivel))
+        except:
+            continue
+    return contours
+
+def mapa_curvas_coloreadas(gdf_original, curvas_con_elevacion):
+    centroide = gdf_original.geometry.unary_union.centroid
+    m = folium.Map(location=[centroide.y, centroide.x], zoom_start=15, tiles=None, control_scale=True)
+    folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                     attr='Esri', name='Satélite Esri', overlay=False, control=True).add_to(m)
+    folium.TileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                     attr='OpenStreetMap', name='OpenStreetMap', overlay=False, control=True).add_to(m)
+    folium.GeoJson(gdf_original.to_json(), name='Plantación',
+                   style_function=lambda x: {'color': 'blue', 'fillOpacity': 0.1, 'weight': 2}).add_to(m)
+    elevaciones = [e for _, e in curvas_con_elevacion]
+    if elevaciones:
+        vmin = min(elevaciones); vmax = max(elevaciones)
+        colormap = LinearColormap(colors=['green','yellow','orange','brown'], vmin=vmin, vmax=vmax, caption='Elevación (m.s.n.m)')
+        colormap.add_to(m)
+        for line, elev in curvas_con_elevacion:
+            folium.GeoJson(gpd.GeoSeries(line).to_json(), name='Curvas',
+                           style_function=lambda x, e=elev: {'color': colormap(e), 'weight': 1.5, 'opacity': 0.9},
+                           tooltip=f'Elevación: {elev:.0f} m').add_to(m)
+    folium.LayerControl(collapsed=False).add_to(m)
+    Fullscreen().add_to(m)
+    return m
+
+# ===== FUNCIÓN PRINCIPAL DE ANÁLISIS =====
 def ejecutar_analisis_completo():
     if st.session_state.gdf_original is None:
         st.error("Primero debe cargar un archivo de plantación")
@@ -1229,6 +1860,7 @@ def ejecutar_analisis_completo():
                 'fuente': 'Datos simulados'
             }
         else:
+            # Modo real: obtener datos con Earthdata
             gdf_dividido = dividir_plantacion_en_bloques(gdf, n_divisiones)
             areas_ha = []
             for idx, row in gdf_dividido.iterrows():
@@ -1236,6 +1868,7 @@ def ejecutar_analisis_completo():
                 areas_ha.append(float(calcular_superficie(area_gdf)))
             gdf_dividido['area_ha'] = areas_ha
 
+            # 1. Obtener NDVI real
             st.info("🛰️ Obteniendo NDVI desde Earthdata (MOD13Q1)...")
             resultado_ndvi = obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
             if resultado_ndvi is None:
@@ -1244,6 +1877,7 @@ def ejecutar_analisis_completo():
             gdf_dividido = resultado_ndvi
             fuente_ndvi = "Earthdata MOD13Q1"
 
+            # 2. Obtener NDWI real
             st.info("💧 Obteniendo NDWI desde Earthdata (MOD09GA)...")
             resultado_ndwi = obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
             if resultado_ndwi is None:
@@ -1252,12 +1886,14 @@ def ejecutar_analisis_completo():
             gdf_dividido = resultado_ndwi
             fuente_ndwi = "Earthdata MOD09GA"
 
+            # 3. Datos climáticos (con fallback simulado si fallan)
             st.info("🌦️ Obteniendo datos climáticos de Open-Meteo ERA5...")
             datos_clima = obtener_clima_openmeteo(gdf, fecha_inicio, fecha_fin) or {}
             st.info("☀️ Obteniendo radiación y viento de NASA POWER...")
             datos_power = obtener_radiacion_viento_power(gdf, fecha_inicio, fecha_fin) or {}
             st.session_state.datos_climaticos = {**datos_clima, **datos_power}
 
+            # 4. Edad simulada
             edades = analizar_edad_plantacion(gdf_dividido)
             gdf_dividido['edad_anios'] = edades
 
@@ -1268,6 +1904,7 @@ def ejecutar_analisis_completo():
                 'fuente': f"NDVI: {fuente_ndvi}, NDWI: {fuente_ndwi}"
             }
 
+        # Clasificar salud
         def clasificar_salud(ndvi):
             if ndvi < 0.4: return 'Crítica'
             if ndvi < 0.6: return 'Baja'
@@ -1275,6 +1912,7 @@ def ejecutar_analisis_completo():
             return 'Buena'
         gdf_dividido['salud'] = gdf_dividido['ndvi_modis'].apply(clasificar_salud)
 
+        # Análisis de suelo (si activado)
         if st.session_state.get('analisis_suelo', True):
             st.session_state.textura_por_bloque = analizar_textura_suelo_venezuela_por_bloque(gdf_dividido)
             if st.session_state.textura_por_bloque:
@@ -1289,7 +1927,6 @@ def ejecutar_analisis_completo():
         }
         st.session_state.analisis_completado = True
         st.success("✅ Análisis completado!")
-
 
 # ===== CABECERA =====
 st.markdown("""
@@ -1497,7 +2134,7 @@ if st.session_state.analisis_completado:
             "🌤️ Clima", "🌱 Detección", "🧪 Fertilidad NPK", 
             "🌱 Textura Suelo", "🗺️ Curvas de Nivel", "🐛 Detección YOLO"
         ])
-                
+        
         with tab1:
             st.subheader("📊 DASHBOARD DE RESUMEN")
             area_total = resultados.get('area_total', 0)
@@ -1857,7 +2494,7 @@ if st.session_state.analisis_completado:
                     if gdf_original is None:
                         st.error("Primero debe cargar una plantación.")
                     else:
-                        if not st.session_state.modo_simulado and api_key:
+                        if not st.session_state.demo_mode and api_key:
                             dem, meta, transform = obtener_dem_opentopography(gdf_original, api_key if api_key else None)
                             if dem is not None:
                                 curvas = generar_curvas_nivel_reales(dem, transform, intervalo)
