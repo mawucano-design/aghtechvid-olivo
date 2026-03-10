@@ -1,4 +1,4 @@
-# app.py - Analizador de Olivo Satelital con Landsat
+# app.py - Analizador de Olivo Satelital con Landsat (rango ampliado)
 # 
 # - Sin autenticación ni pagos (gratuito)
 # - Modo simulado opcional (checkbox) que genera datos aleatorios
@@ -108,7 +108,7 @@ def init_session_state():
         'datos_climaticos': {},
         'deteccion_ejecutada': False,
         'n_divisiones': 16,
-        'fecha_inicio': datetime.now() - timedelta(days=60),
+        'fecha_inicio': datetime.now() - timedelta(days=365),  # Ampliado a 365 días
         'fecha_fin': datetime.now(),
         'variedad_seleccionada': 'Arbequina',
         'textura_suelo': {},
@@ -426,12 +426,13 @@ def obtener_banda_landsat(gdf_dividido, fecha_inicio, fecha_fin, banda, nombre_p
                 short_name=sat,
                 bounding_box=bbox,
                 temporal=(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d')),
-                count=5
+                count=10
             )
             resultados.extend(res)
 
         if not resultados:
-            st.warning(f"No se encontraron escenas Landsat en el período para la banda {banda}.")
+            st.warning(f"⚠️ No se encontraron escenas Landsat en el período {fecha_inicio.strftime('%d/%m/%Y')} a {fecha_fin.strftime('%d/%m/%Y')} para la banda {banda}.")
+            st.info("💡 Prueba con un rango de fechas más amplio (por ejemplo, 1 año) o cambia a modo simulado.")
             return None
 
         # Probar cada escena
@@ -1225,7 +1226,6 @@ def mostrar_comparacion_ndvi_ndwi(gdf):
     if gdf is None or len(gdf) == 0:
         st.warning("No hay datos para la comparación.")
         return
-    # Usar columnas de Landsat
     df = gdf[['id_bloque', 'ndvi_landsat', 'ndwi_landsat', 'salud', 'area_ha']].copy()
     df = df.dropna()
 
@@ -1566,7 +1566,7 @@ def ejecutar_analisis_completo():
         return
     with st.spinner("Ejecutando análisis completo..."):
         n_divisiones = st.session_state.get('n_divisiones', 16)
-        fecha_inicio = st.session_state.get('fecha_inicio', datetime.now() - timedelta(days=60))
+        fecha_inicio = st.session_state.get('fecha_inicio', datetime.now() - timedelta(days=365))  # Ampliado a 365 días
         fecha_fin = st.session_state.get('fecha_fin', datetime.now())
         gdf = st.session_state.gdf_original.copy()
         
@@ -1590,10 +1590,10 @@ def ejecutar_analisis_completo():
             gdf_dividido['area_ha'] = areas_ha
 
             # 1. Obtener NDVI real (Landsat)
-            st.info("🛰️ Obteniendo NDVI desde Landsat...")
+            st.info("🛰️ Obteniendo NDVI desde Landsat (buscando en los últimos 365 días)...")
             resultado_ndvi = obtener_ndvi_landsat(gdf_dividido, fecha_inicio, fecha_fin)
             if resultado_ndvi is None:
-                st.error("No se pudo obtener NDVI real. Verifique sus credenciales o active el modo simulado.")
+                st.error("No se pudo obtener NDVI real. Puede deberse a falta de escenas Landsat en el área y período seleccionados. Prueba con un rango de fechas más amplio o activa el modo simulado.")
                 st.stop()
             gdf_dividido = resultado_ndvi
             fuente_ndvi = "Landsat 8/9"
@@ -1730,7 +1730,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📅 Rango Temporal")
     fecha_fin_default = datetime.now()
-    fecha_inicio_default = datetime.now() - timedelta(days=60)
+    fecha_inicio_default = datetime.now() - timedelta(days=365)  # También ampliado aquí
     fecha_fin = st.date_input("Fecha fin", fecha_fin_default)
     fecha_inicio = st.date_input("Fecha inicio", fecha_inicio_default)
     try:
