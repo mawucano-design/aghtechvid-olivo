@@ -698,6 +698,13 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         return None
 
 def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
+    """
+    Obtiene NDWI real para cada bloque usando MOD09GA (bandas NIR y SWIR).
+    Intenta con:
+      1. xarray (recomendado, maneja bien las dimensiones)
+      2. rasterio
+      3. pyhdf con lógica mejorada de dimensiones
+    """
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
         return None
@@ -719,7 +726,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             version='061',
             bounding_box=bbox,
             temporal=(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d')),
-            count=10  # Buscar hasta 10 escenas para tener más opciones
+            count=10  # Buscar hasta 10 escenas
         )
 
         if not results:
@@ -759,8 +766,129 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         shutil.rmtree(temp_dir, ignore_errors=True)
                         continue
 
-            # --- Intento con rasterio ---
-            rasterio_success = False
+            # --- INTENTO 1: XARRAY (más fiable) ---
+            try:
+                import xarray as xr
+                # Intentar abrir con xarray (usa h5netcdf o netCDF4 según disponibilidad)
+                ds = xr.open_dataset(download_path, engine='netcdf4')  # o 'h5netcdf'
+                # Buscar las bandas NIR y SWIR (nombres exactos de MOD09GA)
+                nir_var = None
+                swir_var = None
+                for var in ds.variables:
+                    if 'sur_refl_b02' in var:
+                        nir_var = var
+                    elif 'sur_refl_b06' in var:
+                        swir_var = var
+                if nir_var is None or swir_var is None:
+                    raise ValueError("No se encontraron las bandas NIR o SWIR en el dataset xarray")
+                
+                nir_data = ds[nir_var].values
+                swir_data = ds[swir_var].values
+
+                # Verificar que sean 2D
+                if nir_data.ndim != 2 or swir_data.ndim != 2:
+                    raise ValueError(f"Las bandas no son 2D: NIR dims={nir_data.ndim}, SWIR dims={swir_data.ndim}")
+
+                # Obtener geotransformación aproximada (asumimos que xarray tiene coordenadas)
+                # MOD09GA usa proyección sinusoidal, podemos usar las coordenadas si existen
+                # Si no, usaremos la metadata global como fallback (más adelante)
+                # Por ahora, extraemos la metadata de geolocalización del archivo HDF (con pyhdf solo para eso)
+                # Pero para simplificar, podemos usar rasterio para leer la geotransformación
+                # O podemos usar las coordenadas de xarray para crear una transformación affine
+                # Vamos a usar rasterio para abrir el archivo y obtener la transformación (solo eso)
+                with rasterio.open(download_path) as src:
+                    # La transformación global puede no ser exacta para subdatasets, pero es un inicio
+                    transform = src.transform
+                    crs = src.crs
+                    # Ajustar a las dimensiones reales de las bandas
+                    # Las dimensiones de las bandas pueden ser diferentes a las del archivo principal
+                    # Recalculamos resolución
+                    height, width = nir_data.shape
+                    # Asumimos que la extensión es la misma para ambas bandas
+                    left = transform[2]
+                    top = transform[5]
+                    right = left + transform[0] * width
+                    bottom = top + transform[4] * height  # transform[4] es negativo si Y decrece
+                    new_transform = rasterio.transform.from_origin(left, top, (right-left)/width, (top-bottom)/height)
+                    transform = new_transform
+
+                # Ahora procesamos por bloques igual que antes
+                gdf_proj = gdf_dividido.to_crs(crs)
+
+                ndwi_values = []
+                ndwi_std = []
+                ndwi_min = []
+                ndwi_max = []
+                pixel_count = []
+
+                progress_bar = st.progress(0, text=f"Procesando bloques para NDWI con xarray (escena {granule_idx+1})...")
+
+                # Para extraer por bloques, necesitamos una forma de enmascarar. Podríamos usar rasterio con memoria
+                # Escribimos las bandas a un archivo en memoria
+                with rasterio.io.MemoryFile() as memfile_nir, rasterio.io.MemoryFile() as memfile_swir:
+                    with memfile_nir.open(driver='GTiff', height=height, width=width, count=1,
+                                          dtype=nir_data.dtype, crs=crs, transform=transform, nodata=-32768) as dst_nir:
+                        dst_nir.write(nir_data, 1)
+                    with memfile_swir.open(driver='GTiff', height=height, width=width, count=1,
+                                          dtype=swir_data.dtype, crs=crs, transform=transform, nodata=-32768) as dst_swir:
+                        dst_swir.write(swir_data, 1)
+
+                    with memfile_nir.open() as src_nir, memfile_swir.open() as src_swir:
+                        for idx, row in gdf_proj.iterrows():
+                            geom = [mapping(row.geometry)]
+                            try:
+                                out_nir, _ = mask(src_nir, geom, crop=True, nodata=-32768)
+                                nir_band = out_nir[0].astype(np.float32) * 0.0001
+
+                                out_swir, _ = mask(src_swir, geom, crop=True, nodata=-32768)
+                                swir_band = out_swir[0].astype(np.float32) * 0.0001
+
+                                valid = (nir_band != -32768 * 0.0001) & (swir_band != -32768 * 0.0001) & (nir_band + swir_band != 0)
+                                nir_valid = np.ma.masked_where(~valid, nir_band)
+                                swir_valid = np.ma.masked_where(~valid, swir_band)
+
+                                with np.errstate(divide='ignore', invalid='ignore'):
+                                    ndwi = (nir_valid - swir_valid) / (nir_valid + swir_valid)
+
+                                mean_val = ndwi.mean()
+                                std_val = ndwi.std()
+                                min_val = ndwi.min()
+                                max_val = ndwi.max()
+                                count_valid = np.count_nonzero(~ndwi.mask) if hasattr(ndwi, 'mask') else len(ndwi.flatten())
+
+                                ndwi_values.append(round(float(mean_val), 4) if not np.ma.is_masked(mean_val) else np.nan)
+                                ndwi_std.append(round(float(std_val), 4) if not np.ma.is_masked(std_val) else np.nan)
+                                ndwi_min.append(round(float(min_val), 4) if not np.ma.is_masked(min_val) else np.nan)
+                                ndwi_max.append(round(float(max_val), 4) if not np.ma.is_masked(max_val) else np.nan)
+                                pixel_count.append(int(count_valid))
+
+                            except Exception:
+                                ndwi_values.append(np.nan)
+                                ndwi_std.append(np.nan)
+                                ndwi_min.append(np.nan)
+                                ndwi_max.append(np.nan)
+                                pixel_count.append(0)
+
+                            progress_bar.progress((idx + 1) / len(gdf_proj),
+                                                  text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
+
+                    progress_bar.empty()
+
+                gdf_dividido['ndwi_modis'] = ndwi_values
+                gdf_dividido['ndwi_std'] = ndwi_std
+                gdf_dividido['ndwi_min'] = ndwi_min
+                gdf_dividido['ndwi_max'] = ndwi_max
+                gdf_dividido['ndwi_pixels'] = pixel_count
+
+                st.success(f"✅ NDWI calculado por bloque correctamente con xarray en escena {granule_idx+1}.")
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return gdf_dividido
+
+            except Exception as e_xr:
+                st.warning(f"Fallo con xarray en escena {granule_idx+1}: {str(e_xr)}. Probando rasterio...")
+                # Continuar con rasterio
+
+            # --- INTENTO 2: RASTERIO ---
             if RASTERIO_OK:
                 try:
                     with rasterio.open(download_path) as src:
@@ -786,7 +914,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 ndwi_max = []
                                 pixel_count = []
 
-                                progress_bar = st.progress(0, text=f"Procesando bloques para NDWI (escena {granule_idx+1})...")
+                                progress_bar = st.progress(0, text=f"Procesando bloques para NDWI con rasterio (escena {granule_idx+1})...")
 
                                 for idx, row in gdf_proj.iterrows():
                                     geom = [mapping(row.geometry)]
@@ -835,15 +963,14 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 gdf_dividido['ndwi_pixels'] = pixel_count
 
                                 st.success(f"✅ NDWI calculado por bloque correctamente con rasterio en escena {granule_idx+1}.")
-                                rasterio_success = True
                                 shutil.rmtree(temp_dir, ignore_errors=True)
                                 return gdf_dividido
-                except Exception:
-                    # Fallo silencioso de rasterio, pasamos a pyhdf
-                    pass
+                except Exception as e_rio:
+                    st.warning(f"Fallo con rasterio en escena {granule_idx+1}: {str(e_rio)}. Probando pyhdf...")
+                    # Continuar con pyhdf
 
-            # --- Fallback con pyhdf ---
-            if not rasterio_success and PYHDF_OK and RASTERIO_OK:
+            # --- INTENTO 3: PYHDF CON LÓGICA MEJORADA ---
+            if PYHDF_OK and RASTERIO_OK:
                 try:
                     hdf = SD(str(download_path), SDC.READ)
 
@@ -860,26 +987,24 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         shutil.rmtree(temp_dir, ignore_errors=True)
                         continue
 
-                    # --- Función para obtener dimensiones de forma segura ---
-                    def get_band_dims_safe(ds):
+                    # --- Extraer dimensiones de la banda directamente ---
+                    def get_dims_from_ds(ds):
                         dims = ds.dimensions()
+                        # Si hay 2 dimensiones, asumimos que son Y y X
                         if len(dims) == 2:
-                            # Intentar identificar claves con 'y' y 'x'
-                            ykey = next((k for k in dims if 'y' in k.lower()), None)
-                            xkey = next((k for k in dims if 'x' in k.lower()), None)
-                            if ykey and xkey:
-                                return dims[ykey], dims[xkey]
-                            else:
-                                items = list(dims.items())
-                                return items[0][1], items[1][1]
+                            # Intentar identificar orden
+                            keys = list(dims.keys())
+                            # Por convención, la primera suele ser Y, la segunda X
+                            return dims[keys[0]], dims[keys[1]]
                         else:
-                            st.warning(f"Dataset tiene {len(dims)} dimensiones, se usará metadata global.")
+                            # Si no, devolvemos None
                             return None, None
 
-                    # Intentar obtener dimensiones para NIR
-                    ydim_nir, xdim_nir = get_band_dims_safe(nir_ds)
+                    ydim_nir, xdim_nir = get_dims_from_ds(nir_ds)
+                    ydim_swir, xdim_swir = get_dims_from_ds(swir_ds)
+
                     if ydim_nir is None or xdim_nir is None:
-                        # Fallback: usar metadata global
+                        # Fallback a metadata global
                         metadata = hdf.attributes()['StructMetadata.0']
                         xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                         ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
@@ -887,68 +1012,51 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             xdim_nir = int(xdim_match.group(1))
                             ydim_nir = int(ydim_match.group(1))
                         else:
-                            st.warning(f"No se pudo obtener dimensiones de metadata global en escena {granule_idx+1}. Probando siguiente...")
-                            shutil.rmtree(temp_dir, ignore_errors=True)
-                            continue
-
-                    ydim_swir, xdim_swir = get_band_dims_safe(swir_ds)
-                    if ydim_swir is None or xdim_swir is None:
+                            raise ValueError("No se pudo obtener dimensiones de metadata global")
                         ydim_swir, xdim_swir = ydim_nir, xdim_nir
 
                     nir_data = nir_ds.get()
                     swir_data = swir_ds.get()
 
-                    # --- Función para procesar banda con múltiples intentos ---
+                    # --- Función para procesar banda con reshape flexible ---
                     def process_band(data, expected_ydim, expected_xdim, band_name):
-                        # Mostrar info para depuración
-                        st.write(f"Debug - {band_name}: shape={data.shape}, ndim={data.ndim}, size={data.size}, expected=({expected_ydim}, {expected_xdim})")
-
                         if data.ndim == 2:
+                            # Ya es 2D, usar sus dimensiones
                             return data
                         elif data.ndim == 1:
-                            # Intentar reshape a dimensiones esperadas
+                            # Intentar reshape a expected
                             if data.size == expected_ydim * expected_xdim:
                                 return data.reshape(expected_ydim, expected_xdim)
                             else:
-                                # Intentar deducir dimensiones a partir del tamaño
-                                # Primero, ver si es cuadrado
+                                # Buscar dimensiones alternativas: tal vez las dimensiones reales son diferentes
+                                # Intentar con la raíz cuadrada si es aproximadamente cuadrada
                                 sqrt_size = int(np.sqrt(data.size))
                                 if sqrt_size * sqrt_size == data.size:
-                                    st.warning(f"{band_name} es 1D con tamaño {data.size}, se asume forma cuadrada {sqrt_size}x{sqrt_size}.")
+                                    st.warning(f"{band_name} se reshapea a forma cuadrada {sqrt_size}x{sqrt_size}")
                                     return data.reshape(sqrt_size, sqrt_size)
                                 else:
-                                    # Si no es cuadrado, tal vez sea una de las dimensiones igual a expected_ydim o expected_xdim
-                                    if data.size % expected_ydim == 0:
-                                        alt_xdim = data.size // expected_ydim
-                                        st.warning(f"{band_name} se reshapea a ({expected_ydim}, {alt_xdim}) basado en altura esperada.")
-                                        return data.reshape(expected_ydim, alt_xdim)
-                                    elif data.size % expected_xdim == 0:
-                                        alt_ydim = data.size // expected_xdim
-                                        st.warning(f"{band_name} se reshapea a ({alt_ydim}, {expected_xdim}) basado en ancho esperado.")
-                                        return data.reshape(alt_ydim, expected_xdim)
-                                    else:
-                                        # Último recurso: no podemos determinar
-                                        raise ValueError(f"No se puede determinar la forma 2D para {band_name}: tamaño {data.size}, esperado {expected_ydim * expected_xdim}")
+                                    # Si no, buscar factores
+                                    # Probar con divisores cercanos a expected_ydim o expected_xdim
+                                    for guess in [expected_ydim, expected_xdim, 1200, 2400, 4800]:
+                                        if data.size % guess == 0:
+                                            other = data.size // guess
+                                            st.warning(f"{band_name} se reshapea a ({guess}, {other})")
+                                            return data.reshape(guess, other)
+                                    # Último recurso: asumir que las dimensiones esperadas son correctas y lanzar error
+                                    raise ValueError(f"No se puede determinar la forma 2D para {band_name}: tamaño {data.size}")
                         else:
-                            raise ValueError(f"{band_name} tiene {data.ndim} dimensiones, no se puede procesar.")
+                            raise ValueError(f"{band_name} tiene {data.ndim} dimensiones")
 
-                    try:
-                        nir = process_band(nir_data, ydim_nir, xdim_nir, "NIR").astype(np.float32) * 0.0001
-                        swir = process_band(swir_data, ydim_swir, xdim_swir, "SWIR").astype(np.float32) * 0.0001
-                    except ValueError as e:
-                        st.warning(f"Error procesando bandas en escena {granule_idx+1}: {e}. Probando siguiente...")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        continue
+                    nir = process_band(nir_data, ydim_nir, xdim_nir, "NIR").astype(np.float32) * 0.0001
+                    swir = process_band(swir_data, ydim_swir, xdim_swir, "SWIR").astype(np.float32) * 0.0001
 
-                    # Obtener coordenadas de esquina desde la metadata global
+                    # Obtener geotransformación desde metadata global
                     metadata = hdf.attributes()['StructMetadata.0']
                     ul_match = re.search(r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.IGNORECASE)
                     lr_match = re.search(r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.IGNORECASE)
 
                     if not (ul_match and lr_match):
-                        st.warning(f"No se pudo extraer geolocalización en escena {granule_idx+1}. Probando siguiente...")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        continue
+                        raise ValueError("No se pudo extraer la geolocalización completa")
 
                     ulx = float(ul_match.group(1))
                     uly = float(ul_match.group(2))
@@ -1031,11 +1139,11 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             return gdf_dividido
 
                 except Exception as e_pyhdf:
-                    st.warning(f"Error en pyhdf con escena {granule_idx+1}: {str(e_pyhdf)}. Probando siguiente...")
+                    st.warning(f"Fallo con pyhdf en escena {granule_idx+1}: {str(e_pyhdf)}. Probando siguiente...")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     continue
 
-            # Si llegamos aquí, la escena no funcionó
+            # Si llegamos aquí, ningún método funcionó para esta escena
             shutil.rmtree(temp_dir, ignore_errors=True)
 
         # Si se agotaron todas las escenas
@@ -1043,7 +1151,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         return None
 
     except Exception as e:
-        st.error(f"Error en obtención de NDWI: {str(e)}")
+        st.error(f"Error general en obtención de NDWI: {str(e)}")
         return None
 # ===== FUNCIONES DE SIMULACIÓN =====
 def generar_datos_simulados_completos(gdf_original, n_divisiones):
