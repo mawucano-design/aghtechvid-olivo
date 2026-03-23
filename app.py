@@ -752,6 +752,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 nir = nir_data.astype(np.float32) * 0.0001
                 swir = swir_data.astype(np.float32) * 0.0001
 
+                # Extraer geolocalización desde metadata
                 metadata = hdf.attributes().get('StructMetadata.0', '')
                 import re
                 xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
@@ -1804,14 +1805,20 @@ def ejecutar_analisis_completo():
         gdf_dividido = resultado_ndvi
         fuente_ndvi = "Earthdata MOD13Q1"
 
-        # 2. Obtener NDWI real
+        # 2. Obtener NDWI real (o simulado en caso de fallo)
         st.info("💧 Obteniendo NDWI desde Earthdata (MOD09GA)...")
         resultado_ndwi = obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
         if resultado_ndwi is None:
-            st.error("No se pudo obtener NDWI real. Verifique su conexión y credenciales de Earthdata.")
-            st.stop()
-        gdf_dividido = resultado_ndwi
-        fuente_ndwi = "Earthdata MOD09GA"
+            st.warning("⚠️ No se pudo obtener NDWI real. Se generarán valores simulados basados en NDVI.")
+            # Simular NDWI a partir de NDVI con algo de ruido
+            ndvi = gdf_dividido['ndvi_modis']
+            ruido = np.random.normal(0, 0.05, size=len(ndvi))
+            ndwi_sim = np.clip(ndvi * 0.8 + ruido, 0.1, 0.7)
+            gdf_dividido['ndwi_modis'] = ndwi_sim
+            fuente_ndwi = "Simulado (fallback)"
+        else:
+            gdf_dividido = resultado_ndwi
+            fuente_ndwi = "Earthdata MOD09GA"
 
         # 3. Datos climáticos
         st.info("🌦️ Obteniendo datos climáticos de Open-Meteo ERA5...")
