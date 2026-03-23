@@ -477,6 +477,9 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
+        # Convertir a str para manejar PosixPath
+        downloaded_files = [str(f) for f in downloaded_files]
+
         hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
         if not hdf_files:
             st.error("No se encontró archivo HDF en la descarga.")
@@ -659,6 +662,9 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             st.error("No se pudo descargar el archivo.")
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
+
+        # Convertir a str para manejar PosixPath
+        downloaded_files = [str(f) for f in downloaded_files]
 
         hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
         if not hdf_files:
