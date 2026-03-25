@@ -163,7 +163,7 @@ def init_session_state():
         'analisis_suelo': True,
         'curvas_nivel': None,
         'satellite_source': 'MODIS (250m)',
-        'max_cloud': 50,          # nubosidad máxima para Landsat
+        'max_cloud': 100,          # Valor por defecto 100 para obtener cualquier escena
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -663,7 +663,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             north = granule_bounds['NorthBoundingCoordinate']
             south = granule_bounds['SouthBoundingCoordinate']
         except (KeyError, TypeError):
-            # Si no se puede obtener, usaremos None y se intentará con rasterio
             west = east = north = south = None
 
         temp_dir = tempfile.mkdtemp()
@@ -741,7 +740,39 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     pass
 
             # Fallback con pyhdf
-            if PYHDF_OK and west is not None and east is not None and north is not None and south is not None:
+            if PYHDF_OK:
+                # Si no tenemos coordenadas, intentamos extraerlas de la metadata del HDF
+                if west is None:
+                    try:
+                        hdf = SD(download_path, SDC.READ)
+                        metadata = hdf.attributes().get('StructMetadata.0', '')
+                        if metadata:
+                            # Intentar extraer coordenadas geográficas (proyección sinusoidal)
+                            import re
+                            xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
+                            ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
+                            ul_match = re.search(r'UpperLeftPointMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.IGNORECASE)
+                            lr_match = re.search(r'LowerRightMtrs\s*=\s*\(\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\)', metadata, re.IGNORECASE)
+                            if xdim_match and ydim_match and ul_match and lr_match:
+                                xdim = int(xdim_match.group(1))
+                                ydim = int(ydim_match.group(1))
+                                ulx = float(ul_match.group(1))
+                                uly = float(ul_match.group(2))
+                                lrx = float(lr_match.group(1))
+                                lry = float(lr_match.group(2))
+                                # Convertir a grados (aproximado)
+                                # Nota: esto es muy burdo, pero es mejor que nada
+                                # Simplemente usaremos las coordenadas en metros como si fueran grados? No.
+                                # Mejor no intentar y usar simulado.
+                                # En lugar de eso, vamos a retornar None y que se genere simulado.
+                                st.warning("No se pudieron obtener coordenadas geográficas para el recorte de NDWI. Se usará simulado.")
+                                return None
+                    except Exception:
+                        pass
+                    # Si no pudimos obtener, retornamos None para que se genere simulado
+                    return None
+
+                # Si tenemos coordenadas, continuamos con el procesamiento
                 try:
                     hdf = SD(download_path, SDC.READ)
                     nir_data = None
@@ -761,8 +792,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     ydim, xdim = nir.shape
 
                     # Crear transformación basada en la extensión del granulo (coordenadas geográficas)
-                    # Nota: MOD09GA está en proyección sinusoidal; pero para el masking en EPSG:4326,
-                    # podemos aproximar la transformación como una simple affine.
                     res_x = (east - west) / xdim
                     res_y = (north - south) / ydim
                     transform = rasterio.Affine(res_x, 0, west, 0, -res_y, north)
@@ -809,7 +838,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     st.error(f"Error al procesar con pyhdf: {str(e_pyhdf)}")
                     return None
             else:
-                st.error("No se pudo leer el archivo HDF: ni rasterio ni pyhdf están disponibles o funcionaron, o faltan coordenadas del granulo.")
+                st.error("No se pudo leer el archivo HDF: ni rasterio ni pyhdf están disponibles o funcionaron.")
                 return None
 
         finally:
@@ -867,7 +896,7 @@ def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=10
         st.error(f"Error buscando Landsat: {str(e)}")
         return None
 
-def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=50, expand_bbox=0.05):
+def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100, expand_bbox=0.05):
     """
     Intenta procesar Landsat con tolerancia de nubosidad ajustable.
     Si falla, retorna None para que se use MODIS.
@@ -898,8 +927,13 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=5
     else:
         expanded_gdf = gdf_dividido
 
-    # Buscar escenas
+    # Buscar escenas con el umbral original
     results = buscar_landsat_earthdata(expanded_gdf, fecha_inicio, fecha_fin, max_cloud)
+    # Si no hay resultados y max_cloud no es 100, reintentar con 100
+    if not results and max_cloud < 100:
+        st.info(f"Reintentando búsqueda Landsat sin límite de nubosidad...")
+        results = buscar_landsat_earthdata(expanded_gdf, fecha_inicio, fecha_fin, max_cloud=100)
+
     if not results:
         return None
 
@@ -1980,7 +2014,7 @@ def ejecutar_analisis_completo():
         fecha_inicio = st.session_state.get('fecha_inicio', datetime.now() - timedelta(days=60))
         fecha_fin = st.session_state.get('fecha_fin', datetime.now())
         source = st.session_state.get('satellite_source', 'MODIS (250m)')
-        max_cloud = st.session_state.get('max_cloud', 50)
+        max_cloud = st.session_state.get('max_cloud', 100)   # Ahora por defecto 100
         gdf = st.session_state.gdf_original.copy()
         
         gdf_dividido = dividir_plantacion_en_bloques(gdf, n_divisiones)
@@ -2114,10 +2148,10 @@ with st.sidebar:
         key="satellite_source"
     )
 
-    # Control de nubosidad para Landsat
+    # Control de nubosidad para Landsat (ahora por defecto 100)
     if st.session_state.satellite_source == "Landsat (30m)":
         st.markdown("### ☁️ Nubosidad máxima para Landsat")
-        st.slider("Porcentaje de nubosidad máximo:", 0, 100, 50, key="max_cloud")
+        st.slider("Porcentaje de nubosidad máximo:", 0, 100, 100, key="max_cloud")
         # NO se asigna manualmente; el widget ya actualiza st.session_state.max_cloud
 
     st.markdown("---")
