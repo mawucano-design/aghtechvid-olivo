@@ -865,10 +865,12 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=2
     """Download best Landsat scene and compute NDVI and NDWI per block.
     Returns gdf_dividido with added columns 'ndvi_modis' and 'ndwi_modis' (reused names).
     """
-    if not EARTHDATA_OK or not RASTERIO_OK:
-        st.error("Librerías necesarias no instaladas (earthaccess, rasterio).")
+    if not EARTHDATA_OK:
+        st.error("Librerías earthaccess no instaladas.")
         return None
-
+    if not RASTERIO_OK:
+        st.error("rasterio no está instalado. Instálelo con: pip install rasterio")
+        return None
     if not EARTHDATA_USERNAME or not EARTHDATA_PASSWORD:
         st.error("Credenciales Earthdata no configuradas.")
         return None
@@ -898,9 +900,10 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=2
             matches = [f for f in downloaded_files if pattern in f and f.endswith('.TIF')]
             return matches[0] if matches else None
 
-        b4_path = find_band('_SR_B4.TIF')   # Red
-        b5_path = find_band('_SR_B5.TIF')   # NIR
-        b6_path = find_band('_SR_B6.TIF')   # SWIR1
+        # CORRECTED: Landsat bands are named *_B4.TIF, *_B5.TIF, *_B6.TIF
+        b4_path = find_band('_B4.TIF')   # Red
+        b5_path = find_band('_B5.TIF')   # NIR
+        b6_path = find_band('_B6.TIF')   # SWIR1
 
         if not (b4_path and b5_path and b6_path):
             st.error("No se encontraron las bandas necesarias (B4, B5, B6) en la descarga.")
@@ -2056,14 +2059,14 @@ with st.sidebar:
     st.session_state.fecha_fin = fecha_fin
 
     st.markdown("### 🛰️ Fuente satelital")
-    satellite_source = st.radio(
+    st.radio(
         "Índices de vegetación:",
         ["MODIS (250m)", "Landsat (30m)"],
         index=0,
         horizontal=True,
         key="satellite_source"
     )
-    st.session_state.satellite_source = satellite_source
+    # No manual assignment – the widget automatically updates session_state
 
     st.markdown("---")
     st.markdown("### 🎯 División de Plantación")
