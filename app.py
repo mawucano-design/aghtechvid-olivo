@@ -1820,17 +1820,17 @@ def crear_leyenda_html(detecciones_info):
     html = "<div style='background: rgba(30, 30, 30, 0.9); padding: 15px; border-radius: 10px; margin-top: 20px;'>"
     html += "<h4 style='color: white; margin-bottom: 10px;'>📋 Leyenda de detecciones</h4>"
     html += "<table style='width: 100%; color: white; border-collapse: collapse;'>"
-    html += "<tr><th>Color</th><th>Clase</th><th>Conteo</th></tr>"
+    html += "=<th>Color</th><th>Clase</th><th>Conteo</th> "
 
     for clase, color in clases_vistas.items():
         color_hex = '#{:02x}{:02x}{:02x}'.format(color[0], color[1], color[2])
         html += f"<tr style='border-bottom: 1px solid #444;'>"
-        html += f"<td style='padding: 8px;'><span style='display: inline-block; width: 20px; height: 20px; background-color: {color_hex}; border-radius: 4px;'></span></td>"
-        html += f"<td style='padding: 8px;'>{clase}</td>"
-        html += f"<td style='padding: 8px; text-align: center;'>{conteo_clases[clase]}</td>"
-        html += f"</tr>"
+        html += f"<td style='padding: 8px;'><span style='display: inline-block; width: 20px; height: 20px; background-color: {color_hex}; border-radius: 4px;'></span> "
+        html += f"<td style='padding: 8px;'>{clase} "
+        html += f"<td style='padding: 8px; text-align: center;'>{conteo_clases[clase]} "
+        html += f" "
 
-    html += "</table></div>"
+    html += " </div>"
     return html
 
 # ===== CURVAS DE NIVEL =====
@@ -2107,8 +2107,8 @@ with st.sidebar:
     # Control de nubosidad para Landsat
     if st.session_state.satellite_source == "Landsat (30m)":
         st.markdown("### ☁️ Nubosidad máxima para Landsat")
-        max_cloud = st.slider("Porcentaje de nubosidad máximo:", 0, 100, 50, key="max_cloud")
-        st.session_state.max_cloud = max_cloud
+        st.slider("Porcentaje de nubosidad máximo:", 0, 100, 50, key="max_cloud")
+        # NO se asigna manualmente; el widget ya actualiza st.session_state.max_cloud
 
     st.markdown("---")
     st.markdown("### 🎯 División de Plantación")
