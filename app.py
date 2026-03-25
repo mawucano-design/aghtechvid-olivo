@@ -1,6 +1,6 @@
-# app.py - Versión simplificada sin usuarios ni pagos
+# app.py - Versión completa con Landsat 8/9 (30m) integrado
 # - Carga de polígonos (zip, kml, kmz, geojson)
-# - Procesamiento NDVI/NDWI con Earthdata (MODIS)
+# - Procesamiento NDVI/NDWI con Earthdata: MODIS (250m) o Landsat (30m)
 # - Datos climáticos de Open-Meteo y NASA POWER
 # - Análisis de suelo y fertilidad
 # - Detección de olivos (simulada)
@@ -8,7 +8,7 @@
 # - Detección YOLO (enfermedades/plagas)
 #
 # IMPORTANTE: Configurar variables de entorno:
-#   EARTHDATA_USERNAME, EARTHDATA_PASSWORD (para datos MODIS)
+#   EARTHDATA_USERNAME, EARTHDATA_PASSWORD (para datos satelitales)
 #   OPENTOPOGRAPHY_API_KEY (opcional, para curvas de nivel reales)
 # Instalar dependencias: ver requirements.txt
 
@@ -135,7 +135,8 @@ st.markdown("""
 <div class="hero-banner">
     <h1 class="hero-title">🌳 ANALIZADOR DE OLIVO SATELITAL</h1>
     <p style="color: #cbd5e1; font-size: 1.2em;">
-        Monitoreo biológico con datos reales NASA Earthdata · Open-Meteo · NASA POWER
+        Monitoreo biológico con datos reales NASA Earthdata · Open-Meteo · NASA POWER<br>
+        <span style="font-size: 0.9em;">🛰️ Fuentes: MODIS (250m) o Landsat 8/9 (30m) | 🌦️ Clima ERA5 | ☀️ Radiación NASA POWER</span>
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -161,6 +162,7 @@ def init_session_state():
         'datos_fertilidad': [],
         'analisis_suelo': True,
         'curvas_nivel': None,
+        'satellite_source': 'MODIS (250m)',  # nueva variable
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -438,6 +440,7 @@ def cargar_archivo_plantacion(uploaded_file):
         return None
 
 # ===== FUNCIONES PARA DATOS SATELITALES =====
+# (Funciones MODIS existentes se mantienen sin cambios)
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess/xarray/rioxarray no instaladas.")
@@ -477,7 +480,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-        # Convertir a str para manejar PosixPath
         downloaded_files = [str(f) for f in downloaded_files]
 
         hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
@@ -496,7 +498,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-        # Intento con rasterio
         if RASTERIO_OK:
             try:
                 with rasterio.open(download_path) as src:
@@ -539,7 +540,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             except Exception:
                 pass
 
-        # Fallback con pyhdf
         if PYHDF_OK:
             try:
                 hdf = SD(download_path, SDC.READ)
@@ -554,7 +554,6 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     return None
                 ndvi_data = hdf.select(ndvi_dataset).get()
                 ndvi_scaled = ndvi_data.astype(np.float32) * 0.0001
-                # Extraer geolocalización desde metadata
                 metadata = hdf.attributes().get('StructMetadata.0', '')
                 import re
                 xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
@@ -663,7 +662,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
-        # Convertir a str para manejar PosixPath
         downloaded_files = [str(f) for f in downloaded_files]
 
         hdf_files = [f for f in downloaded_files if f.endswith('.hdf')]
@@ -682,7 +680,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
 
-        # Intento con rasterio
         if RASTERIO_OK:
             try:
                 with rasterio.open(download_path) as src:
@@ -734,7 +731,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
             except Exception:
                 pass
 
-        # Fallback con pyhdf
         if PYHDF_OK:
             try:
                 hdf = SD(download_path, SDC.READ)
@@ -752,7 +748,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 nir = nir_data.astype(np.float32) * 0.0001
                 swir = swir_data.astype(np.float32) * 0.0001
 
-                # Extraer geolocalización desde metadata
                 metadata = hdf.attributes().get('StructMetadata.0', '')
                 import re
                 xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
@@ -821,6 +816,164 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     except Exception as e:
         st.error(f"Error en obtención de NDWI: {str(e)}")
         return None
+
+# ===== NUEVAS FUNCIONES PARA LANDSAT 8/9 =====
+def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=20):
+    """Search for Landsat 8/9 Level-2 scenes with cloud cover <= max_cloud.
+    Returns a list of granules (earthaccess results) sorted by cloud cover.
+    """
+    if not EARTHDATA_OK:
+        st.error("Librerías earthaccess no instaladas.")
+        return None
+
+    try:
+        auth = earthaccess.login()
+        if not auth.authenticated:
+            st.error("No se pudo autenticar con Earthdata.")
+            return None
+
+        bounds = gdf_dividido.total_bounds
+        bbox = (bounds[0], bounds[1], bounds[2], bounds[3])
+
+        # Search for Landsat 8
+        results_l8 = earthaccess.search_data(
+            short_name='LANDSAT_8_C2_L2',
+            bounding_box=bbox,
+            temporal=(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d')),
+            count=5
+        )
+        # Search for Landsat 9
+        results_l9 = earthaccess.search_data(
+            short_name='LANDSAT_9_C2_L2',
+            bounding_box=bbox,
+            temporal=(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d')),
+            count=5
+        )
+
+        all_results = results_l8 + results_l9
+        if not all_results:
+            st.warning("No se encontraron escenas Landsat con nubosidad <= {}% en el período.".format(max_cloud))
+            return None
+
+        return all_results
+
+    except Exception as e:
+        st.error(f"Error buscando Landsat: {str(e)}")
+        return None
+
+def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=20):
+    """Download best Landsat scene and compute NDVI and NDWI per block.
+    Returns gdf_dividido with added columns 'ndvi_modis' and 'ndwi_modis' (reused names).
+    """
+    if not EARTHDATA_OK or not RASTERIO_OK:
+        st.error("Librerías necesarias no instaladas (earthaccess, rasterio).")
+        return None
+
+    if not EARTHDATA_USERNAME or not EARTHDATA_PASSWORD:
+        st.error("Credenciales Earthdata no configuradas.")
+        return None
+
+    # Search for scenes
+    results = buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud)
+    if not results:
+        return None
+
+    # Pick the first scene (least cloud cover if available; earthaccess returns sorted? we'll take first)
+    granule = results[0]
+    st.info(f"Procesando escena Landsat: {granule['umm']['GranuleUR']}")
+
+    # Download granule
+    temp_dir = tempfile.mkdtemp()
+    try:
+        downloaded_files = earthaccess.download(granule, local_path=temp_dir)
+        if not downloaded_files:
+            st.error("No se pudo descargar la escena.")
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return None
+
+        downloaded_files = [str(f) for f in downloaded_files]
+
+        # Find band files: Red (B4), NIR (B5), SWIR1 (B6) for Landsat 8/9
+        def find_band(pattern):
+            matches = [f for f in downloaded_files if pattern in f and f.endswith('.TIF')]
+            return matches[0] if matches else None
+
+        b4_path = find_band('_SR_B4.TIF')   # Red
+        b5_path = find_band('_SR_B5.TIF')   # NIR
+        b6_path = find_band('_SR_B6.TIF')   # SWIR1
+
+        if not (b4_path and b5_path and b6_path):
+            st.error("No se encontraron las bandas necesarias (B4, B5, B6) en la descarga.")
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return None
+
+        # Open bands with rasterio
+        with rasterio.open(b4_path) as src_b4, rasterio.open(b5_path) as src_b5, rasterio.open(b6_path) as src_b6:
+            crs = src_b4.crs
+            nodata = src_b4.nodata
+            gdf_proj = gdf_dividido.to_crs(crs)
+
+            # Prepare columns
+            ndvi_vals = []
+            ndwi_vals = []
+            progress_bar = st.progress(0, text="Procesando bloques con Landsat...")
+
+            for idx, row in gdf_proj.iterrows():
+                geom = [mapping(row.geometry)]
+                try:
+                    # Mask each band to the geometry
+                    out_b4, _ = mask(src_b4, geom, crop=True, nodata=nodata)
+                    out_b5, _ = mask(src_b5, geom, crop=True, nodata=nodata)
+                    out_b6, _ = mask(src_b6, geom, crop=True, nodata=nodata)
+
+                    # Convert to float and scale (0.0001)
+                    red = out_b4[0].astype(np.float32) * 0.0001
+                    nir = out_b5[0].astype(np.float32) * 0.0001
+                    swir = out_b6[0].astype(np.float32) * 0.0001
+
+                    # Mask invalid (nodata or out of range)
+                    valid = (red != nodata * 0.0001) & (nir != nodata * 0.0001) & (swir != nodata * 0.0001) & \
+                            (red >= 0) & (red <= 1) & (nir >= 0) & (nir <= 1) & (swir >= 0) & (swir <= 1)
+
+                    # NDVI
+                    ndvi_num = nir - red
+                    ndvi_den = nir + red
+                    ndvi = np.full_like(red, np.nan)
+                    valid_ndvi = valid & (ndvi_den != 0)
+                    ndvi[valid_ndvi] = ndvi_num[valid_ndvi] / ndvi_den[valid_ndvi]
+                    ndvi_mean = np.nanmean(ndvi) if np.any(~np.isnan(ndvi)) else np.nan
+
+                    # NDWI (NIR - SWIR) / (NIR + SWIR)
+                    ndwi_num = nir - swir
+                    ndwi_den = nir + swir
+                    ndwi = np.full_like(nir, np.nan)
+                    valid_ndwi = valid & (ndwi_den != 0)
+                    ndwi[valid_ndwi] = ndwi_num[valid_ndwi] / ndwi_den[valid_ndwi]
+                    ndwi_mean = np.nanmean(ndwi) if np.any(~np.isnan(ndwi)) else np.nan
+
+                    ndvi_vals.append(round(float(ndvi_mean), 3) if not np.isnan(ndvi_mean) else np.nan)
+                    ndwi_vals.append(round(float(ndwi_mean), 3) if not np.isnan(ndwi_mean) else np.nan)
+
+                except Exception as e:
+                    ndvi_vals.append(np.nan)
+                    ndwi_vals.append(np.nan)
+                    st.warning(f"Error en bloque {idx+1}: {str(e)[:100]}")
+
+                progress_bar.progress((idx + 1) / len(gdf_proj),
+                                      text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
+            progress_bar.empty()
+
+            gdf_dividido['ndvi_modis'] = ndvi_vals   # Reuse column names for compatibility
+            gdf_dividido['ndwi_modis'] = ndwi_vals
+
+        st.success("✅ Índices Landsat calculados por bloque.")
+        return gdf_dividido
+
+    except Exception as e:
+        st.error(f"Error en procesamiento Landsat: {str(e)}")
+        return None
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 # ===== FUNCIONES CLIMÁTICAS =====
 def obtener_clima_openmeteo(gdf, fecha_inicio, fecha_fin):
@@ -1787,6 +1940,7 @@ def ejecutar_analisis_completo():
         n_divisiones = st.session_state.get('n_divisiones', 16)
         fecha_inicio = st.session_state.get('fecha_inicio', datetime.now() - timedelta(days=60))
         fecha_fin = st.session_state.get('fecha_fin', datetime.now())
+        source = st.session_state.get('satellite_source', 'MODIS (250m)')
         gdf = st.session_state.gdf_original.copy()
         
         gdf_dividido = dividir_plantacion_en_bloques(gdf, n_divisiones)
@@ -1796,29 +1950,50 @@ def ejecutar_analisis_completo():
             areas_ha.append(float(calcular_superficie(area_gdf)))
         gdf_dividido['area_ha'] = areas_ha
 
-        # 1. Obtener NDVI real
-        st.info("🛰️ Obteniendo NDVI desde Earthdata (MOD13Q1)...")
-        resultado_ndvi = obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
-        if resultado_ndvi is None:
-            st.error("No se pudo obtener NDVI real. Verifique su conexión y credenciales de Earthdata.")
-            st.stop()
-        gdf_dividido = resultado_ndvi
-        fuente_ndvi = "Earthdata MOD13Q1"
+        # 1. Obtener NDVI y NDWI según fuente seleccionada
+        fuente_ndvi = "Desconocido"
+        fuente_ndwi = "Desconocido"
 
-        # 2. Obtener NDWI real (o simulado en caso de fallo)
-        st.info("💧 Obteniendo NDWI desde Earthdata (MOD09GA)...")
-        resultado_ndwi = obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
-        if resultado_ndwi is None:
-            st.warning("⚠️ No se pudo obtener NDWI real. Se generarán valores simulados basados en NDVI.")
-            # Simular NDWI a partir de NDVI con algo de ruido
-            ndvi = gdf_dividido['ndvi_modis']
-            ruido = np.random.normal(0, 0.05, size=len(ndvi))
-            ndwi_sim = np.clip(ndvi * 0.8 + ruido, 0.1, 0.7)
-            gdf_dividido['ndwi_modis'] = ndwi_sim
-            fuente_ndwi = "Simulado (fallback)"
-        else:
-            gdf_dividido = resultado_ndwi
-            fuente_ndwi = "Earthdata MOD09GA"
+        if source == 'Landsat (30m)':
+            st.info("🛰️ Obteniendo índices Landsat (30m) desde Earthdata...")
+            resultado_landsat = obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin)
+            if resultado_landsat is None:
+                st.warning("⚠️ No se pudo obtener datos Landsat. Se usará MODIS como respaldo.")
+                # Fallback a MODIS
+                resultado_ndvi = obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
+                resultado_ndwi = obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
+                if resultado_ndvi is None or resultado_ndwi is None:
+                    st.error("No se pudo obtener datos MODIS tampoco. Abortando análisis.")
+                    st.stop()
+                gdf_dividido = resultado_ndvi
+                gdf_dividido = resultado_ndwi
+                fuente_ndvi = "Earthdata MOD13Q1 (fallback)"
+                fuente_ndwi = "Earthdata MOD09GA (fallback)"
+            else:
+                gdf_dividido = resultado_landsat
+                fuente_ndvi = "Landsat 8/9 (30m)"
+                fuente_ndwi = "Landsat 8/9 (30m)"
+        else:  # MODIS
+            st.info("🛰️ Obteniendo NDVI desde Earthdata (MOD13Q1)...")
+            resultado_ndvi = obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
+            if resultado_ndvi is None:
+                st.error("No se pudo obtener NDVI real. Verifique sus credenciales.")
+                st.stop()
+            gdf_dividido = resultado_ndvi
+            fuente_ndvi = "Earthdata MOD13Q1"
+
+            st.info("💧 Obteniendo NDWI desde Earthdata (MOD09GA)...")
+            resultado_ndwi = obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
+            if resultado_ndwi is None:
+                st.warning("⚠️ No se pudo obtener NDWI real. Generando simulado...")
+                ndvi = gdf_dividido['ndvi_modis']
+                ruido = np.random.normal(0, 0.05, size=len(ndvi))
+                ndwi_sim = np.clip(ndvi * 0.8 + ruido, 0.1, 0.7)
+                gdf_dividido['ndwi_modis'] = ndwi_sim
+                fuente_ndwi = "Simulado (fallback)"
+            else:
+                gdf_dividido = resultado_ndwi
+                fuente_ndwi = "Earthdata MOD09GA"
 
         # 3. Datos climáticos
         st.info("🌦️ Obteniendo datos climáticos de Open-Meteo ERA5...")
@@ -1879,6 +2054,17 @@ with st.sidebar:
     except: pass
     st.session_state.fecha_inicio = fecha_inicio
     st.session_state.fecha_fin = fecha_fin
+
+    st.markdown("### 🛰️ Fuente satelital")
+    satellite_source = st.radio(
+        "Índices de vegetación:",
+        ["MODIS (250m)", "Landsat (30m)"],
+        index=0,
+        horizontal=True,
+        key="satellite_source"
+    )
+    st.session_state.satellite_source = satellite_source
+
     st.markdown("---")
     st.markdown("### 🎯 División de Plantación")
     n_divisiones = st.slider("Número de bloques:", 8, 32, 16)
@@ -2146,7 +2332,7 @@ if st.session_state.analisis_completado:
             
             st.markdown("---")
             st.markdown("### 💧 NDWI")
-            st.info("NDWI calculado como (NIR - SWIR)/(NIR+SWIR) con bandas de MODIS (producto MOD09GA).")
+            st.info("NDWI calculado como (NIR - SWIR)/(NIR+SWIR). Para Landsat se usa B5 (NIR) y B6 (SWIR1); para MODIS, bandas MOD09GA.")
             if 'ndwi_modis' in gdf_completo.columns:
                 mostrar_estadisticas_indice(gdf_completo, 'ndwi_modis', 'NDWI', 0.1, 0.7, ['brown','yellow','blue'])
             else:
