@@ -162,7 +162,8 @@ def init_session_state():
         'datos_fertilidad': [],
         'analisis_suelo': True,
         'curvas_nivel': None,
-        'satellite_source': 'MODIS (250m)',  # nueva variable
+        'satellite_source': 'MODIS (250m)',
+        'max_cloud': 50,          # nuevo: nubosidad máxima para Landsat
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -817,10 +818,11 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         st.error(f"Error en obtención de NDWI: {str(e)}")
         return None
 
-# ===== NUEVAS FUNCIONES PARA LANDSAT 8/9 =====
-def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=20):
-    """Search for Landsat 8/9 Level-2 scenes with cloud cover <= max_cloud.
-    Returns a list of granules (earthaccess results) sorted by cloud cover.
+# ===== FUNCIONES MEJORADAS PARA LANDSAT 8/9 =====
+def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100):
+    """
+    Busca escenas Landsat 8/9 con filtro de nubosidad configurable.
+    Retorna hasta 10 escenas.
     """
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
@@ -835,24 +837,28 @@ def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=20
         bounds = gdf_dividido.total_bounds
         bbox = (bounds[0], bounds[1], bounds[2], bounds[3])
 
-        # Search for Landsat 8
+        # Buscar Landsat 8 y 9 con más escenas (count=10)
+        # Si max_cloud es 100, no aplicamos filtro (pasamos None)
+        cloud_filter = (0, max_cloud) if max_cloud < 100 else None
+
         results_l8 = earthaccess.search_data(
             short_name='LANDSAT_8_C2_L2',
             bounding_box=bbox,
             temporal=(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d')),
-            count=5
+            count=10,
+            cloud_cover=cloud_filter
         )
-        # Search for Landsat 9
         results_l9 = earthaccess.search_data(
             short_name='LANDSAT_9_C2_L2',
             bounding_box=bbox,
             temporal=(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d')),
-            count=5
+            count=10,
+            cloud_cover=cloud_filter
         )
 
         all_results = results_l8 + results_l9
         if not all_results:
-            st.warning("No se encontraron escenas Landsat con nubosidad <= {}% en el período.".format(max_cloud))
+            st.warning(f"No se encontraron escenas Landsat en el período (nubosidad <= {max_cloud}%).")
             return None
 
         return all_results
@@ -861,9 +867,10 @@ def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=20
         st.error(f"Error buscando Landsat: {str(e)}")
         return None
 
-def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=20):
-    """Download best Landsat scene and compute NDVI and NDWI per block.
-    Returns gdf_dividido with added columns 'ndvi_modis' and 'ndwi_modis' (reused names).
+def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=50, expand_bbox=0.05):
+    """
+    Intenta procesar Landsat con tolerancia de nubosidad ajustable.
+    Si falla, retorna None para que se use MODIS.
     """
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
@@ -875,108 +882,137 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=2
         st.error("Credenciales Earthdata no configuradas.")
         return None
 
-    # Search for scenes
-    results = buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud)
+    # Opcional: expandir ligeramente el bounding box para polígonos muy pequeños
+    bounds = gdf_dividido.total_bounds
+    if expand_bbox > 0:
+        minx, miny, maxx, maxy = bounds
+        dx = (maxx - minx) * expand_bbox
+        dy = (maxy - miny) * expand_bbox
+        bounds = (minx - dx, miny - dy, maxx + dx, maxy + dy)
+        # Crear un GeoDataFrame temporal con el bounding box expandido (solo para búsqueda)
+        expanded_poly = Polygon([
+            (bounds[0], bounds[1]), (bounds[2], bounds[1]),
+            (bounds[2], bounds[3]), (bounds[0], bounds[3])
+        ])
+        expanded_gdf = gpd.GeoDataFrame(geometry=[expanded_poly], crs='EPSG:4326')
+    else:
+        expanded_gdf = gdf_dividido
+
+    # Buscar escenas
+    results = buscar_landsat_earthdata(expanded_gdf, fecha_inicio, fecha_fin, max_cloud)
     if not results:
         return None
 
-    # Pick the first scene (least cloud cover if available; earthaccess returns sorted? we'll take first)
-    granule = results[0]
-    st.info(f"Procesando escena Landsat: {granule['umm']['GranuleUR']}")
+    # Intentar con cada escena hasta encontrar una que produzca datos válidos
+    for idx, granule in enumerate(results[:5]):  # probar hasta 5 escenas
+        st.info(f"Probando escena {idx+1}: {granule['umm']['GranuleUR']}")
 
-    # Download granule
-    temp_dir = tempfile.mkdtemp()
-    try:
-        downloaded_files = earthaccess.download(granule, local_path=temp_dir)
-        if not downloaded_files:
-            st.error("No se pudo descargar la escena.")
+        temp_dir = tempfile.mkdtemp()
+        try:
+            downloaded_files = earthaccess.download(granule, local_path=temp_dir)
+            if not downloaded_files:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                continue
+
+            downloaded_files = [str(f) for f in downloaded_files]
+
+            # Buscar bandas
+            def find_band(pattern):
+                matches = [f for f in downloaded_files if pattern in f and f.endswith('.TIF')]
+                return matches[0] if matches else None
+
+            b4_path = find_band('_B4.TIF')
+            b5_path = find_band('_B5.TIF')
+            b6_path = find_band('_B6.TIF')
+
+            if not (b4_path and b5_path and b6_path):
+                st.warning(f"Escena {idx+1}: no se encontraron las bandas necesarias (B4, B5, B6).")
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                continue
+
+            # Procesar
+            with rasterio.open(b4_path) as src_b4, rasterio.open(b5_path) as src_b5, rasterio.open(b6_path) as src_b6:
+                crs = src_b4.crs
+                nodata = src_b4.nodata
+                gdf_proj = gdf_dividido.to_crs(crs)
+
+                ndvi_vals = []
+                ndwi_vals = []
+                valid_pixels_count = []  # para controlar si hay suficientes píxeles en cada bloque
+
+                progress_bar = st.progress(0, text="Procesando bloques con Landsat...")
+                for i, row in gdf_proj.iterrows():
+                    geom = [mapping(row.geometry)]
+                    try:
+                        out_b4, _ = mask(src_b4, geom, crop=True, nodata=nodata)
+                        out_b5, _ = mask(src_b5, geom, crop=True, nodata=nodata)
+                        out_b6, _ = mask(src_b6, geom, crop=True, nodata=nodata)
+
+                        # Contar píxeles válidos (no nodata)
+                        valid_mask = (out_b4[0] != nodata) & (out_b5[0] != nodata) & (out_b6[0] != nodata)
+                        n_valid = np.sum(valid_mask)
+                        valid_pixels_count.append(n_valid)
+
+                        if n_valid < 10:  # umbral mínimo de píxeles
+                            ndvi_vals.append(np.nan)
+                            ndwi_vals.append(np.nan)
+                            continue
+
+                        # Convertir a float y escalar (0.0001)
+                        red = out_b4[0].astype(np.float32) * 0.0001
+                        nir = out_b5[0].astype(np.float32) * 0.0001
+                        swir = out_b6[0].astype(np.float32) * 0.0001
+
+                        valid = (red != nodata * 0.0001) & (nir != nodata * 0.0001) & (swir != nodata * 0.0001) & \
+                                (red >= 0) & (red <= 1) & (nir >= 0) & (nir <= 1) & (swir >= 0) & (swir <= 1)
+
+                        # NDVI
+                        ndvi_num = nir - red
+                        ndvi_den = nir + red
+                        ndvi = np.full_like(red, np.nan)
+                        valid_ndvi = valid & (ndvi_den != 0)
+                        ndvi[valid_ndvi] = ndvi_num[valid_ndvi] / ndvi_den[valid_ndvi]
+                        ndvi_mean = np.nanmean(ndvi) if np.any(~np.isnan(ndvi)) else np.nan
+
+                        # NDWI
+                        ndwi_num = nir - swir
+                        ndwi_den = nir + swir
+                        ndwi = np.full_like(nir, np.nan)
+                        valid_ndwi = valid & (ndwi_den != 0)
+                        ndwi[valid_ndwi] = ndwi_num[valid_ndwi] / ndwi_den[valid_ndwi]
+                        ndwi_mean = np.nanmean(ndwi) if np.any(~np.isnan(ndwi)) else np.nan
+
+                        ndvi_vals.append(round(float(ndvi_mean), 3) if not np.isnan(ndvi_mean) else np.nan)
+                        ndwi_vals.append(round(float(ndwi_mean), 3) if not np.isnan(ndwi_mean) else np.nan)
+
+                    except Exception as e:
+                        ndvi_vals.append(np.nan)
+                        ndwi_vals.append(np.nan)
+                        valid_pixels_count.append(0)
+                        st.warning(f"Error en bloque {i+1}: {str(e)[:100]}")
+
+                    progress_bar.progress((i+1) / len(gdf_proj), text=f"Procesando bloque {i+1}/{len(gdf_proj)}")
+                progress_bar.empty()
+
+                # Verificar si hay al menos un bloque con suficientes píxeles válidos
+                if np.sum([c for c in valid_pixels_count if c >= 10]) == 0:
+                    st.warning(f"Escena {idx+1} no contiene suficientes píxeles válidos para los polígonos. Probando siguiente...")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    continue
+
+                gdf_dividido['ndvi_modis'] = ndvi_vals
+                gdf_dividido['ndwi_modis'] = ndwi_vals
+                st.success(f"✅ Índices Landsat calculados con éxito (escena {idx+1}).")
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return gdf_dividido
+
+        except Exception as e:
+            st.warning(f"Error procesando escena {idx+1}: {str(e)[:100]}")
             shutil.rmtree(temp_dir, ignore_errors=True)
-            return None
+            continue
 
-        downloaded_files = [str(f) for f in downloaded_files]
-
-        # Find band files: Red (B4), NIR (B5), SWIR1 (B6) for Landsat 8/9
-        def find_band(pattern):
-            matches = [f for f in downloaded_files if pattern in f and f.endswith('.TIF')]
-            return matches[0] if matches else None
-
-        # CORRECTED: Landsat bands are named *_B4.TIF, *_B5.TIF, *_B6.TIF
-        b4_path = find_band('_B4.TIF')   # Red
-        b5_path = find_band('_B5.TIF')   # NIR
-        b6_path = find_band('_B6.TIF')   # SWIR1
-
-        if not (b4_path and b5_path and b6_path):
-            st.error("No se encontraron las bandas necesarias (B4, B5, B6) en la descarga.")
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            return None
-
-        # Open bands with rasterio
-        with rasterio.open(b4_path) as src_b4, rasterio.open(b5_path) as src_b5, rasterio.open(b6_path) as src_b6:
-            crs = src_b4.crs
-            nodata = src_b4.nodata
-            gdf_proj = gdf_dividido.to_crs(crs)
-
-            # Prepare columns
-            ndvi_vals = []
-            ndwi_vals = []
-            progress_bar = st.progress(0, text="Procesando bloques con Landsat...")
-
-            for idx, row in gdf_proj.iterrows():
-                geom = [mapping(row.geometry)]
-                try:
-                    # Mask each band to the geometry
-                    out_b4, _ = mask(src_b4, geom, crop=True, nodata=nodata)
-                    out_b5, _ = mask(src_b5, geom, crop=True, nodata=nodata)
-                    out_b6, _ = mask(src_b6, geom, crop=True, nodata=nodata)
-
-                    # Convert to float and scale (0.0001)
-                    red = out_b4[0].astype(np.float32) * 0.0001
-                    nir = out_b5[0].astype(np.float32) * 0.0001
-                    swir = out_b6[0].astype(np.float32) * 0.0001
-
-                    # Mask invalid (nodata or out of range)
-                    valid = (red != nodata * 0.0001) & (nir != nodata * 0.0001) & (swir != nodata * 0.0001) & \
-                            (red >= 0) & (red <= 1) & (nir >= 0) & (nir <= 1) & (swir >= 0) & (swir <= 1)
-
-                    # NDVI
-                    ndvi_num = nir - red
-                    ndvi_den = nir + red
-                    ndvi = np.full_like(red, np.nan)
-                    valid_ndvi = valid & (ndvi_den != 0)
-                    ndvi[valid_ndvi] = ndvi_num[valid_ndvi] / ndvi_den[valid_ndvi]
-                    ndvi_mean = np.nanmean(ndvi) if np.any(~np.isnan(ndvi)) else np.nan
-
-                    # NDWI (NIR - SWIR) / (NIR + SWIR)
-                    ndwi_num = nir - swir
-                    ndwi_den = nir + swir
-                    ndwi = np.full_like(nir, np.nan)
-                    valid_ndwi = valid & (ndwi_den != 0)
-                    ndwi[valid_ndwi] = ndwi_num[valid_ndwi] / ndwi_den[valid_ndwi]
-                    ndwi_mean = np.nanmean(ndwi) if np.any(~np.isnan(ndwi)) else np.nan
-
-                    ndvi_vals.append(round(float(ndvi_mean), 3) if not np.isnan(ndvi_mean) else np.nan)
-                    ndwi_vals.append(round(float(ndwi_mean), 3) if not np.isnan(ndwi_mean) else np.nan)
-
-                except Exception as e:
-                    ndvi_vals.append(np.nan)
-                    ndwi_vals.append(np.nan)
-                    st.warning(f"Error en bloque {idx+1}: {str(e)[:100]}")
-
-                progress_bar.progress((idx + 1) / len(gdf_proj),
-                                      text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
-            progress_bar.empty()
-
-            gdf_dividido['ndvi_modis'] = ndvi_vals   # Reuse column names for compatibility
-            gdf_dividido['ndwi_modis'] = ndwi_vals
-
-        st.success("✅ Índices Landsat calculados por bloque.")
-        return gdf_dividido
-
-    except Exception as e:
-        st.error(f"Error en procesamiento Landsat: {str(e)}")
-        return None
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+    st.warning("No se pudo procesar ninguna escena Landsat. Se usará MODIS como respaldo.")
+    return None
 
 # ===== FUNCIONES CLIMÁTICAS =====
 def obtener_clima_openmeteo(gdf, fecha_inicio, fecha_fin):
@@ -1944,6 +1980,7 @@ def ejecutar_analisis_completo():
         fecha_inicio = st.session_state.get('fecha_inicio', datetime.now() - timedelta(days=60))
         fecha_fin = st.session_state.get('fecha_fin', datetime.now())
         source = st.session_state.get('satellite_source', 'MODIS (250m)')
+        max_cloud = st.session_state.get('max_cloud', 50)  # nuevo
         gdf = st.session_state.gdf_original.copy()
         
         gdf_dividido = dividir_plantacion_en_bloques(gdf, n_divisiones)
@@ -1958,8 +1995,8 @@ def ejecutar_analisis_completo():
         fuente_ndwi = "Desconocido"
 
         if source == 'Landsat (30m)':
-            st.info("🛰️ Obteniendo índices Landsat (30m) desde Earthdata...")
-            resultado_landsat = obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin)
+            st.info(f"🛰️ Obteniendo índices Landsat (30m) desde Earthdata (nubosidad máxima: {max_cloud}%)...")
+            resultado_landsat = obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=max_cloud)
             if resultado_landsat is None:
                 st.warning("⚠️ No se pudo obtener datos Landsat. Se usará MODIS como respaldo.")
                 # Fallback a MODIS
@@ -2066,7 +2103,12 @@ with st.sidebar:
         horizontal=True,
         key="satellite_source"
     )
-    # No manual assignment – the widget automatically updates session_state
+
+    # Control de nubosidad para Landsat
+    if st.session_state.satellite_source == "Landsat (30m)":
+        st.markdown("### ☁️ Nubosidad máxima para Landsat")
+        max_cloud = st.slider("Porcentaje de nubosidad máximo:", 0, 100, 50, key="max_cloud")
+        st.session_state.max_cloud = max_cloud
 
     st.markdown("---")
     st.markdown("### 🎯 División de Plantación")
