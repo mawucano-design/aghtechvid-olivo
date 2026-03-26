@@ -77,7 +77,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ===== ESTILOS BÁSICOS (sin ocultar GitHub) =====
+# ===== ESTILOS BÁSICOS =====
 st.markdown("""
 <style>
 .hero-banner { 
@@ -163,7 +163,7 @@ def init_session_state():
         'analisis_suelo': True,
         'curvas_nivel': None,
         'satellite_source': 'MODIS (250m)',
-        'max_cloud': 100,          # Valor por defecto 100 para obtener cualquier escena
+        'max_cloud': 100,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -178,13 +178,12 @@ VARIEDADES_OLIVO = [
     'Gordal', 'Verdial', 'Chemlali', 'Koroneiki', 'Picholine', 'Souri'
 ]
 
-# ===== CREDENCIALES EARTHDATA (desde secrets) =====
+# ===== CREDENCIALES EARTHDATA =====
 EARTHDATA_USERNAME = os.environ.get("EARTHDATA_USERNAME")
 EARTHDATA_PASSWORD = os.environ.get("EARTHDATA_PASSWORD")
 
 # ===== FUNCIONES DE UTILIDAD =====
 def validar_y_corregir_crs(gdf):
-    """Valida y corrige el CRS del GeoDataFrame a EPSG:4326."""
     if gdf is None or len(gdf) == 0:
         return gdf
     try:
@@ -257,12 +256,11 @@ def dividir_plantacion_en_bloques(gdf, n_bloques):
         return nuevo_gdf
     return gdf
 
-# ===== PARSER KML MEJORADO =====
+# ===== PARSER KML =====
 def procesar_kml_robusto(file_content):
     try:
         content = file_content.decode('utf-8', errors='ignore')
         polygons = []
-        # Buscar secciones de coordenadas
         coord_sections = re.findall(
             r'<coordinates[^>]*>([\s\S]*?)</coordinates>', 
             content, 
@@ -298,7 +296,6 @@ def procesar_kml_robusto(file_content):
                     continue
         if polygons:
             return gpd.GeoDataFrame(geometry=polygons, crs='EPSG:4326')
-        # Fallback: buscar dentro de Placemark
         placemarks = re.findall(
             r'<Placemark[^>]*>([\s\S]*?)</Placemark>', 
             content, 
@@ -440,7 +437,7 @@ def cargar_archivo_plantacion(uploaded_file):
         st.code(traceback.format_exc())
         return None
 
-# ===== FUNCIONES PARA DATOS SATELITALES =====
+# ===== FUNCIONES SATELITALES =====
 def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess/xarray/rioxarray no instaladas.")
@@ -519,6 +516,12 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 geom = [mapping(row.geometry)]
                                 try:
                                     out_image, _ = mask(src_ndvi, geom, crop=True, nodata=nodata)
+                                    if out_image.ndim < 2:
+                                        st.warning(f"Bloque {idx+1}: array NDVI es {out_image.ndim}D. Ignorando.")
+                                        ndvi_values.append(np.nan)
+                                        continue
+                                    if out_image.ndim == 3 and out_image.shape[0] == 1:
+                                        out_image = out_image[0]
                                     data = out_image[0]
                                     data_scaled = data.astype(np.float32) * 0.0001
                                     mask_invalid = (data == nodata) | (data_scaled < -1) | (data_scaled > 1)
@@ -528,8 +531,9 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                         ndvi_values.append(np.nan)
                                     else:
                                         ndvi_values.append(round(float(mean_val), 3))
-                                except Exception:
+                                except Exception as e:
                                     ndvi_values.append(np.nan)
+                                    st.warning(f"Error bloque {idx+1}: {str(e)[:100]}")
                                 progress_bar.progress((idx + 1) / len(gdf_proj),
                                                       text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
                             progress_bar.empty()
@@ -594,6 +598,12 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                             geom = [mapping(row.geometry)]
                             try:
                                 out_image, _ = mask(src_ndvi, geom, crop=True, nodata=-32768)
+                                if out_image.ndim < 2:
+                                    st.warning(f"Bloque {idx+1}: array NDVI es {out_image.ndim}D. Ignorando.")
+                                    ndvi_values.append(np.nan)
+                                    continue
+                                if out_image.ndim == 3 and out_image.shape[0] == 1:
+                                    out_image = out_image[0]
                                 data = out_image[0]
                                 mask_invalid = (data == -32768) | (data < -1) | (data > 1)
                                 data_clean = np.ma.masked_where(mask_invalid, data)
@@ -602,8 +612,9 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                     ndvi_values.append(np.nan)
                                 else:
                                     ndvi_values.append(round(float(mean_val), 3))
-                            except Exception:
+                            except Exception as e:
                                 ndvi_values.append(np.nan)
+                                st.warning(f"Error bloque {idx+1}: {str(e)[:100]}")
                             progress_bar.progress((idx + 1) / len(gdf_proj),
                                                   text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
                         progress_bar.empty()
@@ -655,7 +666,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         granule = results[0]
         st.info(f"Procesando escena NDWI: {granule['umm']['GranuleUR']}")
 
-        # Obtener la extensión espacial del granulo desde earthaccess
         try:
             granule_bounds = granule['umm']['SpatialExtent']['HorizontalSpatialDomain']['BoundingRectangle']
             west = granule_bounds['WestBoundingCoordinate']
@@ -680,7 +690,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 return None
             download_path = hdf_files[0]
 
-            # Verificar si el archivo es válido
             if os.path.getsize(download_path) < 10240:
                 with open(download_path, 'r', errors='ignore') as f:
                     head = f.read(500).lower()
@@ -688,7 +697,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                         st.error("El archivo descargado parece ser una página HTML de error.")
                         return None
 
-            # Intentar con rasterio primero
             if RASTERIO_OK:
                 try:
                     with rasterio.open(download_path) as src:
@@ -713,8 +721,16 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                     geom = [mapping(row.geometry)]
                                     try:
                                         out_nir, _ = mask(src_nir, geom, crop=True, nodata=nodata_nir)
-                                        nir_band = out_nir[0].astype(np.float32) * 0.0001
                                         out_swir, _ = mask(src_swir, geom, crop=True, nodata=nodata_swir)
+                                        if out_nir.ndim < 2 or out_swir.ndim < 2:
+                                            st.warning(f"Bloque {idx+1}: array NDWI es {out_nir.ndim}D. Ignorando.")
+                                            ndwi_values.append(np.nan)
+                                            continue
+                                        if out_nir.ndim == 3 and out_nir.shape[0] == 1:
+                                            out_nir = out_nir[0]
+                                        if out_swir.ndim == 3 and out_swir.shape[0] == 1:
+                                            out_swir = out_swir[0]
+                                        nir_band = out_nir[0].astype(np.float32) * 0.0001
                                         swir_band = out_swir[0].astype(np.float32) * 0.0001
 
                                         valid = (nir_band != nodata_nir * 0.0001) & (swir_band != nodata_swir * 0.0001) & (nir_band + swir_band != 0)
@@ -728,8 +744,9 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                             ndwi_values.append(np.nan)
                                         else:
                                             ndwi_values.append(round(float(mean_val), 3))
-                                    except Exception:
+                                    except Exception as e:
                                         ndwi_values.append(np.nan)
+                                        st.warning(f"Error bloque {idx+1}: {str(e)[:100]}")
                                     progress_bar.progress((idx + 1) / len(gdf_proj),
                                                           text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
                                 progress_bar.empty()
@@ -739,15 +756,12 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                 except Exception:
                     pass
 
-            # Fallback con pyhdf
             if PYHDF_OK:
-                # Si no tenemos coordenadas, intentamos extraerlas de la metadata del HDF
                 if west is None:
                     try:
                         hdf = SD(download_path, SDC.READ)
                         metadata = hdf.attributes().get('StructMetadata.0', '')
                         if metadata:
-                            # Intentar extraer coordenadas geográficas (proyección sinusoidal)
                             import re
                             xdim_match = re.search(r'XDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
                             ydim_match = re.search(r'YDim\s*=\s*(\d+)', metadata, re.IGNORECASE)
@@ -760,19 +774,13 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 uly = float(ul_match.group(2))
                                 lrx = float(lr_match.group(1))
                                 lry = float(lr_match.group(2))
-                                # Convertir a grados (aproximado)
-                                # Nota: esto es muy burdo, pero es mejor que nada
-                                # Simplemente usaremos las coordenadas en metros como si fueran grados? No.
-                                # Mejor no intentar y usar simulado.
-                                # En lugar de eso, vamos a retornar None y que se genere simulado.
-                                st.warning("No se pudieron obtener coordenadas geográficas para el recorte de NDWI. Se usará simulado.")
+                                # Esta conversión es burda, mejor retornamos None y generamos simulado.
+                                st.warning("No se pudieron obtener coordenadas geográficas para recorte de NDWI. Se usará simulado.")
                                 return None
                     except Exception:
                         pass
-                    # Si no pudimos obtener, retornamos None para que se genere simulado
                     return None
 
-                # Si tenemos coordenadas, continuamos con el procesamiento
                 try:
                     hdf = SD(download_path, SDC.READ)
                     nir_data = None
@@ -790,8 +798,6 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                     swir = swir_data.astype(np.float32) * 0.0001
 
                     ydim, xdim = nir.shape
-
-                    # Crear transformación basada en la extensión del granulo (coordenadas geográficas)
                     res_x = (east - west) / xdim
                     res_y = (north - south) / ydim
                     transform = rasterio.Affine(res_x, 0, west, 0, -res_y, north)
@@ -813,8 +819,16 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 geom = [mapping(row.geometry)]
                                 try:
                                     out_nir, _ = mask(src_nir, geom, crop=True, nodata=-32768)
-                                    nir_band = out_nir[0]
                                     out_swir, _ = mask(src_swir, geom, crop=True, nodata=-32768)
+                                    if out_nir.ndim < 2 or out_swir.ndim < 2:
+                                        st.warning(f"Bloque {idx+1}: array NDWI es {out_nir.ndim}D. Ignorando.")
+                                        ndwi_values.append(np.nan)
+                                        continue
+                                    if out_nir.ndim == 3 and out_nir.shape[0] == 1:
+                                        out_nir = out_nir[0]
+                                    if out_swir.ndim == 3 and out_swir.shape[0] == 1:
+                                        out_swir = out_swir[0]
+                                    nir_band = out_nir[0]
                                     swir_band = out_swir[0]
                                     valid = (nir_band != -32768) & (swir_band != -32768) & (nir_band + swir_band != 0)
                                     nir_valid = np.ma.masked_where(~valid, nir_band)
@@ -826,8 +840,9 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                         ndwi_values.append(np.nan)
                                     else:
                                         ndwi_values.append(round(float(mean_val), 3))
-                                except Exception:
+                                except Exception as e:
                                     ndwi_values.append(np.nan)
+                                    st.warning(f"Error bloque {idx+1}: {str(e)[:100]}")
                                 progress_bar.progress((idx + 1) / len(gdf_proj),
                                                       text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
                             progress_bar.empty()
@@ -848,12 +863,8 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         st.error(f"Error en obtención de NDWI: {str(e)}")
         return None
 
-# ===== FUNCIONES MEJORADAS PARA LANDSAT 8/9 =====
+# ===== FUNCIONES LANDSAT =====
 def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100):
-    """
-    Busca escenas Landsat 8/9 con filtro de nubosidad configurable.
-    Retorna hasta 10 escenas.
-    """
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
         return None
@@ -867,7 +878,6 @@ def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=10
         bounds = gdf_dividido.total_bounds
         bbox = (bounds[0], bounds[1], bounds[2], bounds[3])
 
-        # Si max_cloud es 100, no aplicamos filtro (pasamos None)
         cloud_filter = (0, max_cloud) if max_cloud < 100 else None
 
         results_l8 = earthaccess.search_data(
@@ -897,10 +907,6 @@ def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=10
         return None
 
 def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100, expand_bbox=0.05):
-    """
-    Intenta procesar Landsat con tolerancia de nubosidad ajustable.
-    Si falla, retorna None para que se use MODIS.
-    """
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
         return None
@@ -911,14 +917,12 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=1
         st.error("Credenciales Earthdata no configuradas.")
         return None
 
-    # Opcional: expandir ligeramente el bounding box para polígonos muy pequeños
     bounds = gdf_dividido.total_bounds
     if expand_bbox > 0:
         minx, miny, maxx, maxy = bounds
         dx = (maxx - minx) * expand_bbox
         dy = (maxy - miny) * expand_bbox
         bounds = (minx - dx, miny - dy, maxx + dx, maxy + dy)
-        # Crear un GeoDataFrame temporal con el bounding box expandido (solo para búsqueda)
         expanded_poly = Polygon([
             (bounds[0], bounds[1]), (bounds[2], bounds[1]),
             (bounds[2], bounds[3]), (bounds[0], bounds[3])
@@ -927,18 +931,15 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=1
     else:
         expanded_gdf = gdf_dividido
 
-    # Buscar escenas con el umbral original
     results = buscar_landsat_earthdata(expanded_gdf, fecha_inicio, fecha_fin, max_cloud)
-    # Si no hay resultados y max_cloud no es 100, reintentar con 100
     if not results and max_cloud < 100:
-        st.info(f"Reintentando búsqueda Landsat sin límite de nubosidad...")
+        st.info("Reintentando búsqueda Landsat sin límite de nubosidad...")
         results = buscar_landsat_earthdata(expanded_gdf, fecha_inicio, fecha_fin, max_cloud=100)
 
     if not results:
         return None
 
-    # Intentar con cada escena hasta encontrar una que produzca datos válidos
-    for idx, granule in enumerate(results[:5]):  # probar hasta 5 escenas
+    for idx, granule in enumerate(results[:5]):
         st.info(f"Probando escena {idx+1}: {granule['umm']['GranuleUR']}")
 
         temp_dir = tempfile.mkdtemp()
@@ -950,7 +951,6 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=1
 
             downloaded_files = [str(f) for f in downloaded_files]
 
-            # Buscar bandas
             def find_band(pattern):
                 matches = [f for f in downloaded_files if pattern in f and f.endswith('.TIF')]
                 return matches[0] if matches else None
@@ -960,11 +960,10 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=1
             b6_path = find_band('_B6.TIF')
 
             if not (b4_path and b5_path and b6_path):
-                st.warning(f"Escena {idx+1}: no se encontraron las bandas necesarias (B4, B5, B6).")
+                st.warning(f"Escena {idx+1}: no se encontraron bandas B4, B5, B6.")
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 continue
 
-            # Procesar
             with rasterio.open(b4_path) as src_b4, rasterio.open(b5_path) as src_b5, rasterio.open(b6_path) as src_b6:
                 crs = src_b4.crs
                 nodata = src_b4.nodata
@@ -972,7 +971,7 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=1
 
                 ndvi_vals = []
                 ndwi_vals = []
-                valid_pixels_count = []  # para controlar si hay suficientes píxeles en cada bloque
+                valid_pixels_count = []
 
                 progress_bar = st.progress(0, text="Procesando bloques con Landsat...")
                 for i, row in gdf_proj.iterrows():
@@ -982,25 +981,31 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=1
                         out_b5, _ = mask(src_b5, geom, crop=True, nodata=nodata)
                         out_b6, _ = mask(src_b6, geom, crop=True, nodata=nodata)
 
-                        # Contar píxeles válidos (no nodata)
-                        valid_mask = (out_b4[0] != nodata) & (out_b5[0] != nodata) & (out_b6[0] != nodata)
-                        n_valid = np.sum(valid_mask)
-                        valid_pixels_count.append(n_valid)
-
-                        if n_valid < 10:  # umbral mínimo de píxeles
-                            ndvi_vals.append(np.nan)
-                            ndwi_vals.append(np.nan)
-                            continue
-
-                        # Convertir a float y escalar (0.0001)
+                        # Verificar dimensiones 2D
+                        for name, arr in [("B4", out_b4), ("B5", out_b5), ("B6", out_b6)]:
+                            if arr.ndim < 2:
+                                raise ValueError(f"Array {name} es {arr.ndim}D (se esperaba 2D)")
+                            if arr.ndim == 3 and arr.shape[0] == 1:
+                                exec(f"{name}_arr = arr[0]")
+                            elif arr.ndim != 2:
+                                raise ValueError(f"Dimensiones inesperadas: {arr.shape}")
+                        # Extraer bandas
                         red = out_b4[0].astype(np.float32) * 0.0001
                         nir = out_b5[0].astype(np.float32) * 0.0001
                         swir = out_b6[0].astype(np.float32) * 0.0001
 
+                        valid_mask = (red != nodata * 0.0001) & (nir != nodata * 0.0001) & (swir != nodata * 0.0001)
+                        n_valid = np.sum(valid_mask)
+                        valid_pixels_count.append(n_valid)
+
+                        if n_valid < 10:
+                            ndvi_vals.append(np.nan)
+                            ndwi_vals.append(np.nan)
+                            continue
+
                         valid = (red != nodata * 0.0001) & (nir != nodata * 0.0001) & (swir != nodata * 0.0001) & \
                                 (red >= 0) & (red <= 1) & (nir >= 0) & (nir <= 1) & (swir >= 0) & (swir <= 1)
 
-                        # NDVI
                         ndvi_num = nir - red
                         ndvi_den = nir + red
                         ndvi = np.full_like(red, np.nan)
@@ -1008,7 +1013,6 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=1
                         ndvi[valid_ndvi] = ndvi_num[valid_ndvi] / ndvi_den[valid_ndvi]
                         ndvi_mean = np.nanmean(ndvi) if np.any(~np.isnan(ndvi)) else np.nan
 
-                        # NDWI
                         ndwi_num = nir - swir
                         ndwi_den = nir + swir
                         ndwi = np.full_like(nir, np.nan)
@@ -1028,9 +1032,8 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=1
                     progress_bar.progress((i+1) / len(gdf_proj), text=f"Procesando bloque {i+1}/{len(gdf_proj)}")
                 progress_bar.empty()
 
-                # Verificar si hay al menos un bloque con suficientes píxeles válidos
                 if np.sum([c for c in valid_pixels_count if c >= 10]) == 0:
-                    st.warning(f"Escena {idx+1} no contiene suficientes píxeles válidos para los polígonos. Probando siguiente...")
+                    st.warning(f"Escena {idx+1} no contiene suficientes píxeles válidos. Probando siguiente...")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     continue
 
@@ -1216,7 +1219,7 @@ def analizar_edad_plantacion(gdf_dividido):
             edades.append(10.0)
     return edades
 
-# ===== DETECCIÓN DE OLIVOS (simulada) =====
+# ===== DETECCIÓN DE OLIVOS =====
 def verificar_puntos_en_poligono(puntos, gdf):
     puntos_dentro = []
     plantacion_union = gdf.unary_union
@@ -2014,7 +2017,7 @@ def ejecutar_analisis_completo():
         fecha_inicio = st.session_state.get('fecha_inicio', datetime.now() - timedelta(days=60))
         fecha_fin = st.session_state.get('fecha_fin', datetime.now())
         source = st.session_state.get('satellite_source', 'MODIS (250m)')
-        max_cloud = st.session_state.get('max_cloud', 100)   # Ahora por defecto 100
+        max_cloud = st.session_state.get('max_cloud', 100)
         gdf = st.session_state.gdf_original.copy()
         
         gdf_dividido = dividir_plantacion_en_bloques(gdf, n_divisiones)
@@ -2148,11 +2151,9 @@ with st.sidebar:
         key="satellite_source"
     )
 
-    # Control de nubosidad para Landsat (ahora por defecto 100)
     if st.session_state.satellite_source == "Landsat (30m)":
         st.markdown("### ☁️ Nubosidad máxima para Landsat")
         st.slider("Porcentaje de nubosidad máximo:", 0, 100, 100, key="max_cloud")
-        # NO se asigna manualmente; el widget ya actualiza st.session_state.max_cloud
 
     st.markdown("---")
     st.markdown("### 🎯 División de Plantación")
