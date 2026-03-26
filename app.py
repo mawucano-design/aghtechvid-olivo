@@ -6,11 +6,7 @@
 # - Detección de olivos (simulada)
 # - Curvas de nivel (SRTM vía OpenTopography o simuladas)
 # - Detección YOLO (enfermedades/plagas)
-#
-# IMPORTANTE: Configurar variables de entorno:
-#   EARTHDATA_USERNAME, EARTHDATA_PASSWORD (para datos satelitales)
-#   OPENTOPOGRAPHY_API_KEY (opcional, para curvas de nivel reales)
-# Instalar dependencias: ver requirements.txt
+# - Umbral mínimo de píxeles configurable por el usuario
 
 import streamlit as st
 import geopandas as gpd
@@ -164,6 +160,7 @@ def init_session_state():
         'curvas_nivel': None,
         'satellite_source': 'MODIS (250m)',
         'max_cloud': 100,
+        'min_pixels': 10,          # umbral mínimo de píxeles por bloque
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -438,7 +435,7 @@ def cargar_archivo_plantacion(uploaded_file):
         return None
 
 # ===== FUNCIONES SATELITALES =====
-def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
+def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin, min_pixels=10):
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess/xarray/rioxarray no instaladas.")
         return None
@@ -524,8 +521,13 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                         out_image = out_image[0]
                                     data = out_image[0]
                                     data_scaled = data.astype(np.float32) * 0.0001
-                                    mask_invalid = (data == nodata) | (data_scaled < -1) | (data_scaled > 1)
-                                    data_clean = np.ma.masked_where(mask_invalid, data_scaled)
+                                    # Contar píxeles válidos
+                                    mask_valid = (data != nodata) & (data_scaled >= -1) & (data_scaled <= 1)
+                                    n_valid = np.sum(mask_valid)
+                                    if n_valid < min_pixels:
+                                        ndvi_values.append(np.nan)
+                                        continue
+                                    data_clean = np.ma.masked_where(~mask_valid, data_scaled)
                                     mean_val = data_clean.mean()
                                     if np.ma.is_masked(mean_val) or np.isnan(mean_val):
                                         ndvi_values.append(np.nan)
@@ -605,8 +607,12 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 if out_image.ndim == 3 and out_image.shape[0] == 1:
                                     out_image = out_image[0]
                                 data = out_image[0]
-                                mask_invalid = (data == -32768) | (data < -1) | (data > 1)
-                                data_clean = np.ma.masked_where(mask_invalid, data)
+                                mask_valid = (data != -32768) & (data >= -1) & (data <= 1)
+                                n_valid = np.sum(mask_valid)
+                                if n_valid < min_pixels:
+                                    ndvi_values.append(np.nan)
+                                    continue
+                                data_clean = np.ma.masked_where(~mask_valid, data)
                                 mean_val = data_clean.mean()
                                 if np.ma.is_masked(mean_val) or np.isnan(mean_val):
                                     ndvi_values.append(np.nan)
@@ -634,7 +640,7 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
         st.error(f"Error en obtención de NDVI: {str(e)}")
         return None
 
-def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
+def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin, min_pixels=10):
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess/xarray/rioxarray no instaladas.")
         return None
@@ -734,6 +740,11 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                         swir_band = out_swir[0].astype(np.float32) * 0.0001
 
                                         valid = (nir_band != nodata_nir * 0.0001) & (swir_band != nodata_swir * 0.0001) & (nir_band + swir_band != 0)
+                                        n_valid = np.sum(valid)
+                                        if n_valid < min_pixels:
+                                            ndwi_values.append(np.nan)
+                                            continue
+
                                         nir_valid = np.ma.masked_where(~valid, nir_band)
                                         swir_valid = np.ma.masked_where(~valid, swir_band)
 
@@ -831,6 +842,10 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                     nir_band = out_nir[0]
                                     swir_band = out_swir[0]
                                     valid = (nir_band != -32768) & (swir_band != -32768) & (nir_band + swir_band != 0)
+                                    n_valid = np.sum(valid)
+                                    if n_valid < min_pixels:
+                                        ndwi_values.append(np.nan)
+                                        continue
                                     nir_valid = np.ma.masked_where(~valid, nir_band)
                                     swir_valid = np.ma.masked_where(~valid, swir_band)
                                     with np.errstate(divide='ignore', invalid='ignore'):
@@ -902,7 +917,7 @@ def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=10
         st.error(f"Error buscando Landsat: {str(e)}")
         return None
 
-def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100, expand_bbox=0.05):
+def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100, expand_bbox=0.10, min_pixels=10):
     if not EARTHDATA_OK:
         st.error("Librerías earthaccess no instaladas.")
         return None
@@ -994,7 +1009,7 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=1
                         n_valid = np.sum(valid_mask)
                         valid_pixels_count.append(n_valid)
 
-                        if n_valid < 10:
+                        if n_valid < min_pixels:
                             ndvi_vals.append(np.nan)
                             ndwi_vals.append(np.nan)
                             continue
@@ -1028,7 +1043,7 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=1
                     progress_bar.progress((i+1) / len(gdf_proj), text=f"Procesando bloque {i+1}/{len(gdf_proj)}")
                 progress_bar.empty()
 
-                if np.sum([c for c in valid_pixels_count if c >= 10]) == 0:
+                if np.sum([c for c in valid_pixels_count if c >= min_pixels]) == 0:
                     st.warning(f"Escena {idx+1} no contiene suficientes píxeles válidos. Probando siguiente...")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     continue
@@ -2014,6 +2029,7 @@ def ejecutar_analisis_completo():
         fecha_fin = st.session_state.get('fecha_fin', datetime.now())
         source = st.session_state.get('satellite_source', 'MODIS (250m)')
         max_cloud = st.session_state.get('max_cloud', 100)
+        min_pixels = st.session_state.get('min_pixels', 10)
         gdf = st.session_state.gdf_original.copy()
         
         gdf_dividido = dividir_plantacion_en_bloques(gdf, n_divisiones)
@@ -2028,12 +2044,12 @@ def ejecutar_analisis_completo():
         fuente_ndwi = "Desconocido"
 
         if source == 'Landsat (30m)':
-            st.info(f"🛰️ Obteniendo índices Landsat (30m) desde Earthdata (nubosidad máxima: {max_cloud}%)...")
-            resultado_landsat = obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=max_cloud)
+            st.info(f"🛰️ Obteniendo índices Landsat (30m) desde Earthdata (nubosidad máxima: {max_cloud}%, píxeles mínimos: {min_pixels})...")
+            resultado_landsat = obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=max_cloud, min_pixels=min_pixels)
             if resultado_landsat is None:
                 st.warning("⚠️ No se pudo obtener datos Landsat. Se usará MODIS como respaldo.")
                 # Fallback a MODIS
-                resultado_ndvi = obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
+                resultado_ndvi = obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin, min_pixels=min_pixels)
                 if resultado_ndvi is None:
                     st.error("No se pudo obtener NDVI de MODIS. Abortando análisis.")
                     st.stop()
@@ -2041,12 +2057,16 @@ def ejecutar_analisis_completo():
                 fuente_ndvi = "Earthdata MOD13Q1 (fallback)"
 
                 # Intentar obtener NDWI de MODIS; si falla, simular
-                resultado_ndwi = obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
+                resultado_ndwi = obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin, min_pixels=min_pixels)
                 if resultado_ndwi is None:
                     st.warning("⚠️ No se pudo obtener NDWI real de MODIS. Generando simulado...")
+                    # Simular solo para bloques con NDVI pero sin NDWI
                     ndvi = gdf_dividido['ndvi_modis']
+                    # Generar simulación con ruido, pero solo para bloques donde NDVI no sea NaN
                     ruido = np.random.normal(0, 0.05, size=len(ndvi))
                     ndwi_sim = np.clip(ndvi * 0.8 + ruido, 0.1, 0.7)
+                    # Para bloques donde NDVI es NaN, mantener NaN
+                    ndwi_sim[np.isnan(ndvi)] = np.nan
                     gdf_dividido['ndwi_modis'] = ndwi_sim
                     fuente_ndwi = "Simulado (fallback)"
                 else:
@@ -2057,21 +2077,22 @@ def ejecutar_analisis_completo():
                 fuente_ndvi = "Landsat 8/9 (30m)"
                 fuente_ndwi = "Landsat 8/9 (30m)"
         else:  # MODIS
-            st.info("🛰️ Obteniendo NDVI desde Earthdata (MOD13Q1)...")
-            resultado_ndvi = obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
+            st.info(f"🛰️ Obteniendo NDVI desde Earthdata (MOD13Q1) con umbral de píxeles {min_pixels}...")
+            resultado_ndvi = obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin, min_pixels=min_pixels)
             if resultado_ndvi is None:
                 st.error("No se pudo obtener NDVI real. Verifique sus credenciales.")
                 st.stop()
             gdf_dividido = resultado_ndvi
             fuente_ndvi = "Earthdata MOD13Q1"
 
-            st.info("💧 Obteniendo NDWI desde Earthdata (MOD09GA)...")
-            resultado_ndwi = obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin)
+            st.info(f"💧 Obteniendo NDWI desde Earthdata (MOD09GA) con umbral de píxeles {min_pixels}...")
+            resultado_ndwi = obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin, min_pixels=min_pixels)
             if resultado_ndwi is None:
                 st.warning("⚠️ No se pudo obtener NDWI real. Generando simulado...")
                 ndvi = gdf_dividido['ndvi_modis']
                 ruido = np.random.normal(0, 0.05, size=len(ndvi))
                 ndwi_sim = np.clip(ndvi * 0.8 + ruido, 0.1, 0.7)
+                ndwi_sim[np.isnan(ndvi)] = np.nan
                 gdf_dividido['ndwi_modis'] = ndwi_sim
                 fuente_ndwi = "Simulado (fallback)"
             else:
@@ -2150,6 +2171,10 @@ with st.sidebar:
     if st.session_state.satellite_source == "Landsat (30m)":
         st.markdown("### ☁️ Nubosidad máxima para Landsat")
         st.slider("Porcentaje de nubosidad máximo:", 0, 100, 100, key="max_cloud")
+    
+    st.markdown("### 📏 Umbral mínimo de píxeles por bloque")
+    st.slider("Mínimo de píxeles válidos:", 1, 30, 10, key="min_pixels",
+              help="Si un bloque tiene menos de este número de píxeles válidos, se asigna NaN.")
 
     st.markdown("---")
     st.markdown("### 🎯 División de Plantación")
@@ -2266,9 +2291,13 @@ if st.session_state.analisis_completado:
             ndvi_prom = gdf_completo['ndvi_modis'].mean() if 'ndvi_modis' in gdf_completo.columns else np.nan
             ndwi_prom = gdf_completo['ndwi_modis'].mean() if 'ndwi_modis' in gdf_completo.columns else np.nan
             total_bloques = len(gdf_completo)
+            # Contar bloques con datos válidos (no NaN)
+            bloques_con_ndvi = gdf_completo['ndvi_modis'].notna().sum()
+            bloques_con_ndwi = gdf_completo['ndwi_modis'].notna().sum()
             salud_counts = gdf_completo['salud'].value_counts() if 'salud' in gdf_completo.columns else pd.Series()
             pct_buena = (salud_counts.get('Buena', 0) / total_bloques * 100) if total_bloques > 0 else 0
             
+            st.markdown("#### Métricas globales")
             col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns(6)
             with col_m1:
                 st.metric("Área Total", f"{area_total:.1f} ha")
@@ -2282,6 +2311,13 @@ if st.session_state.analisis_completado:
                 st.metric("NDWI Prom.", f"{ndwi_prom:.3f}" if not np.isnan(ndwi_prom) else "N/A")
             with col_m6:
                 st.metric("Salud Buena", f"{pct_buena:.1f}%")
+            
+            st.markdown("#### Calidad de datos por bloque")
+            col_q1, col_q2 = st.columns(2)
+            with col_q1:
+                st.metric("Bloques con NDVI válido", f"{bloques_con_ndvi} / {total_bloques} ({100*bloques_con_ndvi/total_bloques:.1f}%)")
+            with col_q2:
+                st.metric("Bloques con NDWI válido", f"{bloques_con_ndwi} / {total_bloques} ({100*bloques_con_ndwi/total_bloques:.1f}%)")
             
             st.markdown("---")
             
@@ -2359,12 +2395,17 @@ if st.session_state.analisis_completado:
                         return 'background-color: #1a9850; color: white'
                     return ''
                 
+                def color_na(val):
+                    if pd.isna(val):
+                        return 'background-color: #ffcccc; color: #666'
+                    return ''
+                
                 styled_tabla = tabla.style.format({
                     'Área (ha)': '{:.2f}',
                     'Edad (años)': '{:.1f}',
                     'NDVI': '{:.3f}',
                     'NDWI': '{:.3f}'
-                }).applymap(color_salud, subset=['Salud'])
+                }).applymap(color_salud, subset=['Salud']).applymap(color_na, subset=['NDVI', 'NDWI'])
                 
                 st.dataframe(styled_tabla, use_container_width=True, height=400)
                 
@@ -2378,6 +2419,7 @@ if st.session_state.analisis_completado:
             except Exception as e:
                 st.warning(f"No se pudo mostrar la tabla de bloques: {e}")
         
+        # El resto de pestañas se mantienen igual...
         with tab2:
             st.subheader("🗺️ MAPAS INTERACTIVOS")
             st.markdown("### 🌍 Mapa Interactivo con Olivos Detectados")
