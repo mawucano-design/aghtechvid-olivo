@@ -774,7 +774,7 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin):
                                 uly = float(ul_match.group(2))
                                 lrx = float(lr_match.group(1))
                                 lry = float(lr_match.group(2))
-                                # Esta conversión es burda, mejor retornamos None y generamos simulado.
+                                # No podemos convertir fácilmente a grados, mejor fallback
                                 st.warning("No se pudieron obtener coordenadas geográficas para recorte de NDWI. Se usará simulado.")
                                 return None
                     except Exception:
@@ -878,22 +878,18 @@ def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=10
         bounds = gdf_dividido.total_bounds
         bbox = (bounds[0], bounds[1], bounds[2], bounds[3])
 
-        cloud_filter = (0, max_cloud) if max_cloud < 100 else None
+        # Parámetros comunes
+        search_params = {
+            "bounding_box": bbox,
+            "temporal": (fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d')),
+            "count": 10
+        }
+        # Solo agregar cloud_cover si max_cloud < 100
+        if max_cloud < 100:
+            search_params["cloud_cover"] = (0, max_cloud)
 
-        results_l8 = earthaccess.search_data(
-            short_name='LANDSAT_8_C2_L2',
-            bounding_box=bbox,
-            temporal=(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d')),
-            count=10,
-            cloud_cover=cloud_filter
-        )
-        results_l9 = earthaccess.search_data(
-            short_name='LANDSAT_9_C2_L2',
-            bounding_box=bbox,
-            temporal=(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d')),
-            count=10,
-            cloud_cover=cloud_filter
-        )
+        results_l8 = earthaccess.search_data(short_name='LANDSAT_8_C2_L2', **search_params)
+        results_l9 = earthaccess.search_data(short_name='LANDSAT_9_C2_L2', **search_params)
 
         all_results = results_l8 + results_l9
         if not all_results:
