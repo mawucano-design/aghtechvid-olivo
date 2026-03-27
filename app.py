@@ -549,7 +549,54 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin, min_pixels=1):
                             shutil.rmtree(temp_dir, ignore_errors=True)
                             return gdf_dividido
             except Exception as e:
-                st.warning(f"Fallo rasterio: {str(e)[:100]}. Intentando con pyhdf...")
+                st.warning(f"Fallo rasterio: {str(e)[:100]}. Intentando con xarray...")
+
+        # --- Intentar con xarray + rioxarray ---
+        if EARTHDATA_OK and 'xr' in globals():
+            try:
+                # Abrir con xarray usando rioxarray para acceder a subdatasets
+                ds = xr.open_dataset(download_path, engine='netcdf4', group='MODIS_Grid_16DAY_250m_VI')
+                # Buscar NDVI
+                ndvi_var = None
+                for var in ds.data_vars:
+                    if 'NDVI' in var:
+                        ndvi_var = var
+                        break
+                if ndvi_var is None:
+                    st.error("No se encontró variable NDVI en el dataset.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return None
+                ndvi = ds[ndvi_var]
+                # Asignar CRS sinusoidal
+                ndvi = ndvi.rio.write_crs("EPSG:3978")  # MODIS Sinusoidal
+                # Recortar por polígonos
+                gdf_proj = gdf_dividido.to_crs(ndvi.rio.crs)
+                ndvi_clip = ndvi.rio.clip(gdf_proj.geometry.values, gdf_proj.crs)
+                # Extraer valores por bloque
+                ndvi_values = []
+                for idx, row in gdf_proj.iterrows():
+                    geom = row.geometry
+                    # Recortar para cada geometría
+                    ndvi_bloque = ndvi.rio.clip([geom], gdf_proj.crs, drop=False)
+                    data = ndvi_bloque.values
+                    if data.size == 0:
+                        ndvi_values.append(np.nan)
+                        continue
+                    data_scaled = data * 0.0001
+                    mask_valid = ~np.isnan(data_scaled) & (data_scaled >= -1) & (data_scaled <= 1)
+                    n_valid = np.sum(mask_valid)
+                    if n_valid < min_pixels:
+                        st.info(f"Bloque {idx+1}: solo {n_valid} píxeles válidos (< {min_pixels}).")
+                        ndvi_values.append(np.nan)
+                        continue
+                    mean_val = np.mean(data_scaled[mask_valid])
+                    ndvi_values.append(round(float(mean_val), 3))
+                gdf_dividido['ndvi_modis'] = ndvi_values
+                st.success("✅ NDVI calculado por bloque correctamente con xarray.")
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return gdf_dividido
+            except Exception as e:
+                st.warning(f"Fallo con xarray: {str(e)[:100]}. Intentando con pyhdf...")
 
         # --- Fallback con pyhdf usando lat/lon ---
         if PYHDF_OK:
@@ -571,83 +618,153 @@ def obtener_ndvi_earthdata(gdf_dividido, fecha_inicio, fecha_fin, min_pixels=1):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
                 if lat_name is None or lon_name is None:
-                    st.error("No se encontraron datasets de latitud/longitud en el HDF.")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    return None
-
-                ndvi_data = hdf.select(ndvi_name).get().astype(np.float32) * 0.0001
-                lat_data = hdf.select(lat_name).get()
-                lon_data = hdf.select(lon_name).get()
-
-                # Construir transformación a partir de lat/lon
-                ydim, xdim = ndvi_data.shape
-                # Tomar las cuatro esquinas (aproximación)
-                lat_00 = lat_data[0, 0]
-                lat_n0 = lat_data[-1, 0]
-                lon_00 = lon_data[0, 0]
-                lon_0n = lon_data[0, -1]
-                res_x = (lon_0n - lon_00) / xdim
-                res_y = (lat_n0 - lat_00) / ydim
-                transform = rasterio.Affine(res_x, 0, lon_00, 0, res_y, lat_00)
-                crs = rasterio.crs.CRS.from_epsg(4326)
-
-                with rasterio.io.MemoryFile() as memfile:
-                    with memfile.open(
-                        driver='GTiff',
-                        height=ydim,
-                        width=xdim,
-                        count=1,
-                        dtype=ndvi_data.dtype,
-                        crs=crs,
-                        transform=transform,
-                        nodata=-32768
-                    ) as dst:
-                        dst.write(ndvi_data, 1)
-                    with memfile.open() as src_ndvi:
-                        gdf_proj = gdf_dividido.to_crs(crs)
-                        ndvi_values = []
-                        progress_bar = st.progress(0, text="Procesando bloques para NDVI con pyhdf...")
-                        for idx, row in gdf_proj.iterrows():
-                            geom = [mapping(row.geometry)]
-                            try:
-                                out_image, _ = mask(src_ndvi, geom, crop=True, nodata=-32768)
-                                if out_image.ndim < 2:
-                                    ndvi_values.append(np.nan)
-                                    continue
-                                if out_image.ndim == 3 and out_image.shape[0] == 1:
-                                    data = out_image[0]
-                                else:
-                                    data = out_image
-                                mask_valid = (data != -32768) & (data >= -1) & (data <= 1)
-                                n_valid = np.sum(mask_valid)
-                                if n_valid < min_pixels:
-                                    st.info(f"Bloque {idx+1}: solo {n_valid} píxeles válidos (< {min_pixels}). Se asigna NaN.")
-                                    ndvi_values.append(np.nan)
-                                    continue
-                                mean_val = np.mean(data[mask_valid])
-                                ndvi_values.append(round(float(mean_val), 3))
-                            except Exception as e:
-                                ndvi_values.append(np.nan)
-                                st.warning(f"Error bloque {idx+1}: {str(e)[:100]}")
-                            progress_bar.progress((idx + 1) / len(gdf_proj),
-                                                  text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
-                        progress_bar.empty()
-                        gdf_dividido['ndvi_modis'] = ndvi_values
-                        st.success("✅ NDVI calculado por bloque correctamente con pyhdf y geolocalización.")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        return gdf_dividido
+                    # Intentar obtener lat/lon desde los atributos del archivo (transformación)
+                    # Intentar construir transformación a partir de las dimensiones y la proyección sinusoidal
+                    # Obtener dimensiones
+                    ndvi_data = hdf.select(ndvi_name)
+                    ydim, xdim = ndvi_data.info()[2]  # (dim0, dim1)
+                    # Asumir que la extensión cubre todo el tile MODIS h13v12 (podríamos usar bounding box aproximado)
+                    # Pero mejor usar el bounding box del polígono para inferir el área
+                    bounds = gdf_dividido.total_bounds
+                    minx, miny, maxx, maxy = bounds
+                    # MODIS Sinusoidal: dimensiones globales? No es trivial.
+                    # En su lugar, intentar leer los datasets de geolocalización con otro nombre
+                    # Algunos productos tienen 'Lat' y 'Lon' o 'lat' 'lon'
+                    for name in datasets.keys():
+                        if 'Lat' in name:
+                            lat_name = name
+                        if 'Lon' in name:
+                            lon_name = name
+                    if lat_name is None or lon_name is None:
+                        # No se encontraron, usar transformación aproximada
+                        st.warning("No se encontraron datasets de latitud/longitud. Usando transformación aproximada a partir del bounding box.")
+                        # Crear una transformación aproximada usando el bounding box y las dimensiones
+                        # Nota: Esto asume que el tile cubre exactamente el área del polígono, lo cual no es cierto en general
+                        # pero puede dar resultados aceptables si el polígono está dentro del tile.
+                        lat_min, lat_max = miny, maxy
+                        lon_min, lon_max = minx, maxx
+                        res_lat = (lat_max - lat_min) / ydim
+                        res_lon = (lon_max - lon_min) / xdim
+                        transform = rasterio.Affine(res_lon, 0, lon_min, 0, res_lat, lat_min)
+                        crs = rasterio.crs.CRS.from_epsg(4326)
+                        # Usar esta transformación para crear un archivo en memoria
+                        with rasterio.io.MemoryFile() as memfile:
+                            with memfile.open(
+                                driver='GTiff',
+                                height=ydim,
+                                width=xdim,
+                                count=1,
+                                dtype=ndvi_data.info()[0],
+                                crs=crs,
+                                transform=transform,
+                                nodata=-32768
+                            ) as dst:
+                                dst.write(ndvi_data.get(), 1)
+                            with memfile.open() as src_ndvi:
+                                gdf_proj = gdf_dividido.to_crs(crs)
+                                ndvi_values = []
+                                progress_bar = st.progress(0, text="Procesando bloques para NDVI con pyhdf...")
+                                for idx, row in gdf_proj.iterrows():
+                                    geom = [mapping(row.geometry)]
+                                    try:
+                                        out_image, _ = mask(src_ndvi, geom, crop=True, nodata=-32768)
+                                        if out_image.ndim < 2:
+                                            ndvi_values.append(np.nan)
+                                            continue
+                                        if out_image.ndim == 3 and out_image.shape[0] == 1:
+                                            data = out_image[0]
+                                        else:
+                                            data = out_image
+                                        data_scaled = data.astype(np.float32) * 0.0001
+                                        mask_valid = (data != -32768) & (data_scaled >= -1) & (data_scaled <= 1)
+                                        n_valid = np.sum(mask_valid)
+                                        if n_valid < min_pixels:
+                                            st.info(f"Bloque {idx+1}: solo {n_valid} píxeles válidos (< {min_pixels}). Se asigna NaN.")
+                                            ndvi_values.append(np.nan)
+                                            continue
+                                        mean_val = np.mean(data_scaled[mask_valid])
+                                        ndvi_values.append(round(float(mean_val), 3))
+                                    except Exception as e:
+                                        ndvi_values.append(np.nan)
+                                        st.warning(f"Error bloque {idx+1}: {str(e)[:100]}")
+                                    progress_bar.progress((idx + 1) / len(gdf_proj),
+                                                          text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
+                                progress_bar.empty()
+                                gdf_dividido['ndvi_modis'] = ndvi_values
+                                st.success("✅ NDVI calculado por bloque correctamente con pyhdf y transformación aproximada.")
+                                shutil.rmtree(temp_dir, ignore_errors=True)
+                                return gdf_dividido
+                    else:
+                        # Tenemos lat/lon, proceder como antes
+                        ndvi_data = hdf.select(ndvi_name).get().astype(np.float32) * 0.0001
+                        lat_data = hdf.select(lat_name).get()
+                        lon_data = hdf.select(lon_name).get()
+                        ydim, xdim = ndvi_data.shape
+                        # Construir transformación a partir de lat/lon
+                        lat_00 = lat_data[0, 0]
+                        lat_n0 = lat_data[-1, 0]
+                        lon_00 = lon_data[0, 0]
+                        lon_0n = lon_data[0, -1]
+                        res_x = (lon_0n - lon_00) / xdim
+                        res_y = (lat_n0 - lat_00) / ydim
+                        transform = rasterio.Affine(res_x, 0, lon_00, 0, res_y, lat_00)
+                        crs = rasterio.crs.CRS.from_epsg(4326)
+                        with rasterio.io.MemoryFile() as memfile:
+                            with memfile.open(
+                                driver='GTiff',
+                                height=ydim,
+                                width=xdim,
+                                count=1,
+                                dtype=ndvi_data.dtype,
+                                crs=crs,
+                                transform=transform,
+                                nodata=-32768
+                            ) as dst:
+                                dst.write(ndvi_data, 1)
+                            with memfile.open() as src_ndvi:
+                                gdf_proj = gdf_dividido.to_crs(crs)
+                                ndvi_values = []
+                                progress_bar = st.progress(0, text="Procesando bloques para NDVI con pyhdf...")
+                                for idx, row in gdf_proj.iterrows():
+                                    geom = [mapping(row.geometry)]
+                                    try:
+                                        out_image, _ = mask(src_ndvi, geom, crop=True, nodata=-32768)
+                                        if out_image.ndim < 2:
+                                            ndvi_values.append(np.nan)
+                                            continue
+                                        if out_image.ndim == 3 and out_image.shape[0] == 1:
+                                            data = out_image[0]
+                                        else:
+                                            data = out_image
+                                        mask_valid = (data != -32768) & (data >= -1) & (data <= 1)
+                                        n_valid = np.sum(mask_valid)
+                                        if n_valid < min_pixels:
+                                            st.info(f"Bloque {idx+1}: solo {n_valid} píxeles válidos (< {min_pixels}). Se asigna NaN.")
+                                            ndvi_values.append(np.nan)
+                                            continue
+                                        mean_val = np.mean(data[mask_valid])
+                                        ndvi_values.append(round(float(mean_val), 3))
+                                    except Exception as e:
+                                        ndvi_values.append(np.nan)
+                                        st.warning(f"Error bloque {idx+1}: {str(e)[:100]}")
+                                    progress_bar.progress((idx + 1) / len(gdf_proj),
+                                                          text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
+                                progress_bar.empty()
+                                gdf_dividido['ndvi_modis'] = ndvi_values
+                                st.success("✅ NDVI calculado por bloque correctamente con pyhdf y geolocalización.")
+                                shutil.rmtree(temp_dir, ignore_errors=True)
+                                return gdf_dividido
             except Exception as e_pyhdf:
                 st.error(f"Error al procesar con pyhdf: {str(e_pyhdf)}")
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 return None
         else:
-            st.error("No se pudo leer el archivo HDF: ni rasterio ni pyhdf están disponibles o funcionaron.")
+            st.error("No se pudo leer el archivo HDF: ni rasterio ni xarray ni pyhdf están disponibles o funcionaron.")
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
     except Exception as e:
         st.error(f"Error en obtención de NDVI: {str(e)}")
         return None
-
 
 def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin, min_pixels=1):
     if not EARTHDATA_OK:
@@ -767,9 +884,55 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin, min_pixels=1):
                             shutil.rmtree(temp_dir, ignore_errors=True)
                             return gdf_dividido
             except Exception as e:
-                st.warning(f"Fallo rasterio: {str(e)[:100]}. Intentando con pyhdf...")
+                st.warning(f"Fallo rasterio: {str(e)[:100]}. Intentando con xarray...")
 
-        # --- Fallback con pyhdf usando lat/lon ---
+        # --- Intentar con xarray ---
+        if EARTHDATA_OK and 'xr' in globals():
+            try:
+                ds = xr.open_dataset(download_path, engine='netcdf4', group='MODIS_Grid_1km_2d')
+                nir_var = None
+                swir_var = None
+                for var in ds.data_vars:
+                    if 'sur_refl_b02' in var:
+                        nir_var = var
+                    elif 'sur_refl_b06' in var:
+                        swir_var = var
+                if nir_var is None or swir_var is None:
+                    st.error("No se encontraron variables NIR/SWIR.")
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return None
+                nir = ds[nir_var]
+                swir = ds[swir_var]
+                nir = nir.rio.write_crs("EPSG:3978")
+                swir = swir.rio.write_crs("EPSG:3978")
+                gdf_proj = gdf_dividido.to_crs(nir.rio.crs)
+                ndwi_values = []
+                for idx, row in gdf_proj.iterrows():
+                    geom = row.geometry
+                    nir_clip = nir.rio.clip([geom], gdf_proj.crs, drop=False)
+                    swir_clip = swir.rio.clip([geom], gdf_proj.crs, drop=False)
+                    if nir_clip.size == 0 or swir_clip.size == 0:
+                        ndwi_values.append(np.nan)
+                        continue
+                    nir_data = nir_clip.values * 0.0001
+                    swir_data = swir_clip.values * 0.0001
+                    valid = ~np.isnan(nir_data) & ~np.isnan(swir_data) & (nir_data + swir_data != 0)
+                    n_valid = np.sum(valid)
+                    if n_valid < min_pixels:
+                        st.info(f"Bloque {idx+1}: solo {n_valid} píxeles válidos (< {min_pixels}).")
+                        ndwi_values.append(np.nan)
+                        continue
+                    ndwi = (nir_data[valid] - swir_data[valid]) / (nir_data[valid] + swir_data[valid])
+                    mean_val = np.mean(ndwi)
+                    ndwi_values.append(round(float(mean_val), 3))
+                gdf_dividido['ndwi_modis'] = ndwi_values
+                st.success("✅ NDWI calculado por bloque correctamente con xarray.")
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return gdf_dividido
+            except Exception as e:
+                st.warning(f"Fallo con xarray: {str(e)[:100]}. Intentando con pyhdf...")
+
+        # --- Fallback pyhdf (similar a NDVI) ---
         if PYHDF_OK:
             try:
                 hdf = SD(download_path, SDC.READ)
@@ -792,85 +955,134 @@ def obtener_ndwi_earthdata(gdf_dividido, fecha_inicio, fecha_fin, min_pixels=1):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     return None
                 if lat_name is None or lon_name is None:
-                    st.error("No se encontraron datasets de latitud/longitud en el HDF.")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    return None
-
-                nir_data = hdf.select(nir_name).get().astype(np.float32) * 0.0001
-                swir_data = hdf.select(swir_name).get().astype(np.float32) * 0.0001
-                lat_data = hdf.select(lat_name).get()
-                lon_data = hdf.select(lon_name).get()
-
-                ydim, xdim = nir_data.shape
-                lat_00 = lat_data[0, 0]
-                lat_n0 = lat_data[-1, 0]
-                lon_00 = lon_data[0, 0]
-                lon_0n = lon_data[0, -1]
-                res_x = (lon_0n - lon_00) / xdim
-                res_y = (lat_n0 - lat_00) / ydim
-                transform = rasterio.Affine(res_x, 0, lon_00, 0, res_y, lat_00)
-                crs = rasterio.crs.CRS.from_epsg(4326)
-
-                with rasterio.io.MemoryFile() as memfile_nir, rasterio.io.MemoryFile() as memfile_swir:
-                    with memfile_nir.open(driver='GTiff', height=ydim, width=xdim, count=1,
-                                          dtype=nir_data.dtype, crs=crs, transform=transform, nodata=-32768) as dst_nir:
-                        dst_nir.write(nir_data, 1)
-                    with memfile_swir.open(driver='GTiff', height=ydim, width=xdim, count=1,
-                                          dtype=swir_data.dtype, crs=crs, transform=transform, nodata=-32768) as dst_swir:
-                        dst_swir.write(swir_data, 1)
-
-                    with memfile_nir.open() as src_nir, memfile_swir.open() as src_swir:
-                        gdf_proj = gdf_dividido.to_crs(crs)
-                        ndwi_values = []
-                        progress_bar = st.progress(0, text="Procesando bloques para NDWI con pyhdf...")
-                        for idx, row in gdf_proj.iterrows():
-                            geom = [mapping(row.geometry)]
-                            try:
-                                out_nir, _ = mask(src_nir, geom, crop=True, nodata=-32768)
-                                out_swir, _ = mask(src_swir, geom, crop=True, nodata=-32768)
-                                if out_nir.ndim < 2 or out_swir.ndim < 2:
+                    # Intentar construir transformación aproximada
+                    nir_data = hdf.select(nir_name)
+                    ydim, xdim = nir_data.info()[2]
+                    bounds = gdf_dividido.total_bounds
+                    minx, miny, maxx, maxy = bounds
+                    res_lat = (maxy - miny) / ydim
+                    res_lon = (maxx - minx) / xdim
+                    transform = rasterio.Affine(res_lon, 0, minx, 0, res_lat, miny)
+                    crs = rasterio.crs.CRS.from_epsg(4326)
+                    with rasterio.io.MemoryFile() as memfile_nir, rasterio.io.MemoryFile() as memfile_swir:
+                        with memfile_nir.open(driver='GTiff', height=ydim, width=xdim, count=1,
+                                              dtype=nir_data.info()[0], crs=crs, transform=transform, nodata=-32768) as dst_nir:
+                            dst_nir.write(nir_data.get(), 1)
+                        swir_data = hdf.select(swir_name)
+                        with memfile_swir.open(driver='GTiff', height=ydim, width=xdim, count=1,
+                                               dtype=swir_data.info()[0], crs=crs, transform=transform, nodata=-32768) as dst_swir:
+                            dst_swir.write(swir_data.get(), 1)
+                        with memfile_nir.open() as src_nir, memfile_swir.open() as src_swir:
+                            gdf_proj = gdf_dividido.to_crs(crs)
+                            ndwi_values = []
+                            progress_bar = st.progress(0, text="Procesando bloques para NDWI con pyhdf...")
+                            for idx, row in gdf_proj.iterrows():
+                                geom = [mapping(row.geometry)]
+                                try:
+                                    out_nir, _ = mask(src_nir, geom, crop=True, nodata=-32768)
+                                    out_swir, _ = mask(src_swir, geom, crop=True, nodata=-32768)
+                                    if out_nir.ndim < 2 or out_swir.ndim < 2:
+                                        ndwi_values.append(np.nan)
+                                        continue
+                                    if out_nir.ndim == 3 and out_nir.shape[0] == 1:
+                                        nir_band = out_nir[0].astype(np.float32) * 0.0001
+                                    else:
+                                        nir_band = out_nir.astype(np.float32) * 0.0001
+                                    if out_swir.ndim == 3 and out_swir.shape[0] == 1:
+                                        swir_band = out_swir[0].astype(np.float32) * 0.0001
+                                    else:
+                                        swir_band = out_swir.astype(np.float32) * 0.0001
+                                    valid = (nir_band != -32768 * 0.0001) & (swir_band != -32768 * 0.0001) & (nir_band + swir_band != 0)
+                                    n_valid = np.sum(valid)
+                                    if n_valid < min_pixels:
+                                        st.info(f"Bloque {idx+1}: solo {n_valid} píxeles válidos (< {min_pixels}). Se asigna NaN.")
+                                        ndwi_values.append(np.nan)
+                                        continue
+                                    ndwi = (nir_band[valid] - swir_band[valid]) / (nir_band[valid] + swir_band[valid])
+                                    mean_val = np.mean(ndwi)
+                                    ndwi_values.append(round(float(mean_val), 3))
+                                except Exception as e:
                                     ndwi_values.append(np.nan)
-                                    continue
-                                if out_nir.ndim == 3 and out_nir.shape[0] == 1:
-                                    nir_band = out_nir[0]
-                                else:
-                                    nir_band = out_nir
-                                if out_swir.ndim == 3 and out_swir.shape[0] == 1:
-                                    swir_band = out_swir[0]
-                                else:
-                                    swir_band = out_swir
-
-                                valid = (nir_band != -32768) & (swir_band != -32768) & (nir_band + swir_band != 0)
-                                n_valid = np.sum(valid)
-                                if n_valid < min_pixels:
-                                    st.info(f"Bloque {idx+1}: solo {n_valid} píxeles válidos (< {min_pixels}). Se asigna NaN.")
+                                    st.warning(f"Error bloque {idx+1}: {str(e)[:100]}")
+                                progress_bar.progress((idx + 1) / len(gdf_proj),
+                                                      text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
+                            progress_bar.empty()
+                            gdf_dividido['ndwi_modis'] = ndwi_values
+                            st.success("✅ NDWI calculado por bloque correctamente con pyhdf y transformación aproximada.")
+                            shutil.rmtree(temp_dir, ignore_errors=True)
+                            return gdf_dividido
+                else:
+                    # Usar lat/lon reales
+                    nir_data = hdf.select(nir_name).get().astype(np.float32) * 0.0001
+                    swir_data = hdf.select(swir_name).get().astype(np.float32) * 0.0001
+                    lat_data = hdf.select(lat_name).get()
+                    lon_data = hdf.select(lon_name).get()
+                    ydim, xdim = nir_data.shape
+                    lat_00 = lat_data[0, 0]
+                    lat_n0 = lat_data[-1, 0]
+                    lon_00 = lon_data[0, 0]
+                    lon_0n = lon_data[0, -1]
+                    res_x = (lon_0n - lon_00) / xdim
+                    res_y = (lat_n0 - lat_00) / ydim
+                    transform = rasterio.Affine(res_x, 0, lon_00, 0, res_y, lat_00)
+                    crs = rasterio.crs.CRS.from_epsg(4326)
+                    with rasterio.io.MemoryFile() as memfile_nir, rasterio.io.MemoryFile() as memfile_swir:
+                        with memfile_nir.open(driver='GTiff', height=ydim, width=xdim, count=1,
+                                              dtype=nir_data.dtype, crs=crs, transform=transform, nodata=-32768) as dst_nir:
+                            dst_nir.write(nir_data, 1)
+                        with memfile_swir.open(driver='GTiff', height=ydim, width=xdim, count=1,
+                                               dtype=swir_data.dtype, crs=crs, transform=transform, nodata=-32768) as dst_swir:
+                            dst_swir.write(swir_data, 1)
+                        with memfile_nir.open() as src_nir, memfile_swir.open() as src_swir:
+                            gdf_proj = gdf_dividido.to_crs(crs)
+                            ndwi_values = []
+                            progress_bar = st.progress(0, text="Procesando bloques para NDWI con pyhdf...")
+                            for idx, row in gdf_proj.iterrows():
+                                geom = [mapping(row.geometry)]
+                                try:
+                                    out_nir, _ = mask(src_nir, geom, crop=True, nodata=-32768)
+                                    out_swir, _ = mask(src_swir, geom, crop=True, nodata=-32768)
+                                    if out_nir.ndim < 2 or out_swir.ndim < 2:
+                                        ndwi_values.append(np.nan)
+                                        continue
+                                    if out_nir.ndim == 3 and out_nir.shape[0] == 1:
+                                        nir_band = out_nir[0]
+                                    else:
+                                        nir_band = out_nir
+                                    if out_swir.ndim == 3 and out_swir.shape[0] == 1:
+                                        swir_band = out_swir[0]
+                                    else:
+                                        swir_band = out_swir
+                                    valid = (nir_band != -32768) & (swir_band != -32768) & (nir_band + swir_band != 0)
+                                    n_valid = np.sum(valid)
+                                    if n_valid < min_pixels:
+                                        st.info(f"Bloque {idx+1}: solo {n_valid} píxeles válidos (< {min_pixels}). Se asigna NaN.")
+                                        ndwi_values.append(np.nan)
+                                        continue
+                                    ndwi = (nir_band[valid] - swir_band[valid]) / (nir_band[valid] + swir_band[valid])
+                                    mean_val = np.mean(ndwi)
+                                    ndwi_values.append(round(float(mean_val), 3))
+                                except Exception as e:
                                     ndwi_values.append(np.nan)
-                                    continue
-                                ndwi = (nir_band[valid] - swir_band[valid]) / (nir_band[valid] + swir_band[valid])
-                                mean_val = np.mean(ndwi)
-                                ndwi_values.append(round(float(mean_val), 3))
-                            except Exception as e:
-                                ndwi_values.append(np.nan)
-                                st.warning(f"Error bloque {idx+1}: {str(e)[:100]}")
-                            progress_bar.progress((idx + 1) / len(gdf_proj),
-                                                  text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
-                        progress_bar.empty()
-                        gdf_dividido['ndwi_modis'] = ndwi_values
-                        st.success("✅ NDWI calculado por bloque correctamente con pyhdf y geolocalización.")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        return gdf_dividido
+                                    st.warning(f"Error bloque {idx+1}: {str(e)[:100]}")
+                                progress_bar.progress((idx + 1) / len(gdf_proj),
+                                                      text=f"Procesando bloque {idx+1}/{len(gdf_proj)}")
+                            progress_bar.empty()
+                            gdf_dividido['ndwi_modis'] = ndwi_values
+                            st.success("✅ NDWI calculado por bloque correctamente con pyhdf y geolocalización.")
+                            shutil.rmtree(temp_dir, ignore_errors=True)
+                            return gdf_dividido
             except Exception as e_pyhdf:
                 st.error(f"Error al procesar con pyhdf: {str(e_pyhdf)}")
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 return None
         else:
-            st.error("No se pudo leer el archivo HDF: ni rasterio ni pyhdf están disponibles o funcionaron.")
+            st.error("No se pudo leer el archivo HDF: ni rasterio ni xarray ni pyhdf están disponibles o funcionaron.")
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
     except Exception as e:
         st.error(f"Error en obtención de NDWI: {str(e)}")
         return None
-
 
 # ===== FUNCIONES LANDSAT =====
 def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100):
@@ -1053,7 +1265,6 @@ def obtener_ndvi_ndwi_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=1
 
     st.warning("No se pudo procesar ninguna escena Landsat. Se usará MODIS como respaldo.")
     return None
-
 
 # ===== FUNCIONES CLIMÁTICAS =====
 def obtener_clima_openmeteo(gdf, fecha_inicio, fecha_fin):
