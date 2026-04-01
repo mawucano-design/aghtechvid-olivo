@@ -23,7 +23,6 @@ mdurl
 earthaccess 
 xarray 
 rioxarray
-pyhdf
 torch
 torchvision
 rasterio
