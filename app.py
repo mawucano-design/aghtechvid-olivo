@@ -1,6 +1,6 @@
-# app.py - Versión final con Landsat 8/9 como fuente principal
+# app.py - Versión final con Landsat 8/9 como fuente principal (sin mensajes de advertencia)
 # - Carga de polígonos (zip, kml, kmz, geojson)
-# - Procesamiento NDVI/NDWI con Earthdata: Landsat 8/9 (30m)
+# - Procesamiento NDVI/NDWI con Earthdata: Landsat 8/9 (30m) (silencioso si falla)
 # - Datos climáticos de Open-Meteo y NASA POWER
 # - Análisis de suelo y fertilidad
 # - Detección de olivos (simulada)
@@ -435,13 +435,11 @@ def cargar_archivo_plantacion(uploaded_file):
 # ===== FUNCIONES SATELITALES (LANDSAT) =====
 def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100):
     if not EARTHDATA_OK:
-        st.error("Librerías earthaccess no instaladas.")
         return None
 
     try:
         auth = earthaccess.login()
         if not auth.authenticated:
-            st.error("No se pudo autenticar con Earthdata. Verifica tus credenciales.")
             return None
 
         bounds = gdf_dividido.total_bounds
@@ -459,26 +457,16 @@ def buscar_landsat_earthdata(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=10
         results_l9 = earthaccess.search_data(short_name='LANDSAT_9_C2_L2', **search_params)
 
         all_results = results_l8 + results_l9
-        if not all_results:
-            st.warning(f"No se encontraron escenas Landsat en el período (nubosidad <= {max_cloud}%).")
-            return None
+        return all_results if all_results else None
 
-        return all_results
-
-    except Exception as e:
-        st.error(f"Error buscando Landsat: {str(e)}")
+    except Exception:
         return None
 
 def obtener_indices_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100, expand_bbox=0.10, min_pixels=1):
-    """Obtiene NDVI y NDWI desde Landsat 8/9 usando rasterio."""
-    if not EARTHDATA_OK:
-        st.error("Librerías earthaccess no instaladas.")
-        return None
-    if not RASTERIO_OK:
-        st.error("rasterio no está instalado. Instálelo con: pip install rasterio")
+    """Obtiene NDVI y NDWI desde Landsat 8/9 usando rasterio. Silencioso si falla."""
+    if not EARTHDATA_OK or not RASTERIO_OK:
         return None
     if not EARTHDATA_USERNAME or not EARTHDATA_PASSWORD:
-        st.error("Credenciales Earthdata no configuradas. Configúralas como secrets.")
         return None
 
     bounds = gdf_dividido.total_bounds
@@ -497,16 +485,13 @@ def obtener_indices_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100
 
     results = buscar_landsat_earthdata(expanded_gdf, fecha_inicio, fecha_fin, max_cloud)
     if not results and max_cloud < 100:
-        st.info("Reintentando búsqueda Landsat sin límite de nubosidad...")
+        # Reintentar sin límite de nubosidad
         results = buscar_landsat_earthdata(expanded_gdf, fecha_inicio, fecha_fin, max_cloud=100)
 
     if not results:
-        st.warning("No se encontraron escenas Landsat. Se usarán índices simulados.")
         return None
 
-    for idx, granule in enumerate(results[:5]):
-        st.info(f"Probando escena {idx+1}: {granule['umm']['GranuleUR']}")
-
+    for granule in results[:5]:
         temp_dir = tempfile.mkdtemp()
         try:
             downloaded_files = earthaccess.download(granule, local_path=temp_dir)
@@ -525,7 +510,6 @@ def obtener_indices_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100
             b6_path = find_band('_B6.TIF')  # SWIR1
 
             if not (b4_path and b5_path and b6_path):
-                st.warning(f"Escena {idx+1}: no se encontraron bandas B4, B5, B6.")
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 continue
 
@@ -538,7 +522,7 @@ def obtener_indices_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100
                 ndwi_vals = []
                 valid_pixels_count = []
 
-                progress_bar = st.progress(0, text="Procesando bloques con Landsat...")
+                # Sin barra de progreso para evitar ruido
                 for i, row in gdf_proj.iterrows():
                     geom = [mapping(row.geometry)]
                     try:
@@ -546,7 +530,6 @@ def obtener_indices_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100
                         out_b5, _ = mask(src_b5, geom, crop=True, nodata=nodata)
                         out_b6, _ = mask(src_b6, geom, crop=True, nodata=nodata)
 
-                        # Asegurar dimensiones
                         if out_b4.ndim < 2 or out_b5.ndim < 2 or out_b6.ndim < 2:
                             ndvi_vals.append(np.nan)
                             ndwi_vals.append(np.nan)
@@ -571,7 +554,6 @@ def obtener_indices_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100
                         valid_pixels_count.append(n_valid)
 
                         if n_valid < min_pixels:
-                            st.info(f"Bloque {i+1}: solo {n_valid} píxeles válidos (< {min_pixels}). Se asigna NaN.")
                             ndvi_vals.append(np.nan)
                             ndwi_vals.append(np.nan)
                             continue
@@ -595,32 +577,24 @@ def obtener_indices_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=100
                         ndvi_vals.append(round(float(ndvi_mean), 3) if not np.isnan(ndvi_mean) else np.nan)
                         ndwi_vals.append(round(float(ndwi_mean), 3) if not np.isnan(ndwi_mean) else np.nan)
 
-                    except Exception as e:
+                    except Exception:
                         ndvi_vals.append(np.nan)
                         ndwi_vals.append(np.nan)
                         valid_pixels_count.append(0)
-                        st.warning(f"Error en bloque {i+1}: {str(e)[:100]}")
-
-                    progress_bar.progress((i+1) / len(gdf_proj), text=f"Procesando bloque {i+1}/{len(gdf_proj)}")
-                progress_bar.empty()
 
                 if np.sum([c for c in valid_pixels_count if c >= min_pixels]) == 0:
-                    st.warning(f"Escena {idx+1} no contiene suficientes píxeles válidos. Probando siguiente...")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     continue
 
                 gdf_dividido['ndvi_modis'] = ndvi_vals
                 gdf_dividido['ndwi_modis'] = ndwi_vals
-                st.success(f"✅ Índices Landsat calculados con éxito (escena {idx+1}).")
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 return gdf_dividido
 
-        except Exception as e:
-            st.warning(f"Error procesando escena {idx+1}: {str(e)[:100]}")
+        except Exception:
             shutil.rmtree(temp_dir, ignore_errors=True)
             continue
 
-    st.warning("No se pudo procesar ninguna escena Landsat. Se usarán índices simulados.")
     return None
 
 # ===== FUNCIONES CLIMÁTICAS =====
@@ -665,7 +639,6 @@ def obtener_clima_openmeteo(gdf, fecha_inicio, fecha_fin):
             'fuente': 'Open-Meteo ERA5'
         }
     except Exception as e:
-        st.warning(f"⚠️ Error en Open-Meteo: {str(e)[:100]}. Usando datos simulados.")
         return generar_datos_climaticos_simulados(gdf, fecha_inicio, fecha_fin)
 
 def obtener_radiacion_viento_power(gdf, fecha_inicio, fecha_fin):
@@ -711,7 +684,6 @@ def obtener_radiacion_viento_power(gdf, fecha_inicio, fecha_fin):
             'fuente': 'NASA POWER'
         }
     except Exception as e:
-        st.warning(f"⚠️ Error en NASA POWER: {str(e)[:100]}. Usando datos simulados.")
         dias = (fecha_fin - fecha_inicio).days
         if dias <= 0:
             dias = 30
@@ -1599,20 +1571,15 @@ def ejecutar_analisis_completo():
             areas_ha.append(float(calcular_superficie(area_gdf)))
         gdf_dividido['area_ha'] = areas_ha
 
-        st.info(f"Usando umbral mínimo de {min_pixels} píxeles por bloque. Área total: {calcular_superficie(gdf):.1f} ha")
-
-        # Obtener índices Landsat
-        st.info(f"🛰️ Obteniendo índices Landsat (30m) desde Earthdata (nubosidad máxima: {max_cloud}%, píxeles mínimos: {min_pixels})...")
+        # Obtener índices Landsat (silencioso)
         resultado_landsat = obtener_indices_landsat(gdf_dividido, fecha_inicio, fecha_fin, max_cloud=max_cloud, min_pixels=min_pixels)
 
         if resultado_landsat is None:
-            st.warning("⚠️ No se pudieron obtener datos Landsat. Generando índices simulados...")
-            # Generar índices simulados basados en la latitud/longitud (para no detener el análisis)
+            # Generar índices simulados silenciosamente
             ndvi_sim = []
             ndwi_sim = []
             for idx, row in gdf_dividido.iterrows():
                 centroid = row.geometry.centroid
-                # Simulación simple: NDVI entre 0.3 y 0.8 según latitud
                 lat_norm = (centroid.y + 90) / 180
                 ndvi_val = 0.3 + lat_norm * 0.5 + np.random.normal(0, 0.05)
                 ndvi_val = np.clip(ndvi_val, 0.2, 0.85)
@@ -1622,7 +1589,7 @@ def ejecutar_analisis_completo():
                 ndwi_sim.append(round(ndwi_val, 3))
             gdf_dividido['ndvi_modis'] = ndvi_sim
             gdf_dividido['ndwi_modis'] = ndwi_sim
-            fuente_ndvi = "Simulado (Landsat no disponible)"
+            fuente_ndvi = "Simulado"
             fuente_ndwi = "Simulado"
         else:
             gdf_dividido = resultado_landsat
@@ -1638,8 +1605,6 @@ def ejecutar_analisis_completo():
 
         if 'ndwi_modis' in gdf_dividido.columns and gdf_dividido['ndwi_modis'].notna().any():
             st.success(f"✅ Se calcularon NDWI para {gdf_dividido['ndwi_modis'].notna().sum()} bloques.")
-        else:
-            st.warning("⚠️ No se pudo calcular NDWI real; se usaron valores simulados.")
 
         # Datos climáticos
         st.info("🌦️ Obteniendo datos climáticos de Open-Meteo ERA5...")
