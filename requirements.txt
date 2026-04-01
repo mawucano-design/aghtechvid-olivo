@@ -27,4 +27,4 @@ pyhdf
 torch
 torchvision
 rasterio
-gdal
+GDAL
