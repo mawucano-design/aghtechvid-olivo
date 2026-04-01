@@ -1,6 +1,4 @@
-libgl1
-libsm6
-libxrender1
-libfontconfig1
-libice6
-libglib2.0-0t64
+gdal-bin
+libgdal-dev
+libhdf4-dev
+libhdf5-dev
